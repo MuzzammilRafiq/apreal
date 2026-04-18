@@ -1,0 +1,22 @@
+{
+  "name": "desktop",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.3.11",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev --parallel --filter=@apreal/server --filter=@apreal/web",
+    "dev:server": "bun run --cwd apps/server dev",
+    "dev:web": "bun run --cwd apps/web dev",
+    "start:server": "bun run --cwd apps/server start",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "clean": "rm -rf node_modules apps/*/node_modules apps/*/dist .turbo"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.9.3"
+  }
+}
