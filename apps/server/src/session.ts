@@ -5,12 +5,16 @@ import {
 	SessionManager,
 	SettingsManager,
 } from "@mariozechner/pi-coding-agent";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
 import { createLogger, summarizePrompt } from "./logger.ts";
 
 const OPENROUTER_PROVIDER = "openrouter";
 const OPENROUTER_MINIMAX_MODEL_ID = "minimax/minimax-m2.5";
 const OPENROUTER_ENV_VAR = "OPENROUTER_API_KEY";
+const PI_AGENT_AUTH_PATH = join(homedir(), ".pi", "agent", "auth.json");
 
 export const BUILT_IN_TOOLS_LABEL = "read, bash, edit, write";
 
@@ -222,6 +226,42 @@ function validateOpenRouterApiKey(rawValue: string | undefined): string | undefi
 	return value;
 }
 
+function readApiKeyCredential(value: unknown): string | undefined {
+	if (typeof value === "string") {
+		return value;
+	}
+
+	if (!value || typeof value !== "object") {
+		return undefined;
+	}
+
+	const record = value as Record<string, unknown>;
+	if (record.type !== "api_key" || typeof record.key !== "string") {
+		return undefined;
+	}
+
+	return record.key;
+}
+
+function readLegacyOpenRouterApiKeyFromAuthFile(): string | undefined {
+	if (!existsSync(PI_AGENT_AUTH_PATH)) {
+		return undefined;
+	}
+
+	try {
+		const content = readFileSync(PI_AGENT_AUTH_PATH, "utf8");
+		const parsed = JSON.parse(content);
+		if (!parsed || typeof parsed !== "object") {
+			return undefined;
+		}
+
+		const authEntries = parsed as Record<string, unknown>;
+		return readApiKeyCredential(authEntries[OPENROUTER_ENV_VAR]);
+	} catch {
+		return undefined;
+	}
+}
+
 type AgentControllerOptions = {
 	sessionId?: string;
 	transport?: string;
@@ -260,12 +300,19 @@ async function getOpenRouterRuntime(): Promise<OpenRouterRuntime> {
 			}
 
 			const modelRegistry = ModelRegistry.create(authStorage);
-			const openRouterApiKey = validateOpenRouterApiKey(
+			let openRouterApiKey = validateOpenRouterApiKey(
 				await modelRegistry.getApiKeyForProvider(OPENROUTER_PROVIDER),
 			);
 			if (!openRouterApiKey) {
+				const legacyAuthFileApiKey = validateOpenRouterApiKey(readLegacyOpenRouterApiKeyFromAuthFile());
+				if (legacyAuthFileApiKey) {
+					authStorage.setRuntimeApiKey(OPENROUTER_PROVIDER, legacyAuthFileApiKey);
+					openRouterApiKey = legacyAuthFileApiKey;
+				}
+			}
+			if (!openRouterApiKey) {
 				throw new Error(
-					`Missing OpenRouter credentials. Set ${OPENROUTER_ENV_VAR} or add openrouter auth to ~/.pi/agent/auth.json.`,
+					`Missing OpenRouter credentials. Set ${OPENROUTER_ENV_VAR} or add an \"openrouter\" auth entry to ~/.pi/agent/auth.json. A legacy \"${OPENROUTER_ENV_VAR}\" auth entry is also accepted.`,
 				);
 			}
 
