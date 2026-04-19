@@ -4,7 +4,6 @@ import remarkGfm from "remark-gfm";
 import type { SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "../chatTypes";
 import {
 	formatToolStatus,
-	formatRole,
 	getMessageBodyClassName,
 	getMessageClassName,
 	getMessageRoleClassName,
@@ -79,7 +78,6 @@ function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 
 	return (
 		<article className={getMessageClassName(item)}>
-			<p className={getMessageRoleClassName(item.role)}>{formatRole(item.role)}</p>
 			{shouldShowStandaloneBody && (
 				<p className={getMessageBodyClassName(item.role, item.pending)}>{item.body || "Thinking..."}</p>
 			)}

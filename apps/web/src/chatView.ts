@@ -1,17 +1,5 @@
 import type { SessionSummary, TranscriptMessage, TranscriptToolCall } from "./chatTypes";
 
-export function formatRole(role: TranscriptMessage["role"]): string {
-	switch (role) {
-		case "user":
-			return "You";
-		case "assistant":
-			return "Assistant";
-		case "error":
-			return "Error";
-		default:
-			return "System";
-	}
-}
 
 export function formatRelativeTime(timestamp: number): string {
 	const date = new Date(timestamp);
