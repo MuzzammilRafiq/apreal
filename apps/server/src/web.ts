@@ -1,7 +1,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getConfiguredToolsLabel } from "./agent-tools.ts";
 import {
-	BUILT_IN_TOOLS_LABEL,
 	createAgentController,
 	formatModelLabel,
 	getErrorMessage,
@@ -31,6 +31,7 @@ type TranscriptMessage = {
 	body: string;
 	thinking: string;
 	toolCalls: TranscriptToolCall[];
+	segments: TranscriptMessageSegment[];
 	pending: boolean;
 	createdAt: number;
 };
@@ -43,6 +44,20 @@ type TranscriptToolCall = {
 	createdAt: number;
 	updatedAt: number;
 };
+
+type TranscriptThinkingSegment = {
+	id: string;
+	type: "thinking";
+	content: string;
+	createdAt: number;
+	updatedAt: number;
+};
+
+type TranscriptToolCallSegment = TranscriptToolCall & {
+	type: "tool_call";
+};
+
+type TranscriptMessageSegment = TranscriptThinkingSegment | TranscriptToolCallSegment;
 
 type SharedSessionState = {
 	id: string;
@@ -161,6 +176,7 @@ function cloneTranscript(transcript: TranscriptMessage[]): TranscriptMessage[] {
 	return transcript.map((entry) => ({
 		...entry,
 		toolCalls: entry.toolCalls.map((toolCall) => ({ ...toolCall })),
+		segments: entry.segments.map((segment) => ({ ...segment })),
 	}));
 }
 
@@ -254,6 +270,7 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 			...message,
 			thinking: message.thinking ?? "",
 			toolCalls: message.toolCalls ? message.toolCalls.map((toolCall) => ({ ...toolCall })) : [],
+			segments: message.segments ? message.segments.map((segment) => ({ ...segment })) : [],
 			createdAt: Date.now(),
 		});
 		touchSession(session);
@@ -266,6 +283,7 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 			body: "",
 			thinking: "",
 			toolCalls: [],
+			segments: [],
 			pending: true,
 			createdAt: Date.now(),
 		};
@@ -335,7 +353,21 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 
 	function appendAssistantThinking(session: SharedSessionState, delta: string): TranscriptMessage {
 		const message = ensurePendingAssistantMessage(session);
+		const now = Date.now();
 		message.thinking += delta;
+		const lastSegment = message.segments[message.segments.length - 1];
+		if (lastSegment?.type === "thinking") {
+			lastSegment.content += delta;
+			lastSegment.updatedAt = now;
+		} else {
+			message.segments.push({
+				id: crypto.randomUUID(),
+				type: "thinking",
+				content: delta,
+				createdAt: now,
+				updatedAt: now,
+			});
+		}
 		touchSession(session);
 		return message;
 	}
@@ -345,17 +377,35 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 		toolCall: Omit<TranscriptToolCall, "createdAt" | "updatedAt">,
 	): TranscriptMessage {
 		const message = ensurePendingAssistantMessage(session);
+		const now = Date.now();
 		const existing = message.toolCalls.find((entry) => entry.id === toolCall.id);
 		if (existing) {
 			existing.name = toolCall.name;
 			existing.summary = toolCall.summary;
 			existing.status = toolCall.status;
-			existing.updatedAt = Date.now();
+			existing.updatedAt = now;
 		} else {
 			message.toolCalls.push({
 				...toolCall,
-				createdAt: Date.now(),
-				updatedAt: Date.now(),
+				createdAt: now,
+				updatedAt: now,
+			});
+		}
+
+		const existingSegment = message.segments.find(
+			(entry): entry is TranscriptToolCallSegment => entry.type === "tool_call" && entry.id === toolCall.id,
+		);
+		if (existingSegment) {
+			existingSegment.name = toolCall.name;
+			existingSegment.summary = toolCall.summary;
+			existingSegment.status = toolCall.status;
+			existingSegment.updatedAt = now;
+		} else {
+			message.segments.push({
+				...toolCall,
+				type: "tool_call",
+				createdAt: now,
+				updatedAt: now,
 			});
 		}
 
@@ -380,6 +430,13 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 
 		toolCall.status = status;
 		toolCall.updatedAt = Date.now();
+		const toolSegment = message.segments.find(
+			(entry): entry is TranscriptToolCallSegment => entry.type === "tool_call" && entry.id === toolCallId,
+		);
+		if (toolSegment) {
+			toolSegment.status = status;
+			toolSegment.updatedAt = toolCall.updatedAt;
+		}
 		touchSession(session);
 	}
 
@@ -398,6 +455,14 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 			}
 		}
 
+		for (const segment of message.segments) {
+			if (segment.type === "tool_call" && segment.status === "running") {
+				segment.status = "failed";
+				segment.updatedAt = Date.now();
+				changed = true;
+			}
+		}
+
 		if (changed) {
 			touchSession(session);
 		}
@@ -408,22 +473,62 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 		snapshot: Extract<AgentStreamEvent, { type: "message_end" }>,
 	): TranscriptMessage {
 		const message = ensurePendingAssistantMessage(session);
+		const now = Date.now();
 		message.body =
 			snapshot.stopReason === "error" && snapshot.errorMessage && !snapshot.body.trim()
 				? `Error: ${snapshot.errorMessage}`
 				: snapshot.body;
 		message.thinking = snapshot.thinking;
+		if (snapshot.thinking.trim() && !message.segments.some((segment) => segment.type === "thinking")) {
+			message.segments.push({
+				id: crypto.randomUUID(),
+				type: "thinking",
+				content: snapshot.thinking,
+				createdAt: now,
+				updatedAt: now,
+			});
+		}
 
 		if (snapshot.toolCalls.length > 0) {
 			const existingToolCalls = new Map(message.toolCalls.map((toolCall) => [toolCall.id, toolCall]));
-			message.toolCalls = snapshot.toolCalls.map((toolCall) => ({
-				id: toolCall.id,
-				name: toolCall.name,
-				summary: toolCall.summary,
-				status: existingToolCalls.get(toolCall.id)?.status ?? toolCall.status,
-				createdAt: existingToolCalls.get(toolCall.id)?.createdAt ?? Date.now(),
-				updatedAt: Date.now(),
-			}));
+			for (const toolCall of snapshot.toolCalls) {
+				const existingToolCall = existingToolCalls.get(toolCall.id);
+				if (existingToolCall) {
+					existingToolCall.name = toolCall.name;
+					existingToolCall.summary = toolCall.summary;
+					existingToolCall.status = toolCall.status;
+					existingToolCall.updatedAt = now;
+				} else {
+					message.toolCalls.push({
+						id: toolCall.id,
+						name: toolCall.name,
+						summary: toolCall.summary,
+						status: toolCall.status,
+						createdAt: now,
+						updatedAt: now,
+					});
+				}
+
+				const existingSegment = message.segments.find(
+					(entry): entry is TranscriptToolCallSegment => entry.type === "tool_call" && entry.id === toolCall.id,
+				);
+				if (existingSegment) {
+					existingSegment.name = toolCall.name;
+					existingSegment.summary = toolCall.summary;
+					existingSegment.status = toolCall.status;
+					existingSegment.updatedAt = now;
+				} else {
+					message.segments.push({
+						id: toolCall.id,
+						name: toolCall.name,
+						summary: toolCall.summary,
+						status: toolCall.status,
+						type: "tool_call",
+						createdAt: now,
+						updatedAt: now,
+					});
+				}
+			}
 		}
 
 		touchSession(session);
@@ -724,7 +829,7 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 						type: "connected",
 						clientId: ws.data.clientId,
 						message: "Connected. Browser chats are shared across tabs while the server is running.",
-						tools: BUILT_IN_TOOLS_LABEL,
+						tools: getConfiguredToolsLabel(),
 					});
 					sendSessionsUpdated(ws);
 				},

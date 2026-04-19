@@ -42,6 +42,7 @@ function cloneTranscript(transcript: TranscriptMessage[]): TranscriptMessage[] {
 	return transcript.map((entry) => ({
 		...entry,
 		toolCalls: (entry.toolCalls ?? []).map((toolCall) => ({ ...toolCall })),
+		segments: (entry.segments ?? []).map((segment) => ({ ...segment })),
 	}));
 }
 
@@ -182,6 +183,33 @@ export function App() {
 			const transcript = cached.transcript.map((entry) => {
 				if (entry.id !== messageId) {
 					return entry;
+				}
+
+				if (field === "thinking") {
+					const segments = [...entry.segments];
+					const lastSegment = segments[segments.length - 1];
+					if (lastSegment?.type === "thinking") {
+						segments[segments.length - 1] = {
+							...lastSegment,
+							content: `${lastSegment.content}${delta}`,
+							updatedAt: Date.now(),
+						};
+					} else {
+						segments.push({
+							id: crypto.randomUUID(),
+							type: "thinking",
+							content: delta,
+							createdAt: Date.now(),
+							updatedAt: Date.now(),
+						});
+					}
+
+					return {
+						...entry,
+						pending: true,
+						thinking: `${entry.thinking ?? ""}${delta}`,
+						segments,
+					};
 				}
 
 				return {

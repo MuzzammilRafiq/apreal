@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import type { SessionSummary, TranscriptMessage } from "../chatTypes";
+import type { SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "../chatTypes";
 import {
 	formatRole,
 	formatToolStatus,
@@ -21,8 +21,69 @@ type TranscriptPanelProps = {
 	emptyState: EmptyState | null;
 };
 
+function resolveAssistantSegments(item: TranscriptMessage): TranscriptMessageSegment[] {
+	if (item.segments.length > 0) {
+		return item.segments;
+	}
+
+	const fallbackSegments: TranscriptMessageSegment[] = [];
+	if (item.thinking.trim()) {
+		fallbackSegments.push({
+			id: `${item.id}-thinking`,
+			type: "thinking",
+			content: item.thinking,
+			createdAt: item.createdAt,
+			updatedAt: item.createdAt,
+		});
+	}
+
+	for (const toolCall of item.toolCalls) {
+		fallbackSegments.push({
+			...toolCall,
+			type: "tool_call",
+		});
+	}
+
+	return fallbackSegments;
+}
+
+function AssistantSegmentBlock({ item, segment, isLiveThinking }: { item: TranscriptMessage; segment: TranscriptMessageSegment; isLiveThinking: boolean }) {
+	if (segment.type === "tool_call") {
+		return (
+			<section className="mt-0.5 flex w-full flex-col gap-3 border border-line-soft bg-tool-surface px-4.5 py-4">
+				<p className="font-mono text-[0.72rem] uppercase tracking-[0.12em] text-faint">Tool call</p>
+				<div className="flex items-center justify-between gap-3">
+					<p className="font-mono text-[0.84rem] text-ink">{segment.name}</p>
+					<span className={getToolStatusClassName(segment.status)}>{formatToolStatus(segment.status)}</span>
+				</div>
+				<p className="font-mono whitespace-pre-wrap wrap-break-word text-[0.78rem] leading-[1.65] text-muted">
+					{segment.summary}
+				</p>
+			</section>
+		);
+	}
+
+	return (
+		<details
+			className="mt-3 w-full border border-thinking-border bg-thinking-surface px-4 py-3.5 text-muted open:bg-thinking-surface-open"
+			open={isLiveThinking}
+		>
+			<summary className="cursor-pointer list-none font-mono text-[0.74rem] uppercase tracking-[0.12em] text-thinking-label [&::-webkit-details-marker]:hidden">
+				{isLiveThinking ? "Thinking trace (live)" : "Thinking trace"}
+			</summary>
+			<pre className="mt-3 whitespace-pre-wrap wrap-break-word font-mono text-[0.82rem] leading-[1.7] text-thinking-body">
+				{segment.content}
+			</pre>
+		</details>
+	);
+}
+
 function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
-	const shouldShowPlaceholder = item.pending && !item.body && !item.thinking.trim() && item.toolCalls.length === 0;
+	const assistantSegments = item.role === "assistant" ? resolveAssistantSegments(item) : [];
+	const liveThinkingSegmentId = item.pending
+		? [...assistantSegments].reverse().find((segment) => segment.type === "thinking")?.id ?? null
+		: null;
+	const shouldShowPlaceholder = item.pending && !item.body && assistantSegments.length === 0;
 
 	return (
 		<article className={getMessageClassName(item)}>
@@ -31,40 +92,17 @@ function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 				<p className={getMessageBodyClassName(item.role, item.pending)}>{item.body || "Thinking..."}</p>
 			)}
 
-			{item.role === "assistant" && item.toolCalls.length > 0 && (
-				<section className="mt-0.5 flex flex-col gap-3 border border-line-soft bg-tool-surface px-4.5 py-4">
-					<p className="font-mono text-[0.72rem] uppercase tracking-[0.12em] text-faint">Tool calls</p>
-					<div className="flex flex-col gap-2.5">
-						{item.toolCalls.map((toolCall) => (
-							<div
-								key={toolCall.id}
-								className="flex flex-col gap-1.5 border-b border-line-soft pb-2.5 last:border-b-0 last:pb-0"
-							>
-								<div className="flex items-center justify-between gap-3">
-									<p className="font-mono text-[0.84rem] text-ink">{toolCall.name}</p>
-									<span className={getToolStatusClassName(toolCall.status)}>{formatToolStatus(toolCall.status)}</span>
-								</div>
-								<p className="font-mono whitespace-pre-wrap wrap-break-word text-[0.78rem] leading-[1.65] text-muted">
-									{toolCall.summary}
-								</p>
-							</div>
-						))}
-					</div>
-				</section>
-			)}
-
-			{item.role === "assistant" && item.thinking.trim() && (
-				<details
-					className="mt-3 border border-thinking-border bg-thinking-surface px-4 py-3.5 text-muted open:bg-thinking-surface-open"
-					open={item.pending}
-				>
-					<summary className="cursor-pointer list-none font-mono text-[0.74rem] uppercase tracking-[0.12em] text-thinking-label [&::-webkit-details-marker]:hidden">
-						{item.pending ? "Thinking trace (live)" : "Thinking trace"}
-					</summary>
-					<pre className="mt-3 whitespace-pre-wrap wrap-break-word font-mono text-[0.82rem] leading-[1.7] text-thinking-body">
-						{item.thinking}
-					</pre>
-				</details>
+			{item.role === "assistant" && assistantSegments.length > 0 && (
+				<div className="flex w-full flex-col gap-3">
+					{assistantSegments.map((segment) => (
+						<AssistantSegmentBlock
+							key={segment.id}
+							item={item}
+							segment={segment}
+							isLiveThinking={segment.type === "thinking" && segment.id === liveThinkingSegmentId}
+						/>
+					))}
+				</div>
 			)}
 		</article>
 	);

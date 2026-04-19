@@ -51,17 +51,17 @@ export function getSessionCardClassName(isActive: boolean): string {
 }
 
 export function getMessageClassName(message: TranscriptMessage): string {
-	const baseClassName = "flex max-w-[min(100%,920px)] flex-col gap-2.5 animate-message-enter";
+	const baseClassName = "flex w-full flex-col gap-2.5 animate-message-enter max-[860px]:max-w-full min-[861px]:max-w-[80%]";
 
 	switch (message.role) {
 		case "user":
-			return `${baseClassName} w-full self-end min-[521px]:max-w-[72%] max-[1220px]:min-[521px]:max-w-[76%] max-[860px]:min-[521px]:max-w-[82%]`;
+			return `${baseClassName} ml-auto items-end`;
 		case "assistant":
-			return `${baseClassName} self-stretch border-b border-line-soft pb-[22px]`;
+			return `${baseClassName} mr-auto border-b border-line-soft pb-[22px]`;
 		case "system":
-			return `${baseClassName} max-w-full self-stretch text-center`;
+			return `${baseClassName} mx-auto max-w-full text-center`;
 		case "error":
-			return `${baseClassName} self-stretch border-l-2 border-danger bg-danger-soft px-[18px] py-4 max-[520px]:px-[15px] max-[520px]:py-[14px]`;
+			return `${baseClassName} mr-auto border-l-2 border-danger bg-danger-soft px-[18px] py-4 max-[520px]:px-[15px] max-[520px]:py-[14px]`;
 		default:
 			return baseClassName;
 	}
@@ -85,11 +85,11 @@ export function getMessageBodyClassName(role: TranscriptMessage["role"], pending
 
 	switch (role) {
 		case "user":
-			return `whitespace-pre-wrap break-words bg-ink px-[18px] py-4 text-base leading-[1.78] text-sidebar-ink max-[520px]:px-[15px] max-[520px]:py-[14px]${pendingClassName}`;
+			return `w-fit max-w-full whitespace-pre-wrap break-words bg-ink px-[18px] py-4 text-base leading-[1.78] text-sidebar-ink max-[520px]:px-[15px] max-[520px]:py-[14px]${pendingClassName}`;
 		case "system":
 			return `whitespace-pre-wrap break-words text-[0.84rem] text-muted${pendingClassName}`;
 		case "assistant":
-			return `whitespace-pre-wrap break-words text-base leading-[1.78] text-ink${pendingClassName}`;
+			return `w-full whitespace-pre-wrap break-words text-base leading-[1.78] text-ink${pendingClassName}`;
 		case "error":
 			return `whitespace-pre-wrap break-words text-base leading-[1.78] text-ink${pendingClassName}`;
 		default:

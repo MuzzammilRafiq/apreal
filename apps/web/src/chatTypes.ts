@@ -7,12 +7,27 @@ export type TranscriptToolCall = {
 	updatedAt: number;
 };
 
+export type TranscriptThinkingSegment = {
+	id: string;
+	type: "thinking";
+	content: string;
+	createdAt: number;
+	updatedAt: number;
+};
+
+export type TranscriptToolCallSegment = TranscriptToolCall & {
+	type: "tool_call";
+};
+
+export type TranscriptMessageSegment = TranscriptThinkingSegment | TranscriptToolCallSegment;
+
 export type TranscriptMessage = {
 	id: string;
 	role: "user" | "assistant" | "system" | "error";
 	body: string;
 	thinking: string;
 	toolCalls: TranscriptToolCall[];
+	segments: TranscriptMessageSegment[];
 	pending: boolean;
 	createdAt: number;
 };
