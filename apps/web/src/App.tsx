@@ -1,42 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
+import { Composer } from "./components/Composer";
+import { Sidebar } from "./components/Sidebar";
+import { TranscriptPanel } from "./components/TranscriptPanel";
+import type { SessionCacheEntry, SessionSummary, TranscriptMessage } from "./chatTypes";
+import { formatSessionState } from "./chatView";
 
 const ACTIVE_SESSION_STORAGE_KEY = "pi-browser-active-session";
-
-type TranscriptToolCall = {
-	id: string;
-	name: string;
-	summary: string;
-	status: "running" | "completed" | "failed";
-	createdAt: number;
-	updatedAt: number;
-};
-
-type TranscriptMessage = {
-	id: string;
-	role: "user" | "assistant" | "system" | "error";
-	body: string;
-	thinking: string;
-	toolCalls: TranscriptToolCall[];
-	pending: boolean;
-	createdAt: number;
-};
-
-type SessionSummary = {
-	id: string;
-	title: string;
-	preview: string;
-	createdAt: number;
-	updatedAt: number;
-	busy: boolean;
-	model: string | null;
-	messageCount: number;
-};
-
-type SessionCacheEntry = {
-	session: SessionSummary;
-	transcript: TranscriptMessage[];
-};
 
 type ServerMessage =
 	| { type: "connected"; clientId: string; message: string; tools?: string }
@@ -81,47 +51,6 @@ function upsertSessionInList(sessions: SessionSummary[], session: SessionSummary
 	next.push(session);
 	next.sort((left, right) => right.updatedAt - left.updatedAt);
 	return next;
-}
-
-function formatRole(role: TranscriptMessage["role"]): string {
-	switch (role) {
-		case "user":
-			return "You";
-		case "assistant":
-			return "Assistant";
-		case "error":
-			return "Error";
-		default:
-			return "System";
-	}
-}
-
-function formatRelativeTime(timestamp: number): string {
-	const date = new Date(timestamp);
-	const now = new Date();
-	const sameDay = date.toDateString() === now.toDateString();
-	return sameDay
-		? date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-		: date.toLocaleDateString([], { month: "short", day: "numeric" });
-}
-
-function formatToolStatus(status: TranscriptToolCall["status"]): string {
-	switch (status) {
-		case "running":
-			return "Running";
-		case "failed":
-			return "Failed";
-		default:
-			return "Completed";
-	}
-}
-
-function formatSessionState(session: SessionSummary | null, pendingDraft: boolean): string {
-	if (!session) {
-		return pendingDraft ? "Starting" : "Draft";
-	}
-
-	return session.busy ? "Running" : "Saved";
 }
 
 function resolveWebSocketUrl(): string {
@@ -191,6 +120,24 @@ export function App() {
 		window.requestAnimationFrame(() => {
 			promptInputRef.current?.focus();
 		});
+	}
+
+	function submitPrompt(trimmedPrompt: string) {
+		const socket = socketRef.current;
+		if (!trimmedPrompt || !socket || socket.readyState !== WebSocket.OPEN || isBusy) {
+			return;
+		}
+
+		setPendingDraft(!activeSessionId);
+		socket.send(
+			JSON.stringify({
+				type: "prompt",
+				prompt: trimmedPrompt,
+				sessionId: activeSessionId,
+			}),
+		);
+		setPrompt("");
+		focusPrompt();
 	}
 
 	function requestSessionSnapshot(sessionId: string | null) {
@@ -373,28 +320,13 @@ export function App() {
 
 	function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
-		const trimmedPrompt = prompt.trim();
-		const socket = socketRef.current;
-		if (!trimmedPrompt || !socket || socket.readyState !== WebSocket.OPEN || isBusy) {
-			return;
-		}
-
-		setPendingDraft(!activeSessionId);
-		socket.send(
-			JSON.stringify({
-				type: "prompt",
-				prompt: trimmedPrompt,
-				sessionId: activeSessionId,
-			}),
-		);
-		setPrompt("");
-		focusPrompt();
+		submitPrompt(prompt.trim());
 	}
 
 	function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
 		if (event.key === "Enter" && !event.shiftKey) {
 			event.preventDefault();
-			handleSubmit(event as unknown as FormEvent<HTMLFormElement>);
+			submitPrompt(prompt.trim());
 		}
 	}
 
@@ -420,167 +352,36 @@ export function App() {
 				body: "Fetching the latest transcript from the local server.",
 			}
 			: null;
+	const sessionState = formatSessionState(activeSession, pendingDraft);
 
 	return (
-		<main className="shell">
-			<aside className="sidebar">
-				<div className="sidebar-header">
-					<button
-						type="button"
-						id="new-chat-button"
-						className={!activeSessionId && !pendingDraft ? "button-selected" : undefined}
-						onClick={() => activateSession(null, { load: false })}
-					>
-						Start new chat
-					</button>
+		<main className="grid min-h-svh grid-cols-1 font-ui text-ink min-[721px]:grid-cols-[270px_minmax(0,1fr)] min-[1221px]:grid-cols-[320px_minmax(0,1fr)]">
+			<Sidebar
+				connected={connected}
+				pendingDraft={pendingDraft}
+				sessions={sessions}
+				activeSessionId={activeSessionId}
+				sessionState={sessionState}
+				onStartNewChat={() => activateSession(null, { load: false })}
+				onActivateSession={activateSession}
+			/>
+
+			<section className="flex min-h-svh min-w-0 flex-col">
+				<div className="flex min-h-0 flex-1">
+					<TranscriptPanel transcriptRef={transcriptRef} activeSession={activeSession} activeTranscript={activeTranscript} emptyState={emptyState} />
 				</div>
-				<div className="sidebar-sessions">
-					<div className="sidebar-section-header">
-						<p className="sidebar-section-label">Sessions</p>
-						<p id="session-count" className="sidebar-section-count">
-							{sessions.length}
-						</p>
-					</div>
-					<div id="session-list" className="session-list" aria-label="Chat sessions">
-						{sessions.length === 0 ? (
-							<p className="session-empty">
-								No saved sessions yet. Start a new chat and your first prompt will turn into a reusable thread here.
-							</p>
-						) : (
-							sessions.map((session) => (
-								<button
-									key={session.id}
-									type="button"
-									className={`session-card ${session.id === activeSessionId ? "session-card-active" : ""}`.trim()}
-									aria-pressed={session.id === activeSessionId}
-									onClick={() => activateSession(session.id)}
-								>
-									<div className="session-card-top">
-										<p className="session-card-title">{session.title}</p>
-										<span className="session-card-time">
-											{session.busy ? "Running" : formatRelativeTime(session.updatedAt)}
-										</span>
-									</div>
-									<p className="session-card-preview">{session.preview}</p>
-									<p className="session-card-meta">{session.model || "Model starts on first response"}</p>
-								</button>
-							))
-						)}
-					</div>
-				</div>
-				<div className="sidebar-footer">
-					<p className="sidebar-footer-label">Status</p>
-					<p id="sidebar-status" className="sidebar-footer-value">
-						{connected ? "Connected" : "Disconnected - reconnecting..."}
-					</p>
-				</div>
-			</aside>
-
-			<section className="panel-chat">
-				<div className="workspace">
-					<div className="conversation-stage">
-						<div ref={transcriptRef} id="transcript" className="transcript" aria-live="polite">
-							{emptyState ? (
-								<div className="empty-transcript">
-									<p className="empty-transcript-title">{emptyState.title}</p>
-									<p className="empty-transcript-body">{emptyState.body}</p>
-								</div>
-							) : (
-								activeTranscript.map((item) => {
-									const shouldShowPlaceholder =
-										item.pending && !item.body && !item.thinking.trim() && item.toolCalls.length === 0;
-
-									return (
-										<article
-											key={item.id}
-											className={`message message-${item.role} ${item.pending ? "message-pending" : ""}`.trim()}
-										>
-											<p className="message-role">{formatRole(item.role)}</p>
-											{(item.body || shouldShowPlaceholder) && (
-												<p className="message-body">{item.body || "Thinking..."}</p>
-											)}
-
-											{item.role === "assistant" && item.toolCalls.length > 0 && (
-												<section className="message-toolbox">
-													<p className="message-supplement-label">Tool calls</p>
-													<div className="message-tool-list">
-														{item.toolCalls.map((toolCall) => (
-															<div key={toolCall.id} className="message-tool-item">
-																<div className="message-tool-top">
-																	<p className="message-tool-name">{toolCall.name}</p>
-																	<span className={`message-tool-status message-tool-status-${toolCall.status}`}>
-																		{formatToolStatus(toolCall.status)}
-																	</span>
-																</div>
-																<p className="message-tool-summary">{toolCall.summary}</p>
-															</div>
-														))}
-													</div>
-												</section>
-											)}
-
-											{item.role === "assistant" && item.thinking.trim() && (
-												<details className="message-thinking" open={item.pending}>
-													<summary className="message-thinking-summary">
-														{item.pending ? "Thinking trace (live)" : "Thinking trace"}
-													</summary>
-													<pre className="message-thinking-body">{item.thinking}</pre>
-												</details>
-											)}
-										</article>
-									);
-								})
-							)}
-						</div>
-					</div>
-				</div>
-
-				<form id="composer" className="composer" onSubmit={handleSubmit}>
-					<div className="composer-box">
-						<label className="sr-only" htmlFor="prompt-input">
-							Message Pi
-						</label>
-						<textarea
-							ref={promptInputRef}
-							id="prompt-input"
-							name="prompt"
-							rows={3}
-							value={prompt}
-							onChange={(event) => setPrompt(event.target.value)}
-							onKeyDown={handleKeyDown}
-							disabled={!connected}
-							placeholder={
-								!connected
-									? "Reconnecting to the local Pi server..."
-									: activeSessionId
-										? "Continue this session with the next task, follow-up, or code request"
-										: "Describe what you want Pi to inspect, fix, or build"
-							}
-						/>
-						<div className="composer-actions">
-							<p className="composer-hint">Enter to send. Shift + Enter for a new line.</p>
-							<div className="composer-buttons">
-								<button
-									type="button"
-									id="abort-button"
-									className="btn-abort"
-									disabled={!connected || !activeSession || !activeSession.busy}
-									onClick={handleAbort}
-								>
-									Stop run
-								</button>
-								<button
-									type="submit"
-									id="send-button"
-									className="btn-send"
-									disabled={!canSend}
-								>
-									Send prompt
-								</button>
-							</div>
-						</div>
-					</div>
-				</form>
+				<Composer
+					connected={connected}
+					activeSession={activeSession}
+					activeSessionId={activeSessionId}
+					canSend={canSend}
+					prompt={prompt}
+					promptInputRef={promptInputRef}
+					onPromptChange={setPrompt}
+					onSubmit={handleSubmit}
+					onKeyDown={handleKeyDown}
+					onAbort={handleAbort}
+				/>
 			</section>
 		</main>
 	);
