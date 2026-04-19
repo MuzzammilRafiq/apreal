@@ -1,8 +1,10 @@
 import type { RefObject } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "../chatTypes";
 import {
-	formatRole,
 	formatToolStatus,
+	formatRole,
 	getMessageBodyClassName,
 	getMessageClassName,
 	getMessageRoleClassName,
@@ -21,9 +23,22 @@ type TranscriptPanelProps = {
 	emptyState: EmptyState | null;
 };
 
+function AssistantMarkdownMessage({ content, pending }: { content: string; pending: boolean }) {
+	return (
+		<div
+			className={[
+				getMessageBodyClassName("assistant", pending),
+				"markdown-content [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+			].join(" ")}
+		>
+			<ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+		</div>
+	);
+}
+
 function AssistantSegmentBlock({ item, segment, isLiveThinking }: { item: TranscriptMessage; segment: TranscriptMessageSegment; isLiveThinking: boolean }) {
 	if (segment.type === "text") {
-		return <p className={getMessageBodyClassName(item.role, item.pending)}>{segment.content}</p>;
+		return <AssistantMarkdownMessage content={segment.content} pending={item.pending} />;
 	}
 
 	if (segment.type === "tool_call") {
@@ -60,6 +75,7 @@ function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 		: null;
 	const shouldShowPlaceholder = item.pending && !item.body && assistantSegments.length === 0;
 	const shouldShowStandaloneBody = item.role !== "assistant" && (item.body || shouldShowPlaceholder);
+	const shouldShowAssistantBodyFallback = item.role === "assistant" && assistantSegments.length === 0 && Boolean(item.body);
 
 	return (
 		<article className={getMessageClassName(item)}>
@@ -69,6 +85,10 @@ function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 			)}
 			{item.role === "assistant" && shouldShowPlaceholder && (
 				<p className={getMessageBodyClassName(item.role, item.pending)}>Thinking...</p>
+			)}
+
+			{shouldShowAssistantBodyFallback && (
+				<AssistantMarkdownMessage content={item.body} pending={item.pending} />
 			)}
 
 			{item.role === "assistant" && assistantSegments.length > 0 && (

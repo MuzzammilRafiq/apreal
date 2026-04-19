@@ -89,7 +89,7 @@ export function getMessageBodyClassName(role: TranscriptMessage["role"], pending
 		case "system":
 			return `whitespace-pre-wrap break-words text-[0.84rem] text-muted${pendingClassName}`;
 		case "assistant":
-			return `w-full whitespace-pre-wrap break-words text-base leading-[1.78] text-ink${pendingClassName}`;
+			return `w-full break-words text-base leading-[1.78] text-ink${pendingClassName}`;
 		case "error":
 			return `whitespace-pre-wrap break-words text-base leading-[1.78] text-ink${pendingClassName}`;
 		default:
