@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import type { FormEvent, KeyboardEvent } from "react";
 import { Composer } from "./components/Composer";
 import { Sidebar } from "./components/Sidebar";
 import { TranscriptPanel } from "./components/TranscriptPanel";
@@ -318,16 +317,8 @@ export function App() {
 		};
 	}, []);
 
-	function handleSubmit(event: FormEvent<HTMLFormElement>) {
-		event.preventDefault();
+	function handleSend() {
 		submitPrompt(prompt.trim());
-	}
-
-	function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-		if (event.key === "Enter" && !event.shiftKey) {
-			event.preventDefault();
-			submitPrompt(prompt.trim());
-		}
 	}
 
 	function handleAbort() {
@@ -355,7 +346,7 @@ export function App() {
 	const sessionState = formatSessionState(activeSession, pendingDraft);
 
 	return (
-		<main className="grid min-h-svh grid-cols-1 font-ui text-ink min-[721px]:grid-cols-[270px_minmax(0,1fr)] min-[1221px]:grid-cols-[320px_minmax(0,1fr)]">
+		<main className="grid h-svh w-full overflow-hidden grid-cols-1 font-ui text-ink min-[721px]:grid-cols-[270px_minmax(0,1fr)] min-[1221px]:grid-cols-[320px_minmax(0,1fr)]">
 			<Sidebar
 				connected={connected}
 				pendingDraft={pendingDraft}
@@ -366,22 +357,21 @@ export function App() {
 				onActivateSession={activateSession}
 			/>
 
-			<section className="flex min-h-svh min-w-0 flex-col">
-				<div className="flex min-h-0 flex-1">
-					<TranscriptPanel transcriptRef={transcriptRef} activeSession={activeSession} activeTranscript={activeTranscript} emptyState={emptyState} />
+			<section className="relative flex h-svh min-w-0 flex-col overflow-hidden">
+				<TranscriptPanel transcriptRef={transcriptRef} activeSession={activeSession} activeTranscript={activeTranscript} emptyState={emptyState} />
+				<div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-4 max-[860px]:px-3">
+					<Composer
+						connected={connected}
+						activeSession={activeSession}
+						activeSessionId={activeSessionId}
+						canSend={canSend}
+						prompt={prompt}
+						promptInputRef={promptInputRef}
+						onPromptChange={setPrompt}
+						onSend={handleSend}
+						onAbort={handleAbort}
+					/>
 				</div>
-				<Composer
-					connected={connected}
-					activeSession={activeSession}
-					activeSessionId={activeSessionId}
-					canSend={canSend}
-					prompt={prompt}
-					promptInputRef={promptInputRef}
-					onPromptChange={setPrompt}
-					onSubmit={handleSubmit}
-					onKeyDown={handleKeyDown}
-					onAbort={handleAbort}
-				/>
 			</section>
 		</main>
 	);

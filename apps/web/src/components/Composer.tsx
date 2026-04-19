@@ -1,78 +1,109 @@
-import type { FormEvent, KeyboardEvent, RefObject } from "react";
+import { useLayoutEffect, type RefObject } from "react";
 import type { SessionSummary } from "../chatTypes";
 
 type ComposerProps = {
-	connected: boolean;
-	activeSession: SessionSummary | null;
-	activeSessionId: string | null;
-	canSend: boolean;
-	prompt: string;
-	promptInputRef: RefObject<HTMLTextAreaElement | null>;
-	onPromptChange: (value: string) => void;
-	onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-	onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
-	onAbort: () => void;
+  connected: boolean;
+  activeSession: SessionSummary | null;
+  activeSessionId: string | null;
+  canSend: boolean;
+  prompt: string;
+  promptInputRef: RefObject<HTMLTextAreaElement | null>;
+  onPromptChange: (value: string) => void;
+  onSend: () => void;
+  onAbort: () => void;
 };
 
 export function Composer({
-	connected,
-	activeSession,
-	activeSessionId,
-	canSend,
-	prompt,
-	promptInputRef,
-	onPromptChange,
-	onSubmit,
-	onKeyDown,
-	onAbort,
+  connected,
+  activeSession,
+  activeSessionId,
+  canSend,
+  prompt,
+  promptInputRef,
+  onPromptChange,
+  onSend,
+  onAbort,
 }: ComposerProps) {
-	return (
-		<form id="composer" className="border-t border-line bg-chat-overlay px-8 pt-5.5 pb-7.5 max-[860px]:px-5" onSubmit={onSubmit}>
-			<div className="border border-line-strong bg-surface-strong">
-				<label className="sr-only" htmlFor="prompt-input">
-					Message Pi
-				</label>
-				<textarea
-					ref={promptInputRef}
-					id="prompt-input"
-					name="prompt"
-					rows={3}
-					value={prompt}
-					onChange={(event) => onPromptChange(event.target.value)}
-					onKeyDown={onKeyDown}
-					disabled={!connected}
-					placeholder={
-						!connected
-							? "Reconnecting to the local Pi server..."
-							: activeSessionId
-								? "Continue this session with the next task, follow-up, or code request"
-								: "Describe what you want Pi to inspect, fix, or build"
-						}
-					className="min-h-27.5 w-full resize-y border-none bg-transparent px-5.5 pt-5 pb-4 text-base leading-[1.75] text-ink outline-none placeholder:text-faint focus-visible:outline-none max-[520px]:min-h-32.5"
-				/>
-				<div className="flex items-center justify-between gap-5 px-5.5 pr-4.5 pb-4.5 max-[720px]:flex-col max-[720px]:items-stretch">
-					<p className="text-[0.82rem] leading-[1.6] text-muted">Enter to send. Shift + Enter for a new line.</p>
-					<div className="flex items-center gap-2.5 max-[720px]:justify-between max-[520px]:flex-col max-[520px]:items-stretch">
-						<button
-							type="button"
-							id="abort-button"
-							className="border border-line bg-transparent px-4 py-2.75 text-[0.84rem] font-medium text-muted transition duration-150 hover:border-line-strong hover:bg-ink-soft hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-[0.34]"
-							disabled={!connected || !activeSession || !activeSession.busy}
-							onClick={onAbort}
-						>
-							Stop run
-						</button>
-						<button
-							type="submit"
-							id="send-button"
-							className="border border-transparent bg-ink px-4 py-2.75 text-[0.84rem] font-medium text-sidebar-ink transition duration-150 hover:bg-ink-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-[0.34]"
-							disabled={!canSend}
-						>
-							Send prompt
-						</button>
-					</div>
-				</div>
-			</div>
-		</form>
-	);
+  function resizePromptInput() {
+    const node = promptInputRef.current;
+    if (!node) {
+      return;
+    }
+
+    node.style.height = "auto";
+    const computedStyle = window.getComputedStyle(node);
+    const lineHeight = Number.parseFloat(computedStyle.lineHeight);
+    const paddingTop = Number.parseFloat(computedStyle.paddingTop);
+    const paddingBottom = Number.parseFloat(computedStyle.paddingBottom);
+    const resolvedLineHeight = Number.isFinite(lineHeight) ? lineHeight : 28;
+    const maxHeight = resolvedLineHeight * 7 + paddingTop + paddingBottom;
+
+    node.style.height = `${Math.min(node.scrollHeight, maxHeight)}px`;
+    node.style.overflowY = node.scrollHeight > maxHeight ? "auto" : "hidden";
+  }
+
+  useLayoutEffect(() => {
+    resizePromptInput();
+  }, [prompt]);
+
+  return (
+    <div className="pointer-events-auto mx-auto flex w-full max-w-310 items-end gap-3 rounded-[1.75rem] border border-line/70 bg-chat-overlay px-3 py-3 shadow-[0_22px_60px_rgba(23,21,18,0.14)] backdrop-blur-xl">
+      <textarea
+        ref={promptInputRef}
+        id="prompt-input"
+        name="prompt"
+        rows={1}
+        value={prompt}
+        onChange={(event) => onPromptChange(event.target.value)}
+        disabled={!connected}
+        onInput={resizePromptInput}
+        placeholder={
+          !connected
+            ? "Reconnecting to the local Pi server..."
+            : activeSessionId
+              ? "Continue this session with the next task, follow-up, or code request"
+              : "Describe what you want Pi to inspect, fix, or build"
+        }
+        className="min-h-[calc(1.75em+1.5rem)] max-h-[calc((1.75em*7)+1.5rem)] flex-1 resize-none overflow-hidden border-none bg-transparent px-3 py-3 text-[1.05rem] leading-[1.75] text-ink outline-none placeholder:text-faint focus-visible:outline-none"
+      />
+      <button
+        type="button"
+        id={activeSession?.busy ? "abort-button" : "send-button"}
+        className="flex h-13 w-13 shrink-0 items-center justify-center rounded-2xl border border-transparent bg-ink text-sidebar-ink shadow-[0_10px_24px_rgba(23,21,18,0.18)] transition duration-150 hover:bg-ink-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-[0.34]"
+        disabled={!connected || (!canSend && !activeSession?.busy)}
+        aria-label={activeSession?.busy ? "Stop run" : "Send prompt"}
+        onClick={() => {
+          if (activeSession?.busy) {
+            onAbort();
+            return;
+          }
+
+          onSend();
+        }}
+      >
+        {activeSession?.busy ? (
+          <span
+            aria-hidden="true"
+            className="h-4 w-4 rounded-sm border-2 border-current"
+          />
+        ) : (
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 20 20"
+            className="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.9"
+          >
+            <path d="M10 3.5V16.5" strokeLinecap="round" />
+            <path
+              d="M5 8.5L10 3.5L15 8.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        )}
+      </button>
+    </div>
+  );
 }

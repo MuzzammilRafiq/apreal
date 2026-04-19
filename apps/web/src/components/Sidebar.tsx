@@ -21,7 +21,7 @@ export function Sidebar({
 	onActivateSession,
 }: SidebarProps) {
 	return (
-		<aside className="flex min-h-auto flex-col border-b border-white/10 bg-sidebar-bg text-sidebar-ink min-[721px]:min-h-svh min-[721px]:border-r min-[721px]:border-b-0">
+		<aside className="flex h-full min-h-0 flex-col border-b border-white/10 bg-sidebar-bg text-sidebar-ink min-[721px]:border-r min-[721px]:border-b-0">
 			<div className="border-b border-white/10 px-6 pt-7 pb-6 max-[860px]:px-5">
 				<button
 					type="button"

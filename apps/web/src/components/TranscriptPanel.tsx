@@ -76,7 +76,7 @@ export function TranscriptPanel({ transcriptRef, activeTranscript, emptyState }:
 			<div
 				ref={transcriptRef}
 				id="transcript"
-				className="flex h-full flex-col gap-6.5 overflow-y-auto px-8 pt-8.5 pb-10.5 max-[860px]:px-5"
+				className="flex h-full flex-col gap-6.5 overflow-y-auto px-8 pt-8.5 pb-44 max-[860px]:px-5 max-[860px]:pb-48"
 				aria-live="polite"
 			>
 				{emptyState ? (
