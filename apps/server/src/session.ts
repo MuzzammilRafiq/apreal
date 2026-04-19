@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
+import { agentToolsConfig, createConfiguredBuiltInTools, getConfiguredToolsLabel } from "./agent-tools.ts";
 import { createLogger, summarizePrompt } from "./logger.ts";
 
 const OPENROUTER_PROVIDER = "openrouter";
@@ -16,7 +17,7 @@ const OPENROUTER_MINIMAX_MODEL_ID = "minimax/minimax-m2.5";
 const OPENROUTER_ENV_VAR = "OPENROUTER_API_KEY";
 const PI_AGENT_AUTH_PATH = join(homedir(), ".pi", "agent", "auth.json");
 
-export const BUILT_IN_TOOLS_LABEL = "read, bash, edit, write";
+export const BUILT_IN_TOOLS_LABEL = getConfiguredToolsLabel();
 
 export type ToolExecutionStatus = "running" | "completed" | "failed";
 
@@ -346,6 +347,8 @@ async function createOpenRouterSession(cwd: string) {
 		model: runtime.model,
 		settingsManager,
 		sessionManager: SessionManager.inMemory(),
+		tools: createConfiguredBuiltInTools(cwd),
+		customTools: agentToolsConfig.customTools,
 	});
 
 	return { ...result, model: runtime.model };
