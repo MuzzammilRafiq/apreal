@@ -35,6 +35,26 @@ Run both together:
 bun run dev
 ```
 
+`bun run dev` uses Turbo's TUI so the server and web tasks show up as separate selectable streams in the terminal.
+
+If you want plain prefixed terminal output instead of the TUI, use:
+
+```bash
+bun run dev:plain
+```
+
+If you want separate log files on disk, use:
+
+
+```bash
+bun run dev:logs
+```
+
+That runner writes to:
+
+- `dev/logs/server.log`
+- `dev/logs/web.log`
+
 The server listens on `http://localhost:3000` by default and exposes:
 
 - `GET /health`
