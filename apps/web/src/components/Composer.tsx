@@ -47,7 +47,7 @@ export function Composer({
   }, [prompt]);
 
   return (
-    <div className="pointer-events-auto mx-auto flex w-full max-w-310 items-end gap-3 rounded-[1.75rem] border border-line/70 bg-chat-overlay px-3 py-3 shadow-[0_22px_60px_rgba(23,21,18,0.14)] backdrop-blur-xl">
+    <div className="pointer-events-auto mx-auto flex w-full max-w-310 items-end gap-3  border border-line/70 bg-chat-overlay px-3 py-3 shadow-[0_22px_60px_rgba(23,21,18,0.14)] backdrop-blur-xl">
       <textarea
         ref={promptInputRef}
         id="prompt-input"
@@ -69,7 +69,7 @@ export function Composer({
       <button
         type="button"
         id={activeSession?.busy ? "abort-button" : "send-button"}
-        className="flex h-13 w-13 shrink-0 items-center justify-center rounded-2xl border border-transparent bg-ink text-sidebar-ink shadow-[0_10px_24px_rgba(23,21,18,0.18)] transition duration-150 hover:bg-ink-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-[0.34]"
+        className="flex h-13 w-13 shrink-0 items-center justify-center  border border-transparent bg-ink text-sidebar-ink shadow-[0_10px_24px_rgba(23,21,18,0.18)] transition duration-150 hover:bg-ink-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-[0.34]"
         disabled={!connected || (!canSend && !activeSession?.busy)}
         aria-label={activeSession?.busy ? "Stop run" : "Send prompt"}
         onClick={() => {
