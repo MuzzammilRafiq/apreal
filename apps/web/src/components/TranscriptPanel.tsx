@@ -1,5 +1,6 @@
-import type { RefObject } from "react";
+import { Children, isValidElement, type ReactNode, type RefObject } from "react";
 import ReactMarkdown from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import type { SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "../chatTypes";
 import {
@@ -22,6 +23,18 @@ type TranscriptPanelProps = {
 	emptyState: EmptyState | null;
 };
 
+function getCodeBlockLanguage(children: ReactNode) {
+	const child = Children.toArray(children)[0];
+	if (!isValidElement<{ className?: string }>(child)) {
+		return null;
+	}
+
+	const className = child.props.className ?? "";
+	const languageMatch = className.match(/language-([\w-]+)/);
+
+	return languageMatch?.[1] ?? null;
+}
+
 function AssistantMarkdownMessage({ content, pending }: { content: string; pending: boolean }) {
 	return (
 		<div
@@ -30,7 +43,23 @@ function AssistantMarkdownMessage({ content, pending }: { content: string; pendi
 				"markdown-content [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
 			].join(" ")}
 		>
-			<ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+			<ReactMarkdown
+				remarkPlugins={[remarkGfm]}
+				rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
+				components={{
+					pre({ children, ...props }) {
+						const language = getCodeBlockLanguage(children);
+
+						return (
+							<div className="code-block" data-language={language ?? "code"}>
+								<pre {...props}>{children}</pre>
+							</div>
+						);
+					},
+				}}
+			>
+				{content}
+			</ReactMarkdown>
 		</div>
 	);
 }

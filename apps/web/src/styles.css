@@ -42,6 +42,18 @@
 	--color-thinking-label: #5f5a53;
 	--color-thinking-body: #514d47;
 	--color-chat-overlay: rgba(248, 244, 238, 0.94);
+	--color-code-surface: #fffdf9;
+	--color-code-surface-strong: #ffffff;
+	--color-code-line: rgba(23, 21, 18, 0.08);
+	--color-code-label: #8d8478;
+	--color-code-text: #171512;
+	--color-code-comment: #8c8376;
+	--color-code-keyword: #b85d31;
+	--color-code-string: #8d6f13;
+	--color-code-number: #9f4e3d;
+	--color-code-title: #255f78;
+	--color-code-attribute: #77559c;
+	--color-code-meta: #4f7f74;
 
 	--animate-message-enter: message-enter 220ms ease;
 
@@ -88,10 +100,17 @@
 	.markdown-content p + ul,
 	.markdown-content p + ol,
 	.markdown-content p + pre,
+	.markdown-content p + .code-block,
 	.markdown-content p + blockquote,
 	.markdown-content ul + p,
 	.markdown-content ol + p,
 	.markdown-content pre + p,
+	.markdown-content .code-block + p,
+	.markdown-content h1 + .code-block,
+	.markdown-content h2 + .code-block,
+	.markdown-content h3 + .code-block,
+	.markdown-content .code-block + ul,
+	.markdown-content .code-block + ol,
 	.markdown-content table + p,
 	.markdown-content h1 + p,
 	.markdown-content h2 + p,
@@ -140,11 +159,9 @@
 	}
 
 	.markdown-content pre {
-		margin-top: 0.95rem;
 		overflow-x: auto;
-		background: var(--color-ink);
-		padding: 0.95rem 1rem;
-		color: var(--color-sidebar-ink);
+		padding: 1rem 1.05rem 1.05rem;
+		color: var(--color-code-text);
 	}
 
 	.markdown-content pre code {
@@ -152,6 +169,95 @@
 		font-family: var(--font-mono);
 		font-size: 0.88rem;
 		line-height: 1.7;
+	}
+
+	.markdown-content .code-block {
+		position: relative;
+		margin-top: 0.95rem;
+		overflow: hidden;
+		border: 1px solid var(--color-code-line);
+		background: linear-gradient(180deg, var(--color-code-surface-strong), var(--color-code-surface));
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.9),
+			0 8px 24px rgba(23, 21, 18, 0.06);
+	}
+
+	.markdown-content > .code-block:first-child {
+		margin-top: 0;
+	}
+
+	.markdown-content .code-block::before {
+		content: attr(data-language);
+		display: block;
+		border-bottom: 1px solid var(--color-code-line);
+		padding: 0.62rem 1rem 0.58rem;
+		font-family: var(--font-mono);
+		font-size: 0.69rem;
+		font-weight: 500;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--color-code-label);
+	}
+
+	.markdown-content .code-block pre {
+		margin-top: 0;
+		background: transparent;
+	}
+
+	.markdown-content .code-block .hljs {
+		display: block;
+		background: transparent;
+		color: var(--color-code-text);
+	}
+
+	.markdown-content .code-block .hljs-comment,
+	.markdown-content .code-block .hljs-quote {
+		color: var(--color-code-comment);
+		font-style: italic;
+	}
+
+	.markdown-content .code-block .hljs-keyword,
+	.markdown-content .code-block .hljs-selector-tag,
+	.markdown-content .code-block .hljs-literal,
+	.markdown-content .code-block .hljs-section,
+	.markdown-content .code-block .hljs-link {
+		color: var(--color-code-keyword);
+	}
+
+	.markdown-content .code-block .hljs-string,
+	.markdown-content .code-block .hljs-regexp,
+	.markdown-content .code-block .hljs-selector-attr,
+	.markdown-content .code-block .hljs-selector-pseudo {
+		color: var(--color-code-string);
+	}
+
+	.markdown-content .code-block .hljs-number,
+	.markdown-content .code-block .hljs-symbol,
+	.markdown-content .code-block .hljs-bullet,
+	.markdown-content .code-block .hljs-variable,
+	.markdown-content .code-block .hljs-template-variable {
+		color: var(--color-code-number);
+	}
+
+	.markdown-content .code-block .hljs-title,
+	.markdown-content .code-block .hljs-title.class_,
+	.markdown-content .code-block .hljs-title.function_,
+	.markdown-content .code-block .hljs-property,
+	.markdown-content .code-block .hljs-selector-id {
+		color: var(--color-code-title);
+	}
+
+	.markdown-content .code-block .hljs-attr,
+	.markdown-content .code-block .hljs-attribute,
+	.markdown-content .code-block .hljs-type,
+	.markdown-content .code-block .hljs-built_in {
+		color: var(--color-code-attribute);
+	}
+
+	.markdown-content .code-block .hljs-meta,
+	.markdown-content .code-block .hljs-meta .hljs-keyword,
+	.markdown-content .code-block .hljs-doctag {
+		color: var(--color-code-meta);
 	}
 
 	.markdown-content :not(pre) > code {
