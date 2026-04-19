@@ -21,33 +21,11 @@ type TranscriptPanelProps = {
 	emptyState: EmptyState | null;
 };
 
-function resolveAssistantSegments(item: TranscriptMessage): TranscriptMessageSegment[] {
-	if (item.segments.length > 0) {
-		return item.segments;
-	}
-
-	const fallbackSegments: TranscriptMessageSegment[] = [];
-	if (item.thinking.trim()) {
-		fallbackSegments.push({
-			id: `${item.id}-thinking`,
-			type: "thinking",
-			content: item.thinking,
-			createdAt: item.createdAt,
-			updatedAt: item.createdAt,
-		});
-	}
-
-	for (const toolCall of item.toolCalls) {
-		fallbackSegments.push({
-			...toolCall,
-			type: "tool_call",
-		});
-	}
-
-	return fallbackSegments;
-}
-
 function AssistantSegmentBlock({ item, segment, isLiveThinking }: { item: TranscriptMessage; segment: TranscriptMessageSegment; isLiveThinking: boolean }) {
+	if (segment.type === "text") {
+		return <p className={getMessageBodyClassName(item.role, item.pending)}>{segment.content}</p>;
+	}
+
 	if (segment.type === "tool_call") {
 		return (
 			<section className="mt-0.5 flex w-full flex-col gap-3 border border-line-soft bg-tool-surface px-4.5 py-4">
@@ -56,9 +34,6 @@ function AssistantSegmentBlock({ item, segment, isLiveThinking }: { item: Transc
 					<p className="font-mono text-[0.84rem] text-ink">{segment.name}</p>
 					<span className={getToolStatusClassName(segment.status)}>{formatToolStatus(segment.status)}</span>
 				</div>
-				<p className="font-mono whitespace-pre-wrap wrap-break-word text-[0.78rem] leading-[1.65] text-muted">
-					{segment.summary}
-				</p>
 			</section>
 		);
 	}
@@ -79,17 +54,21 @@ function AssistantSegmentBlock({ item, segment, isLiveThinking }: { item: Transc
 }
 
 function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
-	const assistantSegments = item.role === "assistant" ? resolveAssistantSegments(item) : [];
+	const assistantSegments = item.role === "assistant" ? item.segments : [];
 	const liveThinkingSegmentId = item.pending
 		? [...assistantSegments].reverse().find((segment) => segment.type === "thinking")?.id ?? null
 		: null;
 	const shouldShowPlaceholder = item.pending && !item.body && assistantSegments.length === 0;
+	const shouldShowStandaloneBody = item.role !== "assistant" && (item.body || shouldShowPlaceholder);
 
 	return (
 		<article className={getMessageClassName(item)}>
 			<p className={getMessageRoleClassName(item.role)}>{formatRole(item.role)}</p>
-			{(item.body || shouldShowPlaceholder) && (
+			{shouldShowStandaloneBody && (
 				<p className={getMessageBodyClassName(item.role, item.pending)}>{item.body || "Thinking..."}</p>
+			)}
+			{item.role === "assistant" && shouldShowPlaceholder && (
+				<p className={getMessageBodyClassName(item.role, item.pending)}>Thinking...</p>
 			)}
 
 			{item.role === "assistant" && assistantSegments.length > 0 && (

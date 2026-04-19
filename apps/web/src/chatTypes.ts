@@ -11,15 +11,26 @@ export type TranscriptThinkingSegment = {
 	id: string;
 	type: "thinking";
 	content: string;
+	contentIndex?: number;
+	createdAt: number;
+	updatedAt: number;
+};
+
+export type TranscriptTextSegment = {
+	id: string;
+	type: "text";
+	content: string;
+	contentIndex?: number;
 	createdAt: number;
 	updatedAt: number;
 };
 
 export type TranscriptToolCallSegment = TranscriptToolCall & {
 	type: "tool_call";
+	contentIndex?: number;
 };
 
-export type TranscriptMessageSegment = TranscriptThinkingSegment | TranscriptToolCallSegment;
+export type TranscriptMessageSegment = TranscriptTextSegment | TranscriptThinkingSegment | TranscriptToolCallSegment;
 
 export type TranscriptMessage = {
 	id: string;

@@ -12,8 +12,8 @@ type ServerMessage =
 	| { type: "sessions_updated"; sessions: SessionSummary[] }
 	| { type: "session_created"; session: SessionSummary; transcript: TranscriptMessage[] }
 	| { type: "session_snapshot"; session: SessionSummary; transcript: TranscriptMessage[] }
-	| { type: "assistant_delta"; sessionId: string; messageId: string; delta: string }
-	| { type: "assistant_thinking_delta"; sessionId: string; messageId: string; delta: string }
+	| { type: "assistant_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
+	| { type: "assistant_thinking_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
 	| { type: "error"; message: string; sessionId?: string }
 	| { type: "pong" };
 
@@ -50,6 +50,25 @@ function upsertSessionInList(sessions: SessionSummary[], session: SessionSummary
 	const next = sessions.filter((entry) => entry.id !== session.id);
 	next.push(session);
 	next.sort((left, right) => right.updatedAt - left.updatedAt);
+	return next;
+}
+
+function getSegmentSortValue(segment: TranscriptMessage["segments"][number]): number {
+	return segment.contentIndex ?? Number.MAX_SAFE_INTEGER;
+}
+
+function insertSegmentInOrder(
+	segments: TranscriptMessage["segments"],
+	segment: TranscriptMessage["segments"][number],
+): TranscriptMessage["segments"] {
+	const next = [...segments];
+	const insertIndex = next.findIndex((entry) => getSegmentSortValue(entry) > getSegmentSortValue(segment));
+	if (insertIndex === -1) {
+		next.push(segment);
+		return next;
+	}
+
+	next.splice(insertIndex, 0, segment);
 	return next;
 }
 
@@ -173,7 +192,13 @@ export function App() {
 		setSessions((previous) => upsertSessionInList(previous, session));
 	}
 
-	function applyAssistantDelta(sessionId: string, messageId: string, delta: string, field: "body" | "thinking") {
+	function applyAssistantDelta(
+		sessionId: string,
+		messageId: string,
+		delta: string,
+		field: "body" | "thinking",
+		contentIndex: number,
+	) {
 		setSessionCache((previous) => {
 			const cached = previous.get(sessionId);
 			if (!cached) {
@@ -186,21 +211,29 @@ export function App() {
 				}
 
 				if (field === "thinking") {
-					const segments = [...entry.segments];
-					const lastSegment = segments[segments.length - 1];
-					if (lastSegment?.type === "thinking") {
-						segments[segments.length - 1] = {
-							...lastSegment,
-							content: `${lastSegment.content}${delta}`,
-							updatedAt: Date.now(),
-						};
+					const existingSegmentIndex = entry.segments.findIndex(
+						(segment) => segment.type === "thinking" && segment.contentIndex === contentIndex,
+					);
+					const now = Date.now();
+					let segments = entry.segments;
+					if (existingSegmentIndex >= 0) {
+						segments = [...entry.segments];
+						const existingSegment = segments[existingSegmentIndex];
+						if (existingSegment?.type === "thinking") {
+							segments[existingSegmentIndex] = {
+								...existingSegment,
+								content: `${existingSegment.content}${delta}`,
+								updatedAt: now,
+							};
+						}
 					} else {
-						segments.push({
+						segments = insertSegmentInOrder(entry.segments, {
 							id: crypto.randomUUID(),
 							type: "thinking",
 							content: delta,
-							createdAt: Date.now(),
-							updatedAt: Date.now(),
+							contentIndex,
+							createdAt: now,
+							updatedAt: now,
 						});
 					}
 
@@ -212,10 +245,37 @@ export function App() {
 					};
 				}
 
+				const existingSegmentIndex = entry.segments.findIndex(
+					(segment) => segment.type === "text" && segment.contentIndex === contentIndex,
+				);
+				const now = Date.now();
+				let segments = entry.segments;
+				if (existingSegmentIndex >= 0) {
+					segments = [...entry.segments];
+					const existingSegment = segments[existingSegmentIndex];
+					if (existingSegment?.type === "text") {
+						segments[existingSegmentIndex] = {
+							...existingSegment,
+							content: `${existingSegment.content}${delta}`,
+							updatedAt: now,
+						};
+					}
+				} else {
+					segments = insertSegmentInOrder(entry.segments, {
+						id: crypto.randomUUID(),
+						type: "text",
+						content: delta,
+						contentIndex,
+						createdAt: now,
+						updatedAt: now,
+					});
+				}
+
 				return {
 					...entry,
 					pending: true,
 					[field]: `${entry[field] ?? ""}${delta}`,
+					segments,
 				};
 			});
 
@@ -299,11 +359,17 @@ export function App() {
 						break;
 					}
 					case "assistant_delta": {
-						applyAssistantDelta(message.sessionId, message.messageId, message.delta, "body");
+						applyAssistantDelta(message.sessionId, message.messageId, message.delta, "body", message.contentIndex);
 						break;
 					}
 					case "assistant_thinking_delta": {
-						applyAssistantDelta(message.sessionId, message.messageId, message.delta, "thinking");
+						applyAssistantDelta(
+							message.sessionId,
+							message.messageId,
+							message.delta,
+							"thinking",
+							message.contentIndex,
+						);
 						break;
 					}
 					case "error": {

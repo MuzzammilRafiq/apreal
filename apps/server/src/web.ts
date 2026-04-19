@@ -49,15 +49,26 @@ type TranscriptThinkingSegment = {
 	id: string;
 	type: "thinking";
 	content: string;
+	contentIndex?: number;
+	createdAt: number;
+	updatedAt: number;
+};
+
+type TranscriptTextSegment = {
+	id: string;
+	type: "text";
+	content: string;
+	contentIndex?: number;
 	createdAt: number;
 	updatedAt: number;
 };
 
 type TranscriptToolCallSegment = TranscriptToolCall & {
 	type: "tool_call";
+	contentIndex?: number;
 };
 
-type TranscriptMessageSegment = TranscriptThinkingSegment | TranscriptToolCallSegment;
+type TranscriptMessageSegment = TranscriptTextSegment | TranscriptThinkingSegment | TranscriptToolCallSegment;
 
 type SharedSessionState = {
 	id: string;
@@ -72,6 +83,7 @@ type SharedSessionState = {
 	unsubscribe: (() => void) | null;
 	transcript: TranscriptMessage[];
 	pendingAssistantMessageId: string | null;
+	toolCallMessageIds: Map<string, string>;
 };
 
 type SessionSummary = {
@@ -344,6 +356,7 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 			unsubscribe: null,
 			transcript: [],
 			pendingAssistantMessageId: null,
+			toolCallMessageIds: new Map(),
 		};
 	}
 
@@ -351,19 +364,78 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 		return getPendingAssistantMessage(session) ?? createPendingAssistantMessage(session);
 	}
 
-	function appendAssistantThinking(session: SharedSessionState, delta: string): TranscriptMessage {
+	function findTranscriptMessage(session: SharedSessionState, messageId: string): TranscriptMessage | null {
+		return session.transcript.find((entry) => entry.id === messageId) ?? null;
+	}
+
+	function getSegmentSortValue(segment: TranscriptMessageSegment): number {
+		return segment.contentIndex ?? Number.MAX_SAFE_INTEGER;
+	}
+
+	function insertAssistantSegment(message: TranscriptMessage, segment: TranscriptMessageSegment) {
+		const insertIndex = message.segments.findIndex(
+			(existing) => getSegmentSortValue(existing) > getSegmentSortValue(segment),
+		);
+		if (insertIndex === -1) {
+			message.segments.push(segment);
+			return;
+		}
+
+		message.segments.splice(insertIndex, 0, segment);
+	}
+
+	function appendAssistantText(
+		session: SharedSessionState,
+		delta: string,
+		contentIndex?: number,
+	): TranscriptMessage {
+		const message = ensurePendingAssistantMessage(session);
+		const now = Date.now();
+		message.body += delta;
+		const existingSegment = message.segments.find(
+			(entry): entry is TranscriptTextSegment =>
+				entry.type === "text" &&
+				(contentIndex !== undefined ? entry.contentIndex === contentIndex : entry === message.segments[message.segments.length - 1]),
+		);
+		if (existingSegment) {
+			existingSegment.content += delta;
+			existingSegment.updatedAt = now;
+		} else {
+			insertAssistantSegment(message, {
+				id: crypto.randomUUID(),
+				type: "text",
+				content: delta,
+				contentIndex,
+				createdAt: now,
+				updatedAt: now,
+			});
+		}
+		touchSession(session);
+		return message;
+	}
+
+	function appendAssistantThinking(
+		session: SharedSessionState,
+		delta: string,
+		contentIndex?: number,
+	): TranscriptMessage {
 		const message = ensurePendingAssistantMessage(session);
 		const now = Date.now();
 		message.thinking += delta;
-		const lastSegment = message.segments[message.segments.length - 1];
-		if (lastSegment?.type === "thinking") {
-			lastSegment.content += delta;
-			lastSegment.updatedAt = now;
+		const existingSegment = message.segments.find(
+			(entry): entry is TranscriptThinkingSegment =>
+				entry.type === "thinking" &&
+				(contentIndex !== undefined ? entry.contentIndex === contentIndex : entry === message.segments[message.segments.length - 1]),
+		);
+		if (existingSegment) {
+			existingSegment.content += delta;
+			existingSegment.updatedAt = now;
 		} else {
-			message.segments.push({
+			insertAssistantSegment(message, {
 				id: crypto.randomUUID(),
 				type: "thinking",
 				content: delta,
+				contentIndex,
 				createdAt: now,
 				updatedAt: now,
 			});
@@ -374,7 +446,7 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 
 	function upsertAssistantToolCall(
 		session: SharedSessionState,
-		toolCall: Omit<TranscriptToolCall, "createdAt" | "updatedAt">,
+		toolCall: Omit<TranscriptToolCall, "createdAt" | "updatedAt"> & { contentIndex?: number },
 	): TranscriptMessage {
 		const message = ensurePendingAssistantMessage(session);
 		const now = Date.now();
@@ -399,16 +471,19 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 			existingSegment.name = toolCall.name;
 			existingSegment.summary = toolCall.summary;
 			existingSegment.status = toolCall.status;
+			existingSegment.contentIndex = toolCall.contentIndex ?? existingSegment.contentIndex;
 			existingSegment.updatedAt = now;
 		} else {
-			message.segments.push({
+			insertAssistantSegment(message, {
 				...toolCall,
 				type: "tool_call",
+				contentIndex: toolCall.contentIndex,
 				createdAt: now,
 				updatedAt: now,
 			});
 		}
 
+		session.toolCallMessageIds.set(toolCall.id, message.id);
 		touchSession(session);
 		return message;
 	}
@@ -418,7 +493,8 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 		toolCallId: string,
 		status: TranscriptToolCall["status"],
 	) {
-		const message = getPendingAssistantMessage(session);
+		const ownerMessageId = session.toolCallMessageIds.get(toolCallId);
+		const message = ownerMessageId ? findTranscriptMessage(session, ownerMessageId) : getPendingAssistantMessage(session);
 		if (!message) {
 			return;
 		}
@@ -441,25 +517,22 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 	}
 
 	function failRunningAssistantToolCalls(session: SharedSessionState) {
-		const message = getPendingAssistantMessage(session);
-		if (!message) {
-			return;
-		}
-
 		let changed = false;
-		for (const toolCall of message.toolCalls) {
-			if (toolCall.status === "running") {
-				toolCall.status = "failed";
-				toolCall.updatedAt = Date.now();
-				changed = true;
+		for (const message of session.transcript) {
+			for (const toolCall of message.toolCalls) {
+				if (toolCall.status === "running") {
+					toolCall.status = "failed";
+					toolCall.updatedAt = Date.now();
+					changed = true;
+				}
 			}
-		}
 
-		for (const segment of message.segments) {
-			if (segment.type === "tool_call" && segment.status === "running") {
-				segment.status = "failed";
-				segment.updatedAt = Date.now();
-				changed = true;
+			for (const segment of message.segments) {
+				if (segment.type === "tool_call" && segment.status === "running") {
+					segment.status = "failed";
+					segment.updatedAt = Date.now();
+					changed = true;
+				}
 			}
 		}
 
@@ -479,56 +552,88 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 				? `Error: ${snapshot.errorMessage}`
 				: snapshot.body;
 		message.thinking = snapshot.thinking;
-		if (snapshot.thinking.trim() && !message.segments.some((segment) => segment.type === "thinking")) {
-			message.segments.push({
-				id: crypto.randomUUID(),
-				type: "thinking",
-				content: snapshot.thinking,
-				createdAt: now,
+		const existingToolCalls = new Map(message.toolCalls.map((toolCall) => [toolCall.id, toolCall]));
+		message.toolCalls = snapshot.toolCalls.map((toolCall) => {
+			const existingToolCall = existingToolCalls.get(toolCall.id);
+			return {
+				id: toolCall.id,
+				name: toolCall.name,
+				summary: toolCall.summary,
+				status: toolCall.status,
+				createdAt: existingToolCall?.createdAt ?? now,
 				updatedAt: now,
+			};
+		});
+
+		if (snapshot.segments.length > 0) {
+			const existingTextSegments = new Map(
+				message.segments
+					.filter((segment): segment is TranscriptTextSegment => segment.type === "text")
+					.map((segment) => [segment.contentIndex ?? -1, segment]),
+			);
+			const existingThinkingSegments = new Map(
+				message.segments
+					.filter((segment): segment is TranscriptThinkingSegment => segment.type === "thinking")
+					.map((segment) => [segment.contentIndex ?? -1, segment]),
+			);
+			const existingToolSegments = new Map(
+				message.segments
+					.filter((segment): segment is TranscriptToolCallSegment => segment.type === "tool_call")
+					.map((segment) => [segment.id, segment]),
+			);
+
+			message.segments = snapshot.segments.map((segment) => {
+				switch (segment.type) {
+					case "text": {
+						const existingSegment = existingTextSegments.get(segment.contentIndex);
+						return {
+							id: existingSegment?.id ?? crypto.randomUUID(),
+							type: "text",
+							content: segment.content,
+							contentIndex: segment.contentIndex,
+							createdAt: existingSegment?.createdAt ?? now,
+							updatedAt: now,
+						};
+					}
+					case "thinking": {
+						const existingSegment = existingThinkingSegments.get(segment.contentIndex);
+						return {
+							id: existingSegment?.id ?? crypto.randomUUID(),
+							type: "thinking",
+							content: segment.content,
+							contentIndex: segment.contentIndex,
+							createdAt: existingSegment?.createdAt ?? now,
+							updatedAt: now,
+						};
+					}
+					case "tool_call": {
+						const existingSegment = existingToolSegments.get(segment.id);
+						return {
+							id: segment.id,
+							name: segment.name,
+							summary: segment.summary,
+							status: segment.status,
+							type: "tool_call",
+							contentIndex: segment.contentIndex,
+							createdAt: existingSegment?.createdAt ?? now,
+							updatedAt: now,
+						};
+					}
+				}
 			});
 		}
 
-		if (snapshot.toolCalls.length > 0) {
-			const existingToolCalls = new Map(message.toolCalls.map((toolCall) => [toolCall.id, toolCall]));
-			for (const toolCall of snapshot.toolCalls) {
-				const existingToolCall = existingToolCalls.get(toolCall.id);
-				if (existingToolCall) {
-					existingToolCall.name = toolCall.name;
-					existingToolCall.summary = toolCall.summary;
-					existingToolCall.status = toolCall.status;
-					existingToolCall.updatedAt = now;
-				} else {
-					message.toolCalls.push({
-						id: toolCall.id,
-						name: toolCall.name,
-						summary: toolCall.summary,
-						status: toolCall.status,
-						createdAt: now,
-						updatedAt: now,
-					});
-				}
-
-				const existingSegment = message.segments.find(
-					(entry): entry is TranscriptToolCallSegment => entry.type === "tool_call" && entry.id === toolCall.id,
-				);
-				if (existingSegment) {
-					existingSegment.name = toolCall.name;
-					existingSegment.summary = toolCall.summary;
-					existingSegment.status = toolCall.status;
-					existingSegment.updatedAt = now;
-				} else {
-					message.segments.push({
-						id: toolCall.id,
-						name: toolCall.name,
-						summary: toolCall.summary,
-						status: toolCall.status,
-						type: "tool_call",
-						createdAt: now,
-						updatedAt: now,
-					});
-				}
+		for (const toolCall of message.toolCalls) {
+			if (message.segments.some((segment) => segment.type === "tool_call" && segment.id === toolCall.id)) {
+				continue;
 			}
+
+			insertAssistantSegment(message, {
+				...toolCall,
+				type: "tool_call",
+				createdAt: toolCall.createdAt,
+				updatedAt: toolCall.updatedAt,
+			});
 		}
 
 		touchSession(session);
@@ -537,40 +642,54 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 
 	function handleControllerEvent(session: SharedSessionState, event: AgentStreamEvent) {
 		switch (event.type) {
+			case "assistant_message_start": {
+				if (!getPendingAssistantMessage(session)) {
+					createPendingAssistantMessage(session);
+					broadcastSessionSnapshot(session);
+				}
+				break;
+			}
 			case "message_end": {
 				applyAssistantMessageSnapshot(session, event);
+				finalizeAssistantMessage(session);
 				broadcastSessionSnapshot(session);
 				break;
 			}
 			case "text_delta": {
-				const message = ensurePendingAssistantMessage(session);
-				message.body += event.delta;
-				touchSession(session);
+				const message = appendAssistantText(session, event.delta, event.contentIndex);
 				broadcast({
 					type: "assistant_delta",
 					sessionId: session.id,
 					messageId: message.id,
 					delta: event.delta,
+					contentIndex: event.contentIndex,
 				});
 				break;
 			}
 			case "thinking_delta": {
-				const message = appendAssistantThinking(session, event.delta);
+				const message = appendAssistantThinking(session, event.delta, event.contentIndex);
 				broadcast({
 					type: "assistant_thinking_delta",
 					sessionId: session.id,
 					messageId: message.id,
 					delta: event.delta,
+					contentIndex: event.contentIndex,
 				});
 				break;
 			}
-			case "tool_execution_start": {
+			case "tool_call": {
 				upsertAssistantToolCall(session, {
 					id: event.tool.id,
 					name: event.tool.name,
 					summary: event.tool.summary,
 					status: event.tool.status,
+					contentIndex: event.contentIndex,
 				});
+				broadcastSessionSnapshot(session);
+				break;
+			}
+			case "tool_execution_start": {
+				updateAssistantToolCallStatus(session, event.tool.id, event.tool.status);
 				broadcastSessionSnapshot(session);
 				break;
 			}
@@ -596,6 +715,7 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 						body: `Error: ${event.message}`,
 						thinking: "",
 						toolCalls: [],
+						segments: [],
 						pending: false,
 					});
 				}
@@ -680,6 +800,7 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 			body: trimmedPrompt,
 			thinking: "",
 			toolCalls: [],
+			segments: [],
 			pending: false,
 		});
 		createPendingAssistantMessage(session);
@@ -720,6 +841,7 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 				body: `Error: ${getErrorMessage(error)}`,
 				thinking: "",
 				toolCalls: [],
+				segments: [],
 				pending: false,
 			});
 			broadcastSessionSnapshot(session);
@@ -762,6 +884,7 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 				body: "Response aborted.",
 				thinking: "",
 				toolCalls: [],
+				segments: [],
 				pending: false,
 			});
 			broadcastSessionSnapshot(session);

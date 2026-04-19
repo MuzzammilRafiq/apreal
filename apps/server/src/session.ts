@@ -28,14 +28,36 @@ export type ToolExecutionSummary = {
 	status: ToolExecutionStatus;
 };
 
+export type AgentTextSegment = {
+	type: "text";
+	content: string;
+	contentIndex: number;
+};
+
+export type AgentThinkingSegment = {
+	type: "thinking";
+	content: string;
+	contentIndex: number;
+};
+
+export type AgentToolCallSegment = ToolExecutionSummary & {
+	type: "tool_call";
+	contentIndex: number;
+};
+
+export type AgentMessageSegment = AgentTextSegment | AgentThinkingSegment | AgentToolCallSegment;
+
 export type AgentStreamEvent =
-	| { type: "text_delta"; delta: string }
-	| { type: "thinking_delta"; delta: string }
+	| { type: "assistant_message_start" }
+	| { type: "text_delta"; delta: string; contentIndex: number }
+	| { type: "thinking_delta"; delta: string; contentIndex: number }
+	| { type: "tool_call"; tool: ToolExecutionSummary; contentIndex: number }
 	| {
 			type: "message_end";
 			body: string;
 			thinking: string;
 			toolCalls: ToolExecutionSummary[];
+			segments: AgentMessageSegment[];
 			stopReason: AssistantMessage["stopReason"];
 			errorMessage?: string;
 	  }
@@ -179,23 +201,40 @@ function extractAssistantMessageSnapshot(message: AssistantMessage): Extract<Age
 	let body = "";
 	let thinking = "";
 	const toolCalls: ToolExecutionSummary[] = [];
+	const segments: AgentMessageSegment[] = [];
 
-	for (const content of message.content) {
+	for (const [contentIndex, content] of message.content.entries()) {
 		switch (content.type) {
 			case "text": {
 				body += content.text;
+				segments.push({
+					type: "text",
+					content: content.text,
+					contentIndex,
+				});
 				break;
 			}
 			case "thinking": {
 				thinking += content.thinking;
+				segments.push({
+					type: "thinking",
+					content: content.thinking,
+					contentIndex,
+				});
 				break;
 			}
 			case "toolCall": {
-				toolCalls.push({
+				const toolCall = {
 					id: content.id,
 					name: content.name,
 					summary: formatToolExecutionSummary(content.name, content.arguments),
-					status: message.stopReason === "toolUse" ? "running" : "completed",
+					status: (message.stopReason === "toolUse" ? "running" : "completed") as ToolExecutionStatus,
+				} satisfies ToolExecutionSummary;
+				toolCalls.push(toolCall);
+				segments.push({
+					...toolCall,
+					type: "tool_call",
+					contentIndex,
 				});
 				break;
 			}
@@ -207,6 +246,7 @@ function extractAssistantMessageSnapshot(message: AssistantMessage): Extract<Age
 		body,
 		thinking,
 		toolCalls,
+		segments,
 		stopReason: message.stopReason,
 		errorMessage: message.errorMessage,
 	};
@@ -380,6 +420,14 @@ export async function createAgentController(
 
 	const unsubscribeSession = session.subscribe((event) => {
 		switch (event.type) {
+			case "message_start": {
+				if (event.message.role !== "assistant") {
+					break;
+				}
+
+				emit({ type: "assistant_message_start" });
+				break;
+			}
 			case "message_end": {
 				if (event.message.role !== "assistant") {
 					break;
@@ -403,6 +451,7 @@ export async function createAgentController(
 						emit({
 							type: "text_delta",
 							delta: event.assistantMessageEvent.delta,
+							contentIndex: event.assistantMessageEvent.contentIndex,
 						});
 						break;
 					}
@@ -410,6 +459,24 @@ export async function createAgentController(
 						emit({
 							type: "thinking_delta",
 							delta: event.assistantMessageEvent.delta,
+							contentIndex: event.assistantMessageEvent.contentIndex,
+						});
+						break;
+					}
+					case "toolcall_end": {
+						const tool = {
+							id: event.assistantMessageEvent.toolCall.id,
+							name: event.assistantMessageEvent.toolCall.name,
+							summary: formatToolExecutionSummary(
+								event.assistantMessageEvent.toolCall.name,
+								event.assistantMessageEvent.toolCall.arguments,
+							),
+							status: "running" as const,
+						} satisfies ToolExecutionSummary;
+						emit({
+							type: "tool_call",
+							tool,
+							contentIndex: event.assistantMessageEvent.contentIndex,
 						});
 						break;
 					}
