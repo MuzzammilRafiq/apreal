@@ -7,6 +7,13 @@ import { formatSessionState } from "./chatView";
 
 const ACTIVE_SESSION_STORAGE_KEY = "pi-browser-active-session";
 
+function generateId(): string {
+	if (typeof crypto !== "undefined" && crypto.randomUUID) {
+		return crypto.randomUUID();
+	}
+	return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
 type ServerMessage =
 	| { type: "connected"; clientId: string; message: string; tools?: string }
 	| { type: "sessions_updated"; sessions: SessionSummary[] }
@@ -228,7 +235,7 @@ export function App() {
 						}
 					} else {
 						segments = insertSegmentInOrder(entry.segments, {
-							id: crypto.randomUUID(),
+							id: generateId(),
 							type: "thinking",
 							content: delta,
 							contentIndex,
@@ -262,7 +269,7 @@ export function App() {
 					}
 				} else {
 					segments = insertSegmentInOrder(entry.segments, {
-						id: crypto.randomUUID(),
+						id: generateId(),
 						type: "text",
 						content: delta,
 						contentIndex,
