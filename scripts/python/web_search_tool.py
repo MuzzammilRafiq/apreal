@@ -30,6 +30,13 @@ class WebChunk:
 
 
 @dataclass(slots=True)
+class MergedWebPage:
+    title: str
+    url: str
+    text: str
+
+
+@dataclass(slots=True)
 class SearchFailure:
     stage: str
     url: str
@@ -50,6 +57,62 @@ class WebSearchResponse:
             "chunks": [asdict(chunk) for chunk in self.chunks],
             "failures": [asdict(failure) for failure in self.failures],
         }
+
+
+def _merge_text_segments(segments: list[str]) -> str:
+    merged_text = ""
+
+    for segment in segments:
+        normalized = segment.strip()
+        if not normalized:
+            continue
+
+        if not merged_text:
+            merged_text = normalized
+            continue
+
+        overlap = 0
+        max_overlap = min(len(merged_text), len(normalized))
+        for size in range(max_overlap, 0, -1):
+            if merged_text.endswith(normalized[:size]):
+                overlap = size
+                break
+
+        if overlap:
+            merged_text = f"{merged_text}{normalized[overlap:]}"
+        else:
+            merged_text = f"{merged_text}\n\n{normalized}"
+
+    return merged_text
+
+
+def _merge_chunks_by_url(chunks: list[WebChunk]) -> list[MergedWebPage]:
+    merged_pages: list[MergedWebPage] = []
+    positions_by_url: dict[str, int] = {}
+
+    for chunk in chunks:
+        normalized_text = chunk.text.strip()
+        if not normalized_text:
+            continue
+
+        position = positions_by_url.get(chunk.url)
+        if position is None:
+            positions_by_url[chunk.url] = len(merged_pages)
+            merged_pages.append(
+                MergedWebPage(
+                    title=chunk.title,
+                    url=chunk.url,
+                    text=normalized_text,
+                )
+            )
+            continue
+
+        merged_page = merged_pages[position]
+        merged_page.text = _merge_text_segments([merged_page.text, normalized_text])
+        if not merged_page.title and chunk.title:
+            merged_page.title = chunk.title
+
+    return merged_pages
 
 
 def _normalize_whitespace(text: str) -> str:
@@ -262,3 +325,24 @@ def search_web(
             timeout_seconds=timeout_seconds,
         )
     )
+
+
+def search_web_merged(
+    query: str,
+    *,
+    max_results: int = 5,
+    max_chunks_per_page: int = 3,
+    chunk_size: int = 1400,
+    chunk_overlap: int = 200,
+    timeout_seconds: float = 10.0,
+) -> list[dict[str, str]]:
+    result = search_web(
+        query,
+        max_results=max_results,
+        max_chunks_per_page=max_chunks_per_page,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        timeout_seconds=timeout_seconds,
+    )
+    merged_pages = _merge_chunks_by_url(result.chunks)
+    return [asdict(page) for page in merged_pages]
