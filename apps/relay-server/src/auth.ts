@@ -150,9 +150,18 @@ function extractRequestToken(request: IncomingMessage): string {
 // algorithm through crafted token headers.
 export function authenticateRequest(request: IncomingMessage): AuthTokenPayload {
 	const token = extractRequestToken(request);
-	const decoded = jwt.verify(token, getJwtSecret(), {
-		algorithms: ["HS256"],
-	});
+	let decoded: string | JwtPayload;
+	try {
+		decoded = jwt.verify(token, getJwtSecret(), {
+			algorithms: ["HS256"],
+		});
+	} catch (error) {
+		if (error instanceof AuthError) {
+			throw error;
+		}
+
+		throw new AuthError(error instanceof Error ? error.message : "invalid token");
+	}
 
 	return validateTokenPayload(decoded);
 }
