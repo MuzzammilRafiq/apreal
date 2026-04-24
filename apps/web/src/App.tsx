@@ -253,15 +253,6 @@ export function App() {
 	const isBusy = pendingDraft || Boolean(activeSession?.busy);
 	const canSend = connected && !isBusy && prompt.trim().length > 0;
 
-	useEffect(() => {
-		const node = transcriptRef.current;
-		if (!node) {
-			return;
-		}
-
-		node.scrollTop = node.scrollHeight;
-	}, [activeTranscript, activeSessionId]);
-
 	function focusPrompt() {
 		window.requestAnimationFrame(() => {
 			promptInputRef.current?.focus();
