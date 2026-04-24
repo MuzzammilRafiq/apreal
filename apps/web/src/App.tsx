@@ -1,18 +1,29 @@
+import {
+	RELAY_CLIENT_ID_STORAGE_KEY,
+	RELAY_SESSION_ACTION,
+	normalizeRelayPrincipalId,
+	type RelayClientBootstrapResponse,
+} from "@apreal/shared";
 import { useEffect, useRef, useState } from "react";
 import { Composer } from "./components/Composer";
 import { Sidebar } from "./components/Sidebar";
 import { TranscriptPanel } from "./components/TranscriptPanel";
 import type { SessionCacheEntry, SessionSummary, TranscriptMessage } from "./chatTypes";
 import { formatSessionState } from "./chatView";
+import { createRelayProtocols, getWebTransportConfig } from "./transport-config";
 
 const ACTIVE_SESSION_STORAGE_KEY = "pi-browser-active-session";
+const transportConfig = getWebTransportConfig();
 
-function generateId(): string {
-	if (typeof crypto !== "undefined" && crypto.randomUUID) {
-		return crypto.randomUUID();
-	}
-	return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-}
+type RelayBootstrapSession = RelayClientBootstrapResponse;
+
+type ClientMessage =
+	| { type: "hello" }
+	| { type: "disconnect" }
+	| { type: "prompt"; prompt: string; sessionId?: string | null }
+	| { type: "abort"; sessionId: string }
+	| { type: "load_session"; sessionId: string }
+	| { type: "ping" };
 
 type ServerMessage =
 	| { type: "connected"; clientId: string; message: string; tools?: string }
@@ -23,6 +34,138 @@ type ServerMessage =
 	| { type: "assistant_thinking_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
 	| { type: "error"; message: string; sessionId?: string }
 	| { type: "pong" };
+
+function generateId(): string {
+	if (typeof crypto !== "undefined" && crypto.randomUUID) {
+		return crypto.randomUUID();
+	}
+	return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function createWirePayload(message: ClientMessage, relayAgentId?: string | null): string {
+	if (transportConfig.mode === "local") {
+		return JSON.stringify(message);
+	}
+
+	if (!relayAgentId) {
+		throw new Error("relay bootstrap has not completed yet");
+	}
+
+	return JSON.stringify({
+		type: "command",
+		to: "agent",
+		targetId: relayAgentId,
+		action: RELAY_SESSION_ACTION,
+		payload: message,
+	});
+}
+
+function sendClientMessage(socket: WebSocket, message: ClientMessage, relayAgentId?: string | null) {
+	socket.send(createWirePayload(message, relayAgentId));
+}
+
+function parseIncomingServerMessage(rawData: unknown): ServerMessage | null {
+	if (typeof rawData !== "string") {
+		return null;
+	}
+
+	let value: unknown;
+	try {
+		value = JSON.parse(rawData);
+	} catch {
+		return null;
+	}
+
+	if (!isObjectRecord(value) || typeof value.type !== "string") {
+		return null;
+	}
+
+	if (transportConfig.mode === "local") {
+		return value as ServerMessage;
+	}
+
+	if (value.type === "error" && typeof value.message === "string") {
+		return { type: "error", message: value.message };
+	}
+
+	if (value.action !== RELAY_SESSION_ACTION || !isObjectRecord(value.payload)) {
+		return null;
+	}
+
+	return value.payload as ServerMessage;
+}
+
+function readStoredClientId(): string | null {
+	try {
+		return normalizeRelayPrincipalId(window.localStorage.getItem(RELAY_CLIENT_ID_STORAGE_KEY));
+	} catch {
+		return null;
+	}
+}
+
+function storeClientId(clientId: string) {
+	try {
+		window.localStorage.setItem(RELAY_CLIENT_ID_STORAGE_KEY, clientId);
+	} catch {
+		// Ignore browser storage failures.
+	}
+}
+
+function getOrCreateStoredClientId(): string {
+	const existingClientId = readStoredClientId();
+	if (existingClientId) {
+		return existingClientId;
+	}
+
+	const clientId = generateId();
+	storeClientId(clientId);
+	return clientId;
+}
+
+function isRelayBootstrapResponse(value: unknown): value is RelayBootstrapSession {
+	if (!isObjectRecord(value)) {
+		return false;
+	}
+
+	return (
+		typeof value.token === "string" &&
+		value.token.trim().length > 0 &&
+		typeof value.websocketUrl === "string" &&
+		value.websocketUrl.trim().length > 0 &&
+		typeof value.expiresAt === "number" &&
+		normalizeRelayPrincipalId(value.clientId) !== null &&
+		normalizeRelayPrincipalId(value.agentId) !== null
+	);
+}
+
+async function fetchRelayBootstrap(bootstrapUrl: string, clientId: string): Promise<RelayBootstrapSession> {
+	const response = await fetch(bootstrapUrl, {
+		method: "POST",
+		headers: {
+			"content-type": "application/json",
+		},
+		body: JSON.stringify({ clientId }),
+	});
+
+	if (!response.ok) {
+		throw new Error(`relay bootstrap failed with status ${response.status}`);
+	}
+
+	const data: unknown = await response.json();
+	if (!isRelayBootstrapResponse(data)) {
+		throw new Error("relay bootstrap returned an invalid payload");
+	}
+
+	return {
+		...data,
+		clientId: normalizeRelayPrincipalId(data.clientId)!,
+		agentId: normalizeRelayPrincipalId(data.agentId)!,
+	};
+}
 
 function readStoredSessionId(): string | null {
 	try {
@@ -79,31 +222,6 @@ function insertSegmentInOrder(
 	return next;
 }
 
-function resolveWebSocketUrl(): string {
-	const configuredUrl = import.meta.env.VITE_PI_SERVER_URL?.trim();
-	if (!configuredUrl) {
-		if (import.meta.env.DEV) {
-			return "ws://localhost:3000/ws";
-		}
-
-		const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-		return `${protocol}//${window.location.host}/ws`;
-	}
-
-	const url = new URL(configuredUrl, window.location.href);
-	if (url.protocol === "http:") {
-		url.protocol = "ws:";
-	}
-	if (url.protocol === "https:") {
-		url.protocol = "wss:";
-	}
-	if (!url.pathname || url.pathname === "/") {
-		url.pathname = "/ws";
-	}
-
-	return url.toString();
-}
-
 export function App() {
 	const [connected, setConnected] = useState(false);
 	const [pendingDraft, setPendingDraft] = useState(false);
@@ -115,6 +233,8 @@ export function App() {
 
 	const socketRef = useRef<WebSocket | null>(null);
 	const reconnectTimerRef = useRef<number | null>(null);
+	const relayBootstrapRef = useRef<RelayBootstrapSession | null>(null);
+	const clientIdRef = useRef<string | null>(transportConfig.mode === "relay" ? getOrCreateStoredClientId() : null);
 	const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
 	const transcriptRef = useRef<HTMLDivElement | null>(null);
 	const sessionCacheRef = useRef(sessionCache);
@@ -148,6 +268,14 @@ export function App() {
 		});
 	}
 
+	function getRelayAgentId(): string | null {
+		return transportConfig.mode === "relay" ? relayBootstrapRef.current?.agentId ?? null : null;
+	}
+
+	function sendMessage(socket: WebSocket, message: ClientMessage) {
+		sendClientMessage(socket, message, getRelayAgentId());
+	}
+
 	function submitPrompt(trimmedPrompt: string) {
 		const socket = socketRef.current;
 		if (!trimmedPrompt || !socket || socket.readyState !== WebSocket.OPEN || isBusy) {
@@ -155,13 +283,11 @@ export function App() {
 		}
 
 		setPendingDraft(!activeSessionId);
-		socket.send(
-			JSON.stringify({
-				type: "prompt",
-				prompt: trimmedPrompt,
-				sessionId: activeSessionId,
-			}),
-		);
+		sendMessage(socket, {
+			type: "prompt",
+			prompt: trimmedPrompt,
+			sessionId: activeSessionId,
+		});
 		setPrompt("");
 		focusPrompt();
 	}
@@ -172,7 +298,7 @@ export function App() {
 			return;
 		}
 
-		socket.send(JSON.stringify({ type: "load_session", sessionId }));
+		sendMessage(socket, { type: "load_session", sessionId });
 	}
 
 	function activateSession(sessionId: string | null, options: { load?: boolean } = {}) {
@@ -298,13 +424,51 @@ export function App() {
 	useEffect(() => {
 		let disposed = false;
 
-		const connect = () => {
+		const scheduleReconnect = () => {
+			if (!disposed) {
+				reconnectTimerRef.current = window.setTimeout(() => {
+					void connect();
+				}, 1500);
+			}
+		};
+
+		const notifyDisconnect = () => {
+			const socket = socketRef.current;
+			if (!socket || socket.readyState !== WebSocket.OPEN) {
+				return;
+			}
+
+			sendMessage(socket, { type: "disconnect" });
+		};
+
+		const connect = async () => {
 			if (reconnectTimerRef.current !== null) {
 				window.clearTimeout(reconnectTimerRef.current);
 				reconnectTimerRef.current = null;
 			}
 
-			const socket = new WebSocket(resolveWebSocketUrl());
+			let socket: WebSocket;
+			try {
+				if (transportConfig.mode === "relay") {
+					const clientId = clientIdRef.current ?? getOrCreateStoredClientId();
+					const bootstrap = await fetchRelayBootstrap(transportConfig.bootstrapUrl, clientId);
+					if (disposed) {
+						return;
+					}
+
+					clientIdRef.current = bootstrap.clientId;
+					storeClientId(bootstrap.clientId);
+					relayBootstrapRef.current = bootstrap;
+					socket = new WebSocket(bootstrap.websocketUrl, createRelayProtocols(bootstrap.token));
+				} else {
+					socket = new WebSocket(transportConfig.websocketUrl);
+				}
+			} catch (error) {
+				console.error(error);
+				scheduleReconnect();
+				return;
+			}
+
 			socketRef.current = socket;
 
 			socket.addEventListener("open", () => {
@@ -314,13 +478,23 @@ export function App() {
 				}
 
 				setConnected(true);
+				sendMessage(socket, { type: "hello" });
 			});
 
 			socket.addEventListener("message", (event) => {
-				const message = JSON.parse(event.data) as ServerMessage;
+				const message = parseIncomingServerMessage(event.data);
+				if (!message) {
+					console.warn("Ignoring invalid websocket payload");
+					return;
+				}
 
 				switch (message.type) {
 					case "connected": {
+						const normalizedClientId = normalizeRelayPrincipalId(message.clientId);
+						if (normalizedClientId) {
+							clientIdRef.current = normalizedClientId;
+							storeClientId(normalizedClientId);
+						}
 						setTools(message.tools || "read, bash, edit, write");
 						break;
 					}
@@ -393,12 +567,11 @@ export function App() {
 				if (socketRef.current === socket) {
 					socketRef.current = null;
 				}
+				relayBootstrapRef.current = null;
 				setConnected(false);
 				setPendingDraft(false);
 
-				if (!disposed) {
-					reconnectTimerRef.current = window.setTimeout(connect, 1500);
-				}
+				scheduleReconnect();
 			});
 
 			socket.addEventListener("error", () => {
@@ -406,13 +579,16 @@ export function App() {
 			});
 		};
 
-		connect();
+		window.addEventListener("beforeunload", notifyDisconnect);
+		void connect();
 
 		return () => {
 			disposed = true;
+			window.removeEventListener("beforeunload", notifyDisconnect);
 			if (reconnectTimerRef.current !== null) {
 				window.clearTimeout(reconnectTimerRef.current);
 			}
+			notifyDisconnect();
 			socketRef.current?.close();
 			socketRef.current = null;
 		};
@@ -428,7 +604,7 @@ export function App() {
 			return;
 		}
 
-		socket.send(JSON.stringify({ type: "abort", sessionId: activeSession.id }));
+		sendMessage(socket, { type: "abort", sessionId: activeSession.id });
 	}
 
 	const emptyState = !activeSession
@@ -441,7 +617,7 @@ export function App() {
 		: activeTranscript.length === 0
 			? {
 				title: "Loading session...",
-				body: "Fetching the latest transcript from the local server.",
+				body: `Fetching the latest transcript from the ${transportConfig.label}.`,
 			}
 			: null;
 	const sessionState = formatSessionState(activeSession, pendingDraft);
@@ -463,6 +639,7 @@ export function App() {
 				<div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-4 max-[860px]:px-3">
 					<Composer
 						connected={connected}
+						connectionLabel={transportConfig.label}
 						activeSession={activeSession}
 						activeSessionId={activeSessionId}
 						canSend={canSend}

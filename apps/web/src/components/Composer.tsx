@@ -3,6 +3,7 @@ import type { SessionSummary } from "../chatTypes";
 
 type ComposerProps = {
   connected: boolean;
+  connectionLabel: string;
   activeSession: SessionSummary | null;
   activeSessionId: string | null;
   canSend: boolean;
@@ -15,6 +16,7 @@ type ComposerProps = {
 
 export function Composer({
   connected,
+  connectionLabel,
   activeSession,
   activeSessionId,
   canSend,
@@ -59,7 +61,7 @@ export function Composer({
         onInput={resizePromptInput}
         placeholder={
           !connected
-            ? "Reconnecting to the local Pi server..."
+            ? `Reconnecting to the ${connectionLabel}...`
             : activeSessionId
               ? "Continue this session with the next task, follow-up, or code request"
               : "Describe what you want Pi to inspect, fix, or build"
