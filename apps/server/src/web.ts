@@ -1,6 +1,20 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+	RELAY_BOOTSTRAP_PATH,
+	RELAY_SESSION_ACTION,
+	normalizeRelayPrincipalId,
+	type RelayClientBootstrapRequest,
+	type RelayClientBootstrapResponse,
+} from "@apreal/shared";
 import { getConfiguredToolsLabel } from "./agent-tools.ts";
+import { generateToken, RELAY_JWT_TTL_MS } from "../../relay-server/src/auth.ts";
+import { createRelayAgentClient } from "./relay-client.ts";
+import {
+	parseClientAppMessage,
+	type ClientAppMessage,
+	type ServerAppMessage,
+} from "./protocol.ts";
 import {
 	createAgentController,
 	formatModelLabel,
@@ -9,6 +23,11 @@ import {
 	type AgentController,
 	type AgentStreamEvent,
 } from "./session.ts";
+import {
+	assertRelayServerTransportConfig,
+	getServerTransportConfig,
+	type ServerTransportMode,
+} from "./transport-config.ts";
 import { createLogger, summarizePrompt } from "./logger.ts";
 
 const DEFAULT_PORT = 3000;
@@ -19,10 +38,16 @@ type WebSocketData = {
 	clientId: string;
 };
 
+type ClientTransport = "local" | "relay";
+
+type ServerMessage = ServerAppMessage<SessionSummary, TranscriptMessage>;
+
 type ClientConnection = {
 	clientId: string;
 	closed: boolean;
-	socket: Bun.ServerWebSocket<WebSocketData>;
+	ready: boolean;
+	transport: ClientTransport;
+	send(payload: ServerMessage): boolean | void;
 };
 
 type TranscriptMessage = {
@@ -97,12 +122,6 @@ type SessionSummary = {
 	messageCount: number;
 };
 
-type ClientMessage =
-	| { type: "prompt"; prompt: string; sessionId?: string | null }
-	| { type: "abort"; sessionId: string }
-	| { type: "load_session"; sessionId: string }
-	| { type: "ping" };
-
 function parsePort(rawPort: string | undefined): number {
 	const candidate = Number.parseInt(rawPort ?? `${DEFAULT_PORT}`, 10);
 	if (Number.isNaN(candidate) || candidate <= 0) {
@@ -112,54 +131,80 @@ function parsePort(rawPort: string | undefined): number {
 	return candidate;
 }
 
+function mergeResponseHeaders(headers?: ResponseInit["headers"]): Record<string, string> {
+	const mergedHeaders: Record<string, string> = {
+		"cache-control": "no-store",
+	};
+
+	if (!headers) {
+		return mergedHeaders;
+	}
+
+	if (headers instanceof Headers) {
+		headers.forEach((value, key) => {
+			mergedHeaders[key] = value;
+		});
+		return mergedHeaders;
+	}
+
+	if (Array.isArray(headers)) {
+		for (const [key, value] of headers) {
+			mergedHeaders[key] = value;
+		}
+		return mergedHeaders;
+	}
+
+	for (const [key, value] of Object.entries(headers)) {
+		if (typeof value === "string") {
+			mergedHeaders[key] = value;
+			continue;
+		}
+
+		if (Array.isArray(value)) {
+			mergedHeaders[key] = value.join(", ");
+		}
+	}
+
+	return mergedHeaders;
+}
+
 function json(data: unknown, init?: ResponseInit): Response {
 	return Response.json(data, {
-		headers: {
-			"cache-control": "no-store",
-		},
 		...init,
+		headers: mergeResponseHeaders(init?.headers),
 	});
 }
 
-function send(ws: Bun.ServerWebSocket<WebSocketData>, payload: Record<string, unknown>) {
-	ws.send(JSON.stringify(payload));
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function sendError(
-	ws: Bun.ServerWebSocket<WebSocketData>,
-	message: string,
-	sessionId?: string,
-) {
-	send(ws, { type: "error", message, sessionId });
+function createCorsHeaders(): Record<string, string> {
+	return {
+		"access-control-allow-origin": "*",
+		"access-control-allow-methods": "POST, OPTIONS",
+		"access-control-allow-headers": "content-type",
+	};
 }
 
-function parseClientMessage(rawMessage: string | Buffer): ClientMessage | null {
+async function parseRelayBootstrapRequest(request: Request): Promise<RelayClientBootstrapRequest | null> {
+	let value: unknown;
 	try {
-		const value = JSON.parse(rawMessage.toString()) as Record<string, unknown>;
-		if (value.type === "prompt" && typeof value.prompt === "string") {
-			return {
-				type: "prompt",
-				prompt: value.prompt,
-				sessionId: typeof value.sessionId === "string" ? value.sessionId : null,
-			};
-		}
-
-		if (value.type === "abort" && typeof value.sessionId === "string") {
-			return { type: "abort", sessionId: value.sessionId };
-		}
-
-		if (value.type === "load_session" && typeof value.sessionId === "string") {
-			return { type: "load_session", sessionId: value.sessionId };
-		}
-
-		if (value.type === "ping") {
-			return { type: "ping" };
-		}
+		value = await request.json();
 	} catch {
 		return null;
 	}
 
-	return null;
+	if (!isObjectRecord(value)) {
+		return null;
+	}
+
+	const clientId = normalizeRelayPrincipalId(value.clientId);
+	if (!clientId) {
+		return null;
+	}
+
+	return { clientId };
 }
 
 function createSessionTitle(prompt: string): string {
@@ -195,9 +240,160 @@ function cloneTranscript(transcript: TranscriptMessage[]): TranscriptMessage[] {
 export function runWebServer(options?: { cwd?: string; port?: number }) {
 	const cwd = options?.cwd ?? process.env.PI_WORKSPACE_ROOT ?? DEFAULT_WORKSPACE_ROOT;
 	const port = options?.port ?? parsePort(process.env.PORT);
+	const transportConfig = getServerTransportConfig();
+	assertRelayServerTransportConfig(transportConfig);
 	const clients = new Map<string, ClientConnection>();
 	const sessions = new Map<string, SharedSessionState>();
 	const logger = createLogger("web-server");
+	let relayAgentClient: ReturnType<typeof createRelayAgentClient> | null = null;
+
+	async function handleRelayBootstrapRequest(request: Request): Promise<Response> {
+		if (request.method === "OPTIONS") {
+			return new Response(null, {
+				status: 204,
+				headers: createCorsHeaders(),
+			});
+		}
+
+		if (request.method !== "POST") {
+			return new Response("Method Not Allowed", {
+				status: 405,
+				headers: createCorsHeaders(),
+			});
+		}
+
+		if (transportConfig.mode !== "relay") {
+			return json(
+				{ message: "Relay bootstrap is available only when PI_CONNECTION_MODE=relay." },
+				{ status: 404, headers: createCorsHeaders() },
+			);
+		}
+
+		const bootstrapRequest = await parseRelayBootstrapRequest(request);
+		if (!bootstrapRequest) {
+			return json(
+				{ message: "Invalid relay bootstrap request." },
+				{ status: 400, headers: createCorsHeaders() },
+			);
+		}
+
+		const relayAgentId = normalizeRelayPrincipalId(transportConfig.relayAgentId);
+		if (!relayAgentId || !transportConfig.relayUrl) {
+			return json(
+				{ message: "Relay transport is not configured." },
+				{ status: 500, headers: createCorsHeaders() },
+			);
+		}
+
+		try {
+			const response = {
+				clientId: bootstrapRequest.clientId,
+				agentId: relayAgentId,
+				token: generateToken({ type: "client", id: bootstrapRequest.clientId }),
+				expiresAt: Date.now() + RELAY_JWT_TTL_MS,
+				websocketUrl: transportConfig.relayUrl,
+			} satisfies RelayClientBootstrapResponse;
+
+			return json(response, {
+				status: 200,
+				headers: createCorsHeaders(),
+			});
+		} catch (error) {
+			logger.error("failed to issue relay bootstrap token", {
+				clientId: bootstrapRequest.clientId,
+				error: getErrorMessage(error),
+			});
+			return json(
+				{ message: getErrorMessage(error) },
+				{ status: 500, headers: createCorsHeaders() },
+			);
+		}
+	}
+
+	function sendClientPayload(
+		clientId: string,
+		payload: ServerMessage,
+		options?: { requireReady?: boolean },
+	): boolean {
+		const client = clients.get(clientId);
+		if (!client || client.closed) {
+			return false;
+		}
+
+		if ((options?.requireReady ?? true) && !client.ready) {
+			return false;
+		}
+
+		try {
+			return client.send(payload) !== false;
+		} catch (error) {
+			logger.warn("failed to send client payload", {
+				clientId,
+				transport: client.transport,
+				error: getErrorMessage(error),
+			});
+			return false;
+		}
+	}
+
+	function registerClientConnection(
+		clientId: string,
+		transport: ClientTransport,
+		sendPayload: ClientConnection["send"],
+	) {
+		const existing = clients.get(clientId);
+		if (existing) {
+			existing.closed = false;
+			existing.transport = transport;
+			existing.send = sendPayload;
+			return existing;
+		}
+
+		const connection: ClientConnection = {
+			clientId,
+			closed: false,
+			ready: false,
+			transport,
+			send: sendPayload,
+		};
+		clients.set(clientId, connection);
+		logger.info("client transport connected", {
+			clientId,
+			transport,
+			clients: clients.size,
+		});
+		return connection;
+	}
+
+	function removeClientConnection(clientId: string, reason: string) {
+		const client = clients.get(clientId);
+		if (!client) {
+			return;
+		}
+
+		client.closed = true;
+		clients.delete(clientId);
+		logger.info("client transport disconnected", {
+			clientId,
+			transport: client.transport,
+			reason,
+			clients: clients.size,
+		});
+	}
+
+	function removeRelayClients(reason: string) {
+		for (const client of Array.from(clients.values())) {
+			if (client.transport !== "relay") {
+				continue;
+			}
+
+			removeClientConnection(client.clientId, reason);
+		}
+	}
+
+	function sendError(clientId: string, message: string, sessionId?: string) {
+		sendClientPayload(clientId, { type: "error", message, sessionId }, { requireReady: false });
+	}
 
 	function buildSessionSummary(session: SharedSessionState): SessionSummary {
 		return {
@@ -218,31 +414,24 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 			.map(buildSessionSummary);
 	}
 
-	function broadcast(payload: Record<string, unknown>) {
+	function broadcast(payload: ServerMessage) {
 		for (const client of clients.values()) {
-			if (client.closed) {
+			if (client.closed || !client.ready) {
 				continue;
 			}
 
-			try {
-				send(client.socket, payload);
-			} catch (error) {
-				logger.warn("failed to broadcast websocket payload", {
-					clientId: client.clientId,
-					error: getErrorMessage(error),
-				});
-			}
+			sendClientPayload(client.clientId, payload);
 		}
 	}
 
-	function sendSessionsUpdated(target?: Bun.ServerWebSocket<WebSocketData>) {
+	function sendSessionsUpdated(targetClientId?: string) {
 		const payload = {
 			type: "sessions_updated",
 			sessions: listSessions(),
-		};
+		} satisfies ServerMessage;
 
-		if (target) {
-			send(target, payload);
+		if (targetClientId) {
+			sendClientPayload(targetClientId, payload, { requireReady: false });
 			return;
 		}
 
@@ -256,8 +445,8 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 		};
 	}
 
-	function sendSessionSnapshot(target: Bun.ServerWebSocket<WebSocketData>, session: SharedSessionState) {
-		send(target, {
+	function sendSessionSnapshot(targetClientId: string, session: SharedSessionState) {
+		sendClientPayload(targetClientId, {
 			type: "session_snapshot",
 			...buildSessionPayload(session),
 		});
@@ -761,20 +950,20 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 	}
 
 	async function handlePrompt(
-		ws: Bun.ServerWebSocket<WebSocketData>,
+		clientId: string,
 		prompt: string,
 		sessionId?: string | null,
 	) {
 		const trimmedPrompt = prompt.trim();
 		if (!trimmedPrompt) {
-			sendError(ws, "Prompt cannot be empty.");
+			sendError(clientId, "Prompt cannot be empty.");
 			return;
 		}
 
 		let session = sessionId ? sessions.get(sessionId) : null;
 		const createdSession = !session;
 		if (sessionId && !session) {
-			sendError(ws, "The selected session could not be found.", sessionId);
+			sendError(clientId, "The selected session could not be found.", sessionId);
 			return;
 		}
 
@@ -785,7 +974,7 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 
 		if (session.busy) {
 			sendError(
-				ws,
+				clientId,
 				"The selected session is still responding. Wait for it to finish or abort the current run.",
 				session.id,
 			);
@@ -806,10 +995,10 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 		createPendingAssistantMessage(session);
 
 		if (createdSession) {
-			send(ws, {
+			sendClientPayload(clientId, {
 				type: "session_created",
 				...buildSessionPayload(session),
-			});
+			}, { requireReady: false });
 		} else {
 			broadcastSessionSnapshot(session);
 		}
@@ -846,19 +1035,19 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 			});
 			broadcastSessionSnapshot(session);
 			sendSessionsUpdated();
-			sendError(ws, getErrorMessage(error), session.id);
+			sendError(clientId, getErrorMessage(error), session.id);
 		}
 	}
 
-	async function handleAbort(ws: Bun.ServerWebSocket<WebSocketData>, sessionId: string) {
+	async function handleAbort(clientId: string, sessionId: string) {
 		const session = sessions.get(sessionId);
 		if (!session) {
-			sendError(ws, "The selected session could not be found.", sessionId);
+			sendError(clientId, "The selected session could not be found.", sessionId);
 			return;
 		}
 
 		if (!session.busy) {
-			sendSessionSnapshot(ws, session);
+			sendSessionSnapshot(clientId, session);
 			return;
 		}
 
@@ -875,7 +1064,7 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 				sessionId,
 				error: getErrorMessage(error),
 			});
-			sendError(ws, getErrorMessage(error), sessionId);
+			sendError(clientId, getErrorMessage(error), sessionId);
 		} finally {
 			settleSession(session);
 			appendTranscriptMessage(session, {
@@ -892,6 +1081,121 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 		}
 	}
 
+	function sendConnected(clientId: string) {
+		sendClientPayload(
+			clientId,
+			{
+				type: "connected",
+				clientId,
+				message: "Connected. Browser chats are shared across tabs while the server is running.",
+				tools: getConfiguredToolsLabel(),
+			},
+			{ requireReady: false },
+		);
+	}
+
+	async function handleClientMessage(clientId: string, message: ClientAppMessage) {
+		const client = clients.get(clientId);
+		if (!client || client.closed) {
+			logger.warn("message received for missing client", { clientId, type: message.type });
+			return;
+		}
+
+		if (message.type === "hello") {
+			client.ready = true;
+			sendConnected(clientId);
+			sendSessionsUpdated(clientId);
+			return;
+		}
+
+		if (message.type === "disconnect") {
+			removeClientConnection(clientId, "client_requested_disconnect");
+			return;
+		}
+
+		if (!client.ready) {
+			sendError(clientId, "Client must send hello before other messages.");
+			return;
+		}
+
+		switch (message.type) {
+			case "prompt": {
+				await handlePrompt(clientId, message.prompt, message.sessionId);
+				break;
+			}
+			case "abort": {
+				await handleAbort(clientId, message.sessionId);
+				break;
+			}
+			case "load_session": {
+				const session = sessions.get(message.sessionId);
+				if (!session) {
+					sendError(clientId, "The selected session could not be found.", message.sessionId);
+					return;
+				}
+
+				sendSessionSnapshot(clientId, session);
+				break;
+			}
+			case "ping": {
+				sendClientPayload(clientId, { type: "pong" }, { requireReady: false });
+				break;
+			}
+		}
+	}
+
+	async function handleRelayPayload(clientId: string, payload: unknown) {
+		const relayClient = relayAgentClient;
+		if (!relayClient) {
+			logger.warn("dropping relay payload because relay client is unavailable", {
+				clientId,
+			});
+			return;
+		}
+
+		registerClientConnection(clientId, "relay", (message) => relayClient.sendToClient(clientId, message));
+		const message = parseClientAppMessage(payload);
+		if (!message) {
+			logger.warn("invalid relay payload", { clientId });
+			sendError(clientId, "Invalid message payload.");
+			return;
+		}
+
+		logger.debug("relay client message received", {
+			clientId,
+			type: message.type,
+			action: RELAY_SESSION_ACTION,
+		});
+
+		await handleClientMessage(clientId, message);
+	}
+
+	function transportModeLabel(mode: ServerTransportMode): string {
+		return mode === "relay" ? "relay" : "local";
+	}
+
+	if (transportConfig.mode === "relay") {
+		relayAgentClient = createRelayAgentClient({
+			relayUrl: transportConfig.relayUrl!,
+			agentId: transportConfig.relayAgentId,
+			getAgentJwt() {
+				const token = transportConfig.relayAgentTokenProvider();
+				if (!token) {
+					throw new Error("PI_RELAY_AGENT_JWT is required when PI_CONNECTION_MODE=relay");
+				}
+
+				return token;
+			},
+			logger: createLogger("relay-agent"),
+			onClientMessage(clientId, payload) {
+				void handleRelayPayload(clientId, payload);
+			},
+			onDisconnect() {
+				removeRelayClients("relay_transport_closed");
+			},
+		});
+	}
+
 	void prewarmAgentRuntime().catch((error) => {
 		logger.warn("agent runtime prewarm failed", {
 			error: getErrorMessage(error),
@@ -902,13 +1206,21 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 	try {
 		server = Bun.serve<WebSocketData>({
 			port,
-			fetch(request, serverInstance) {
+			async fetch(request, serverInstance) {
 				const url = new URL(request.url);
 				logger.debug("incoming request", {
 					method: request.method,
 					path: url.pathname,
 				});
+				if (url.pathname === RELAY_BOOTSTRAP_PATH) {
+					return handleRelayBootstrapRequest(request);
+				}
+
 				if (url.pathname === "/ws") {
+					if (transportConfig.mode !== "local") {
+						return new Response("WebSocket endpoint disabled in relay mode.", { status: 404 });
+					}
+
 					const clientId = crypto.randomUUID();
 					if (
 						serverInstance.upgrade(request, {
@@ -926,7 +1238,7 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 				if (url.pathname === "/health") {
 					return json({
 						status: "ok",
-						transport: "websocket",
+						transport: transportModeLabel(transportConfig.mode),
 						clients: clients.size,
 						sessions: sessions.size,
 						cwd,
@@ -938,31 +1250,18 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 			websocket: {
 				idleTimeout: 120,
 				open(ws) {
-					clients.set(ws.data.clientId, {
-						clientId: ws.data.clientId,
-						closed: false,
-						socket: ws,
+					registerClientConnection(ws.data.clientId, "local", (payload) => {
+						ws.send(JSON.stringify(payload));
+						return true;
 					});
-
-					logger.info("browser client connected", {
-						clientId: ws.data.clientId,
-						clients: clients.size,
-					});
-					send(ws, {
-						type: "connected",
-						clientId: ws.data.clientId,
-						message: "Connected. Browser chats are shared across tabs while the server is running.",
-						tools: getConfiguredToolsLabel(),
-					});
-					sendSessionsUpdated(ws);
 				},
 				async message(ws, rawMessage) {
-					const message = parseClientMessage(rawMessage);
+					const message = parseClientAppMessage(rawMessage);
 					if (!message) {
 						logger.warn("invalid websocket payload", {
 							clientId: ws.data.clientId,
 						});
-						sendError(ws, "Invalid message payload.");
+						sendError(ws.data.clientId, "Invalid message payload.");
 						return;
 					}
 
@@ -971,41 +1270,10 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 						type: message.type,
 					});
 
-					switch (message.type) {
-						case "prompt": {
-							await handlePrompt(ws, message.prompt, message.sessionId);
-							break;
-						}
-						case "abort": {
-							await handleAbort(ws, message.sessionId);
-							break;
-						}
-						case "load_session": {
-							const session = sessions.get(message.sessionId);
-							if (!session) {
-								sendError(ws, "The selected session could not be found.", message.sessionId);
-								return;
-							}
-
-							sendSessionSnapshot(ws, session);
-							break;
-						}
-						case "ping": {
-							send(ws, { type: "pong" });
-							break;
-						}
-					}
+					await handleClientMessage(ws.data.clientId, message);
 				},
 				close(ws) {
-					const client = clients.get(ws.data.clientId);
-					if (client) {
-						client.closed = true;
-					}
-					clients.delete(ws.data.clientId);
-					logger.info("browser client disconnected", {
-						clientId: ws.data.clientId,
-						clients: clients.size,
-					});
+					removeClientConnection(ws.data.clientId, "local_socket_closed");
 				},
 			},
 		});
@@ -1017,11 +1285,21 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 		throw error;
 	}
 
-	logger.info("web server ready", { cwd, port: server.port, logLevel: process.env.LOG_LEVEL ?? "info" });
+	logger.info("web server ready", {
+		cwd,
+		port: server.port,
+		logLevel: process.env.LOG_LEVEL ?? "info",
+		transport: transportModeLabel(transportConfig.mode),
+	});
 	console.log(`Pi web server ready in ${cwd}`);
 	console.log("Frontend UI: http://localhost:5173");
 	console.log(`Health check: http://localhost:${server.port}/health`);
-	console.log(`WebSocket endpoint: ws://localhost:${server.port}/ws`);
+	if (transportConfig.mode === "local") {
+		console.log(`WebSocket endpoint: ws://localhost:${server.port}/ws`);
+	} else {
+		console.log(`Relay endpoint: ${transportConfig.relayUrl}`);
+		console.log(`Relay agent id: ${transportConfig.relayAgentId}`);
+	}
 	console.log("Browser chat sessions are shared across tabs while the server is running.");
 
 	return server;
