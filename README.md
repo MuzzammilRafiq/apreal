@@ -59,6 +59,7 @@ The server listens on `http://localhost:3000` by default and exposes:
 
 - `GET /health`
 - `WS /ws`
+- `POST /api/relay/bootstrap` when `PI_CONNECTION_MODE=relay`
 
 The browser UI is only served by the Vite app at `http://localhost:5173` in development. The Bun server no longer serves frontend assets. Set `VITE_PI_SERVER_URL` if you want the web app to connect to a different server origin.
 
@@ -73,5 +74,11 @@ bun run typecheck
 
 - Put `OPENROUTER_API_KEY` in your shell or `.env.local`.
 - `LOG_LEVEL` supports `debug`, `info`, `warn`, and `error`.
+- `PI_CONNECTION_MODE=local|relay` switches the laptop-side server between direct browser WebSocket transport and relay-backed agent transport.
+- `VITE_PI_CONNECTION_MODE=local|relay` switches the web app between direct local WebSocket and relay transport.
+- In relay mode, the browser persists a random `clientId` in local storage and fetches a short-lived client JWT from the server before opening the relay socket.
+- `VITE_PI_BOOTSTRAP_URL` can point the browser at a deployed bootstrap origin when the JWT-issuing app server is not on the same origin as the relay WebSocket URL.
+- `JWT_SECRET` must match between `apps/server` and `apps/relay-server` when relay mode is enabled because the server mints client JWTs that the relay verifies.
+- The browser no longer requires a bundled `VITE_PI_RELAY_TOKEN` for normal relay mode.
 - Browser chats stay shared in memory across tabs while the server is running.
 - CLI mode was removed; configuration now flows through the web client only.
