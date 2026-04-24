@@ -57,6 +57,12 @@ export function Composer({
         rows={1}
         value={prompt}
         onChange={(event) => onPromptChange(event.target.value)}
+        onKeyDown={(event) => {
+          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+            event.preventDefault();
+            onSend();
+          }
+        }}
         disabled={!connected}
         onInput={resizePromptInput}
         placeholder={
