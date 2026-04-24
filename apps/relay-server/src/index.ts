@@ -1,366 +1,592 @@
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
-import { AuthError, authenticateRequest, type AuthTokenPayload, type UserType } from "./auth.ts";
+import {
+	RELAY_ALLOWED_ACTIONS,
+	RELAY_BOOTSTRAP_PATH,
+	RELAY_BROWSER_PROTOCOL,
+	isRelayAllowedAction,
+	normalizeRelayPrincipalId,
+	type RelayClientBootstrapRequest,
+	type RelayClientBootstrapResponse,
+	type RelayInboundEnvelope,
+	type RelayOutboundEnvelope,
+} from "@apreal/shared";
+import {
+	AuthError,
+	authenticateRequest,
+	generateToken,
+	RELAY_JWT_TTL_MS,
+	type AuthTokenPayload,
+	type UserType,
+} from "./auth.ts";
+import { RelayStateStore } from "./state-store.ts";
 
-// The relay defaults to a different port from the laptop-side app server to
-// avoid local development conflicts.
 const DEFAULT_PORT = 3001;
 
-// The relay is intentionally narrow: it brokers only a small, reviewable set
-// of actions and does not execute them itself. Expanding this list should be a
-// conscious security decision.
-const ALLOWED_ACTIONS = ["ping", "read_file"] as const;
+type RelayInboundMessage = RelayInboundEnvelope<Record<string, unknown>>;
+type RelayOutboundMessage = RelayOutboundEnvelope<Record<string, unknown>>;
 
-type AllowedAction = (typeof ALLOWED_ACTIONS)[number];
-
-// Messages flowing through the relay are intentionally simple.
-// `command` is client -> agent, while `response` is agent -> client.
-type RelayMessageType = "command" | "response";
-
-// This is the only inbound message shape the relay accepts from connected
-// peers. There is no registration frame because identity comes from the JWT,
-// not from user-controlled message content.
-type RelayInboundMessage = {
-  type: RelayMessageType;
-  to: UserType;
-  targetId: string;
-  action: AllowedAction;
-  payload: Record<string, unknown>;
-};
-
-// Forwarded messages are stamped with authenticated sender metadata derived by
-// the relay. This blocks impersonation because peers cannot choose `fromId`
-// values for themselves.
-type RelayOutboundMessage = RelayInboundMessage & {
-  fromId: string;
-  fromType: UserType;
-};
-
-// The `ws` library allows attaching custom properties at runtime. We store the
-// verified token payload on the socket so later handlers can make auth-aware
-// routing decisions without reparsing the token.
 type RelaySocket = WebSocket & {
-  user?: AuthTokenPayload;
+	user?: AuthTokenPayload;
 };
 
 type LogLevel = "info" | "warn" | "error";
 
 const agents = new Map<string, RelaySocket>();
 const clients = new Map<string, RelaySocket>();
+const stateStore = new RelayStateStore(process.env.RELAY_SQLITE_PATH?.trim() || undefined);
 
-// Reject invalid `PORT` values instead of throwing. Falling back keeps local
-// startup predictable while still allowing explicit configuration in prod.
 function parsePort(rawPort: string | undefined): number {
-  const candidate = Number.parseInt(rawPort ?? `${DEFAULT_PORT}`, 10);
-  if (Number.isNaN(candidate) || candidate <= 0) {
-    return DEFAULT_PORT;
-  }
+	const candidate = Number.parseInt(rawPort ?? `${DEFAULT_PORT}`, 10);
+	if (Number.isNaN(candidate) || candidate <= 0) {
+		return DEFAULT_PORT;
+	}
 
-  return candidate;
+	return candidate;
 }
 
-// Minimal structured logging keeps the relay dependency surface small while
-// still making auth failures and routing decisions observable in production.
 function log(level: LogLevel, message: string, fields?: Record<string, unknown>) {
-  const line = `${new Date().toISOString()} ${level.toUpperCase()} [relay-server] ${message}`;
-  const serializedFields = fields ? ` ${JSON.stringify(fields)}` : "";
+	const line = `${new Date().toISOString()} ${level.toUpperCase()} [relay-server] ${message}`;
+	const serializedFields = fields ? ` ${JSON.stringify(fields)}` : "";
 
-  if (level === "error") {
-    console.error(`${line}${serializedFields}`);
-    return;
-  }
+	if (level === "error") {
+		console.error(`${line}${serializedFields}`);
+		return;
+	}
 
-  if (level === "warn") {
-    console.warn(`${line}${serializedFields}`);
-    return;
-  }
+	if (level === "warn") {
+		console.warn(`${line}${serializedFields}`);
+		return;
+	}
 
-  console.log(`${line}${serializedFields}`);
+	console.log(`${line}${serializedFields}`);
 }
 
-// The action list is validated on every frame so a peer cannot tunnel an
-// unapproved operation through the relay by inventing a new action name.
-function isAllowedAction(value: unknown): value is AllowedAction {
-  return typeof value === "string" && ALLOWED_ACTIONS.includes(value as AllowedAction);
-}
-
-// The relay accepts object payloads only. Arrays and primitives are rejected
-// because the protocol is defined as a JSON object envelope with an object
-// `payload` field.
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// `ws` may surface frames as strings, buffers, array buffers, or arrays of
-// buffers. Normalizing to UTF-8 text in one place keeps the parser predictable.
+function createCorsHeaders(): Record<string, string> {
+	return {
+		"access-control-allow-origin": process.env.RELAY_CORS_ALLOW_ORIGIN?.trim() || "*",
+		"access-control-allow-methods": "POST, OPTIONS",
+		"access-control-allow-headers": "content-type",
+	};
+}
+
+function setHeaders(response: ServerResponse, headers: Record<string, string>) {
+	for (const [key, value] of Object.entries(headers)) {
+		response.setHeader(key, value);
+	}
+}
+
+function sendJson(response: ServerResponse, statusCode: number, payload: unknown, headers?: Record<string, string>) {
+	const body = JSON.stringify(payload);
+	response.statusCode = statusCode;
+	response.setHeader("content-type", "application/json");
+	if (headers) {
+		setHeaders(response, headers);
+	}
+	response.end(body);
+}
+
+function sendText(response: ServerResponse, statusCode: number, body: string, headers?: Record<string, string>) {
+	response.statusCode = statusCode;
+	response.setHeader("content-type", "text/plain; charset=utf-8");
+	if (headers) {
+		setHeaders(response, headers);
+	}
+	response.end(body);
+}
+
+function readRequestBody(request: IncomingMessage): Promise<string> {
+	return new Promise((resolve, reject) => {
+		let body = "";
+
+		request.setEncoding("utf8");
+		request.on("data", (chunk) => {
+			body += chunk;
+		});
+		request.on("end", () => {
+			resolve(body);
+		});
+		request.on("error", reject);
+	});
+}
+
+async function parseRelayBootstrapRequest(request: IncomingMessage): Promise<RelayClientBootstrapRequest | null> {
+	let value: unknown;
+	try {
+		const rawBody = await readRequestBody(request);
+		value = JSON.parse(rawBody);
+	} catch {
+		return null;
+	}
+
+	if (!isObjectRecord(value)) {
+		return null;
+	}
+
+	const clientId = normalizeRelayPrincipalId(value.clientId);
+	if (!clientId) {
+		return null;
+	}
+
+	return { clientId };
+}
+
+function getDefaultAgentId(): string | null {
+	return (
+		normalizeRelayPrincipalId(process.env.RELAY_DEFAULT_AGENT_ID) ??
+		normalizeRelayPrincipalId(process.env.PI_RELAY_AGENT_ID)
+	);
+}
+
+function getForwardedHeader(request: IncomingMessage, name: string): string | null {
+	const value = request.headers[name];
+	if (Array.isArray(value)) {
+		return value[0]?.trim() || null;
+	}
+
+	return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function resolvePublicWebSocketUrl(request: IncomingMessage): string {
+	const forwardedProtocol = getForwardedHeader(request, "x-forwarded-proto");
+	const host = getForwardedHeader(request, "x-forwarded-host") ?? getForwardedHeader(request, "host");
+	if (!host) {
+		throw new Error("missing host header");
+	}
+
+	const protocol = forwardedProtocol === "https" ? "wss" : forwardedProtocol === "http" ? "ws" : "ws";
+	return `${protocol}://${host}`;
+}
+
 function rawMessageToString(rawMessage: RawData): string {
-  if (typeof rawMessage === "string") {
-    return rawMessage;
-  }
+	if (typeof rawMessage === "string") {
+		return rawMessage;
+	}
 
-  if (Array.isArray(rawMessage)) {
-    return Buffer.concat(rawMessage).toString("utf8");
-  }
+	if (Array.isArray(rawMessage)) {
+		return Buffer.concat(rawMessage).toString("utf8");
+	}
 
-  if (rawMessage instanceof ArrayBuffer) {
-    return Buffer.from(rawMessage).toString("utf8");
-  }
+	if (rawMessage instanceof ArrayBuffer) {
+		return Buffer.from(rawMessage).toString("utf8");
+	}
 
-  return rawMessage.toString("utf8");
+	return rawMessage.toString("utf8");
 }
 
-// Parse and validate the user-supplied message envelope defensively.
-// Any malformed or incomplete frame is rejected before authorization or
-// forwarding happens. This keeps bad inputs from leaking deeper into the relay.
 function parseRelayMessage(rawMessage: RawData): RelayInboundMessage | null {
-  let value: unknown;
-  try {
-    value = JSON.parse(rawMessageToString(rawMessage));
-  } catch {
-    return null;
-  }
+	let value: unknown;
+	try {
+		value = JSON.parse(rawMessageToString(rawMessage));
+	} catch {
+		return null;
+	}
 
-  if (!isObjectRecord(value)) {
-    return null;
-  }
+	if (!isObjectRecord(value)) {
+		return null;
+	}
 
-  if ((value.type !== "command" && value.type !== "response") || (value.to !== "agent" && value.to !== "client")) {
-    return null;
-  }
+	if ((value.type !== "command" && value.type !== "response") || (value.to !== "agent" && value.to !== "client")) {
+		return null;
+	}
 
-  if (typeof value.targetId !== "string" || value.targetId.trim().length === 0) {
-    return null;
-  }
+	const targetId = normalizeRelayPrincipalId(value.targetId);
+	if (!targetId || !isRelayAllowedAction(value.action) || !isObjectRecord(value.payload)) {
+		return null;
+	}
 
-  if (!isAllowedAction(value.action)) {
-    return null;
-  }
-
-  if (!isObjectRecord(value.payload)) {
-    return null;
-  }
-
-  return {
-    type: value.type,
-    to: value.to,
-    targetId: value.targetId,
-    action: value.action,
-    payload: value.payload,
-  };
+	return {
+		type: value.type,
+		to: value.to,
+		targetId,
+		action: value.action,
+		payload: value.payload,
+	};
 }
 
-// Role-specific connection maps are kept separate so authorization decisions
-// stay simple and lookups do not depend on any caller-controlled field.
 function getRegistry(type: UserType): Map<string, RelaySocket> {
-  return type === "agent" ? agents : clients;
+	return type === "agent" ? agents : clients;
 }
 
-// Unauthorized peers are always closed with the policy-violation code required
-// by the relay contract. This happens during or immediately after connection.
 function closeUnauthorized(socket: RelaySocket) {
-  try {
-    socket.close(1008, "unauthorized");
-  } catch (error) {
-    log("warn", "failed to close unauthorized socket", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+	try {
+		socket.close(1008, "unauthorized");
+	} catch (error) {
+		log("warn", "failed to close unauthorized socket", {
+			error: error instanceof Error ? error.message : String(error),
+		});
+	}
 }
 
-// Invalid runtime behavior should not crash the relay or leave callers guessing.
-// A small error frame gives the authenticated sender feedback when their route
-// or payload is rejected.
 function sendError(socket: RelaySocket, code: string, message: string) {
-  if (socket.readyState !== WebSocket.OPEN) {
-    return;
-  }
+	if (socket.readyState !== WebSocket.OPEN) {
+		return;
+	}
 
-  socket.send(JSON.stringify({ type: "error", code, message }));
+	socket.send(JSON.stringify({ type: "error", code, message }));
 }
 
-// Registration happens from verified token claims only. If a second connection
-// arrives with the same authenticated ID, the older one is replaced so the map
-// always points to the latest active socket for that principal.
+function markPrincipalConnected(user: AuthTokenPayload) {
+	stateStore.upsertPrincipal({
+		principalId: user.id,
+		principalType: user.type,
+		connectionStatus: "online",
+		handshakeState: "ready",
+		at: Date.now(),
+	});
+}
+
+function markPrincipalDisconnected(user: AuthTokenPayload) {
+	stateStore.markPrincipalDisconnected(user.id, Date.now());
+}
+
 function registerConnection(socket: RelaySocket) {
-  const user = socket.user;
-  if (!user) {
-    closeUnauthorized(socket);
-    return;
-  }
+	const user = socket.user;
+	if (!user) {
+		closeUnauthorized(socket);
+		return;
+	}
 
-  const registry = getRegistry(user.type);
-  const existingSocket = registry.get(user.id);
-  if (existingSocket && existingSocket !== socket && existingSocket.readyState === WebSocket.OPEN) {
-    existingSocket.close(1008, "replaced");
-  }
+	const registry = getRegistry(user.type);
+	const existingSocket = registry.get(user.id);
+	if (existingSocket && existingSocket !== socket && existingSocket.readyState === WebSocket.OPEN) {
+		existingSocket.close(1008, "replaced");
+	}
 
-  registry.set(user.id, socket);
-  log("info", "authenticated relay connection", {
-    id: user.id,
-    type: user.type,
-  });
+	registry.set(user.id, socket);
+	markPrincipalConnected(user);
+	flushQueuedMessages(socket);
+	log("info", "authenticated relay connection", {
+		id: user.id,
+		type: user.type,
+	});
 }
 
-// Cleanup is deterministic because each socket already knows its authenticated
-// role and ID. That avoids scanning unrelated maps during close handling.
 function cleanupConnection(socket: RelaySocket) {
-  const user = socket.user;
-  if (!user) {
-    return;
-  }
+	const user = socket.user;
+	if (!user) {
+		return;
+	}
 
-  const registry = getRegistry(user.type);
-  if (registry.get(user.id) === socket) {
-    registry.delete(user.id);
-  }
+	const registry = getRegistry(user.type);
+	if (registry.get(user.id) === socket) {
+		registry.delete(user.id);
+	}
 
-  log("info", "relay connection closed", {
-    id: user.id,
-    type: user.type,
-  });
+	markPrincipalDisconnected(user);
+	log("info", "relay connection closed", {
+		id: user.id,
+		type: user.type,
+	});
 }
 
-// Authorization is role-based and deliberately strict. The relay does not try
-// to infer intent; it only permits the two allowed communication directions.
 function isAuthorizedRoute(user: AuthTokenPayload, message: RelayInboundMessage): boolean {
-  if (user.type === "client") {
-    return message.type === "command" && message.to === "agent";
-  }
+	if (user.type === "client") {
+		return message.type === "command" && message.to === "agent";
+	}
 
-  if (user.type === "agent") {
-    return message.type === "response" && message.to === "client";
-  }
+	if (user.type === "agent") {
+		return message.type === "response" && message.to === "client";
+	}
 
-  return false;
+	return false;
 }
 
-// Forwarding is the heart of the broker. By the time this runs, the socket is
-// authenticated and the frame has passed structural validation. This function
-// applies the remaining authorization checks and performs the actual delivery.
+function buildOutboundMessage(user: AuthTokenPayload, message: RelayInboundMessage): RelayOutboundMessage {
+	return {
+		type: message.type,
+		to: message.to,
+		targetId: message.targetId,
+		action: message.action,
+		payload: message.payload,
+		fromId: user.id,
+		fromType: user.type,
+	};
+}
+
+function recordPairing(user: AuthTokenPayload, targetId: string) {
+	const at = Date.now();
+	if (user.type === "client") {
+		stateStore.replacePairing({ clientId: user.id, agentId: targetId, at });
+		return;
+	}
+
+	stateStore.replacePairing({ clientId: targetId, agentId: user.id, at });
+}
+
+function deliverEnvelope(target: RelaySocket, envelope: RelayOutboundMessage): boolean {
+	if (target.readyState !== WebSocket.OPEN) {
+		return false;
+	}
+
+	try {
+		target.send(JSON.stringify(envelope));
+		return true;
+	} catch (error) {
+		log("error", "failed to forward relay message", {
+			fromId: envelope.fromId,
+			fromType: envelope.fromType,
+			targetId: envelope.targetId,
+			error: error instanceof Error ? error.message : String(error),
+		});
+		return false;
+	}
+}
+
+function enqueueEnvelope(envelope: RelayOutboundMessage) {
+	const metadata = stateStore.enqueueEnvelope(envelope, Date.now());
+	log("info", "queued relay message for offline target", {
+		id: metadata.id,
+		fromId: metadata.fromId,
+		fromType: metadata.fromType,
+		targetId: metadata.targetId,
+		targetType: metadata.targetType,
+		action: metadata.action,
+	});
+}
+
+function flushQueuedMessages(socket: RelaySocket) {
+	const user = socket.user;
+	if (!user) {
+		return;
+	}
+
+	const queuedEnvelopes = stateStore.listQueuedEnvelopesForTarget(user.type, user.id);
+	if (queuedEnvelopes.length === 0) {
+		return;
+	}
+
+	for (const queuedEnvelope of queuedEnvelopes) {
+		if (!deliverEnvelope(socket, queuedEnvelope.envelope)) {
+			break;
+		}
+
+		stateStore.deleteQueuedEnvelope(queuedEnvelope.id);
+		log("info", "flushed queued relay message", {
+			id: queuedEnvelope.id,
+			targetId: user.id,
+			targetType: user.type,
+		});
+	}
+}
+
 function forwardMessage(socket: RelaySocket, message: RelayInboundMessage) {
-  const user = socket.user;
-  if (!user) {
-    closeUnauthorized(socket);
-    return;
-  }
+	const user = socket.user;
+	if (!user) {
+		closeUnauthorized(socket);
+		return;
+	}
 
-  if (!isAuthorizedRoute(user, message)) {
-    log("warn", "rejected unauthorized route", {
-      fromId: user.id,
-      fromType: user.type,
-      messageType: message.type,
-      to: message.to,
-      targetId: message.targetId,
-    });
-    sendError(socket, "forbidden", "route not allowed for this role");
-    return;
-  }
+	if (!isAuthorizedRoute(user, message)) {
+		log("warn", "rejected unauthorized route", {
+			fromId: user.id,
+			fromType: user.type,
+			messageType: message.type,
+			to: message.to,
+			targetId: message.targetId,
+		});
+		sendError(socket, "forbidden", "route not allowed for this role");
+		return;
+	}
 
-  const target = getRegistry(message.to).get(message.targetId);
-  if (!target || target.readyState !== WebSocket.OPEN) {
-    log("warn", "target not connected", {
-      fromId: user.id,
-      fromType: user.type,
-      to: message.to,
-      targetId: message.targetId,
-    });
-    sendError(socket, "target_unavailable", "target connection is not available");
-    return;
-  }
+	const outboundMessage = buildOutboundMessage(user, message);
 
-  const outboundMessage: RelayOutboundMessage = {
-    type: message.type,
-    to: message.to,
-    targetId: message.targetId,
-    action: message.action,
-    payload: message.payload,
-    fromId: user.id,
-    fromType: user.type,
-  };
+	try {
+		recordPairing(user, message.targetId);
+	} catch (error) {
+		log("error", "failed to persist relay pairing", {
+			fromId: user.id,
+			fromType: user.type,
+			targetId: message.targetId,
+			error: error instanceof Error ? error.message : String(error),
+		});
+		sendError(socket, "delivery_failed", "failed to persist pairing state");
+		return;
+	}
 
-  try {
-    target.send(JSON.stringify(outboundMessage));
-  } catch (error) {
-    log("error", "failed to forward relay message", {
-      fromId: user.id,
-      fromType: user.type,
-      targetId: message.targetId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    sendError(socket, "delivery_failed", "failed to forward message");
-  }
+	const target = getRegistry(message.to).get(message.targetId);
+	if (!target || target.readyState !== WebSocket.OPEN) {
+		try {
+			enqueueEnvelope(outboundMessage);
+		} catch (error) {
+			log("error", "failed to queue relay message", {
+				fromId: user.id,
+				fromType: user.type,
+				targetId: message.targetId,
+				error: error instanceof Error ? error.message : String(error),
+			});
+			sendError(socket, "delivery_failed", "failed to queue message for offline target");
+		}
+		return;
+	}
+
+	if (!deliverEnvelope(target, outboundMessage)) {
+		try {
+			enqueueEnvelope(outboundMessage);
+		} catch (error) {
+			log("error", "failed to queue relay message after live delivery failure", {
+				fromId: user.id,
+				fromType: user.type,
+				targetId: message.targetId,
+				error: error instanceof Error ? error.message : String(error),
+			});
+			sendError(socket, "delivery_failed", "failed to deliver or queue message");
+		}
+	}
 }
 
-// Message handling is intentionally shallow: parse, reject invalid input, then
-// hand off to the authorization-aware forwarder. Keeping the stages separate
-// makes auditing and future extension easier.
 function handleMessage(socket: RelaySocket, rawMessage: RawData) {
-  const message = parseRelayMessage(rawMessage);
-  if (!message) {
-    const user = socket.user;
-    log("warn", "rejected invalid relay message", {
-      id: user?.id,
-      type: user?.type,
-    });
-    sendError(socket, "invalid_message", "message must be valid JSON with the relay schema");
-    return;
-  }
+	const message = parseRelayMessage(rawMessage);
+	if (!message) {
+		const user = socket.user;
+		log("warn", "rejected invalid relay message", {
+			id: user?.id,
+			type: user?.type,
+		});
+		sendError(socket, "invalid_message", "message must be valid JSON with the relay schema");
+		return;
+	}
 
-  forwardMessage(socket, message);
+	forwardMessage(socket, message);
 }
 
-// The relay authenticates every websocket during connection setup and refuses
-// to install message handlers for unauthenticated sockets. That ensures no
-// application message is ever processed before auth completes.
 export function runRelayServer(options?: { port?: number }) {
-  const port = options?.port ?? parsePort(process.env.PORT);
-  const wss = new WebSocketServer({ port });
+	const port = options?.port ?? parsePort(process.env.PORT);
+	const wss = new WebSocketServer({
+		noServer: true,
+		handleProtocols(protocols) {
+			if (protocols.has(RELAY_BROWSER_PROTOCOL)) {
+				return RELAY_BROWSER_PROTOCOL;
+			}
 
-  wss.on("connection", (socket: RelaySocket, request) => {
-    try {
-      // The verified JWT payload becomes the socket identity for the lifetime
-      // of the connection.
-      socket.user = authenticateRequest(request);
-    } catch (error) {
-      const reason = error instanceof AuthError ? error.message : "unknown auth error";
-      log("warn", "relay authentication failed", {
-        reason,
-        remoteAddress: request.socket.remoteAddress,
-      });
-      closeUnauthorized(socket);
-      return;
-    }
+			const firstProtocol = protocols.values().next();
+			return firstProtocol.done ? false : firstProtocol.value;
+		},
+	});
+	const server = createServer(async (request, response) => {
+		const pathname = new URL(request.url ?? "/", "http://relay.local").pathname;
 
-    registerConnection(socket);
+		if (pathname === "/health") {
+			sendJson(response, 200, {
+				ok: true,
+				service: "relay-server",
+			});
+			return;
+		}
 
-    socket.on("message", (rawMessage) => {
-      handleMessage(socket, rawMessage);
-    });
+		if (pathname === RELAY_BOOTSTRAP_PATH) {
+			const corsHeaders = createCorsHeaders();
 
-    // Socket-level errors are logged for visibility, but they should not bring
-    // down the relay process.
-    socket.on("error", (error) => {
-      log("warn", "relay socket error", {
-        id: socket.user?.id,
-        type: socket.user?.type,
-        error: error.message,
-      });
-    });
+			if (request.method === "OPTIONS") {
+				response.statusCode = 204;
+				setHeaders(response, corsHeaders);
+				response.end();
+				return;
+			}
 
-    socket.on("close", () => {
-      cleanupConnection(socket);
-    });
-  });
+			if (request.method !== "POST") {
+				sendText(response, 405, "Method Not Allowed", corsHeaders);
+				return;
+			}
 
-  // Startup logs include the action allowlist so an operator can confirm the
-  // relay is running with the intended policy.
-  log("info", "relay server listening", {
-    port,
-    allowedActions: ALLOWED_ACTIONS,
-  });
+			const bootstrapRequest = await parseRelayBootstrapRequest(request);
+			if (!bootstrapRequest) {
+				sendJson(response, 400, { message: "Invalid relay bootstrap request." }, corsHeaders);
+				return;
+			}
 
-  return wss;
+			const defaultAgentId = getDefaultAgentId();
+			if (!defaultAgentId) {
+				sendJson(
+					response,
+					500,
+					{ message: "RELAY_DEFAULT_AGENT_ID or PI_RELAY_AGENT_ID is required." },
+					corsHeaders,
+				);
+				return;
+			}
+
+			try {
+				const payload = {
+					clientId: bootstrapRequest.clientId,
+					agentId: defaultAgentId,
+					token: generateToken({ type: "client", id: bootstrapRequest.clientId }),
+					expiresAt: Date.now() + RELAY_JWT_TTL_MS,
+					websocketUrl: resolvePublicWebSocketUrl(request),
+				} satisfies RelayClientBootstrapResponse;
+				sendJson(response, 200, payload, corsHeaders);
+			} catch (error) {
+				log("error", "failed to issue relay bootstrap token", {
+					clientId: bootstrapRequest.clientId,
+					error: error instanceof Error ? error.message : String(error),
+				});
+				sendJson(
+					response,
+					500,
+					{ message: error instanceof Error ? error.message : "failed to issue relay bootstrap token" },
+					corsHeaders,
+				);
+			}
+			return;
+		}
+
+		sendText(response, 426, "Upgrade Required");
+	});
+
+	wss.on("connection", (socket: RelaySocket, request) => {
+		try {
+			socket.user = authenticateRequest(request);
+		} catch (error) {
+			const reason = error instanceof AuthError ? error.message : "unknown auth error";
+			log("warn", "relay authentication failed", {
+				reason,
+				remoteAddress: request.socket.remoteAddress,
+			});
+			closeUnauthorized(socket);
+			return;
+		}
+
+		registerConnection(socket);
+
+		socket.on("message", (rawMessage) => {
+			handleMessage(socket, rawMessage);
+		});
+
+		socket.on("error", (error) => {
+			log("warn", "relay socket error", {
+				id: socket.user?.id,
+				type: socket.user?.type,
+				error: error.message,
+			});
+		});
+
+		socket.on("close", () => {
+			cleanupConnection(socket);
+		});
+	});
+
+	server.on("upgrade", (request, socket, head) => {
+		wss.handleUpgrade(request, socket, head, (websocket) => {
+			wss.emit("connection", websocket, request);
+		});
+	});
+
+	server.listen(port);
+
+	log("info", "relay server listening", {
+		port,
+		allowedActions: RELAY_ALLOWED_ACTIONS,
+		defaultAgentId: getDefaultAgentId(),
+		sqlitePath: process.env.RELAY_SQLITE_PATH?.trim() || ".data/relay-state.sqlite",
+	});
+
+	return wss;
 }
 
 if (import.meta.main) {
-  runRelayServer();
+	runRelayServer();
 }

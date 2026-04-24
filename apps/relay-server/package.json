@@ -15,6 +15,7 @@
 		"typescript": "^5.9.3"
 	},
 	"dependencies": {
+		"@apreal/shared": "workspace:*",
 		"jsonwebtoken": "^9.0.2",
 		"ws": "^8.20.0"
 	}
