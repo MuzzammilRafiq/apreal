@@ -17,7 +17,7 @@ type RelayAgentClientOptions = {
 	getAgentJwt(): string;
 	logger: LoggerLike;
 	onClientMessage(clientId: string, payload: unknown): void;
-	onDisconnect(): void;
+	onDisconnect(code: number, reason: string): void;
 };
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -144,12 +144,13 @@ export function createRelayAgentClient(options: RelayAgentClientOptions) {
 		});
 
 		socket.on("close", (code, reason) => {
+			const closeReason = reason.toString();
 			logger.warn("relay connection closed", {
 				code,
-				reason: reason.toString(),
+				reason: closeReason,
 			});
 			socket = null;
-			onDisconnect();
+			onDisconnect(code, closeReason);
 			scheduleReconnect();
 		});
 	}
@@ -166,8 +167,6 @@ export function createRelayAgentClient(options: RelayAgentClientOptions) {
 			socket.send(
 				JSON.stringify({
 					type: "response",
-					to: "client",
-					targetId: clientId,
 					action: RELAY_SESSION_ACTION,
 					payload,
 				}),

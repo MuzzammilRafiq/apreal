@@ -5,12 +5,14 @@ export const RELAY_SESSION_ACTION = "session_message" as const;
 export const RELAY_ALLOWED_ACTIONS = ["ping", "read_file", "session_message"] as const;
 export const RELAY_HANDSHAKE_STATES = ["awaiting_hello", "ready"] as const;
 export const RELAY_CONNECTION_STATUSES = ["online", "offline"] as const;
+export const RELAY_PAIRING_STATUSES = ["pending", "paired"] as const;
 export const RELAY_PRINCIPAL_TYPES = ["agent", "client"] as const;
 export const RELAY_MESSAGE_TYPES = ["command", "response"] as const;
 
 export type RelayAllowedAction = (typeof RELAY_ALLOWED_ACTIONS)[number];
 export type RelayHandshakeState = (typeof RELAY_HANDSHAKE_STATES)[number];
 export type RelayConnectionStatus = (typeof RELAY_CONNECTION_STATUSES)[number];
+export type RelayPairingStatus = (typeof RELAY_PAIRING_STATUSES)[number];
 export type RelayPrincipalType = (typeof RELAY_PRINCIPAL_TYPES)[number];
 export type RelayMessageType = (typeof RELAY_MESSAGE_TYPES)[number];
 
@@ -31,6 +33,15 @@ export type RelayPairingRecord = {
 	updatedAt: number;
 };
 
+export type RelayPairingRequestRecord = {
+	clientId: string;
+	pairingCode: string;
+	createdAt: number;
+	expiresAt: number;
+	claimedAt: number | null;
+	claimedByAgentId: string | null;
+};
+
 export type RelayQueuedEnvelopeMetadata = {
 	id: number;
 	messageType: RelayMessageType;
@@ -44,15 +55,27 @@ export type RelayQueuedEnvelopeMetadata = {
 
 export type RelayInboundEnvelope<TPayload = Record<string, unknown>> = {
 	type: RelayMessageType;
-	to: RelayPrincipalType;
-	targetId: string;
 	action: RelayAllowedAction;
 	payload: TPayload;
 };
 
-export type RelayOutboundEnvelope<TPayload = Record<string, unknown>> = RelayInboundEnvelope<TPayload> & {
+export type RelayResolvedEnvelope<TPayload = Record<string, unknown>> = RelayInboundEnvelope<TPayload> & {
+	to: RelayPrincipalType;
+	targetId: string;
+};
+
+export type RelayOutboundEnvelope<TPayload = Record<string, unknown>> = RelayResolvedEnvelope<TPayload> & {
 	fromId: string;
 	fromType: RelayPrincipalType;
+};
+
+export type RelayPairingStateMessage = {
+	type: "pairing_state";
+	status: RelayPairingStatus;
+	clientId: string;
+	pairingCode: string | null;
+	agentId: string | null;
+	expiresAt: number | null;
 };
 
 export type RelayClientBootstrapRequest = {
@@ -61,13 +84,14 @@ export type RelayClientBootstrapRequest = {
 
 export type RelayClientBootstrapResponse = {
 	clientId: string;
-	agentId: string;
 	token: string;
 	expiresAt: number;
 	websocketUrl: string;
+	pairing: RelayPairingStateMessage;
 };
 
 const PRINCIPAL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;
+const PAIRING_CODE_PATTERN = /^[A-Z0-9]{6,16}$/;
 
 export function isRelayPrincipalType(value: unknown): value is RelayPrincipalType {
 	return typeof value === "string" && RELAY_PRINCIPAL_TYPES.includes(value as RelayPrincipalType);
@@ -94,10 +118,32 @@ export function normalizeRelayPrincipalId(value: unknown): string | null {
 	return trimmed;
 }
 
+export function normalizeRelayPairingCode(value: unknown): string | null {
+	if (typeof value !== "string") {
+		return null;
+	}
+
+	const normalized = value.trim().toUpperCase().replace(/[\s-]+/g, "");
+	if (!PAIRING_CODE_PATTERN.test(normalized)) {
+		return null;
+	}
+
+	return normalized;
+}
+
 export function assertRelayPrincipalId(value: unknown, field = "id"): string {
 	const normalized = normalizeRelayPrincipalId(value);
 	if (!normalized) {
 		throw new Error(`invalid relay principal id: ${field}`);
+	}
+
+	return normalized;
+}
+
+export function assertRelayPairingCode(value: unknown, field = "pairingCode"): string {
+	const normalized = normalizeRelayPairingCode(value);
+	if (!normalized) {
+		throw new Error(`invalid relay pairing code: ${field}`);
 	}
 
 	return normalized;

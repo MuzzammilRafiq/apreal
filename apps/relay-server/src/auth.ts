@@ -1,5 +1,10 @@
 import type { IncomingMessage } from "node:http";
-import { assertRelayPrincipalId, RELAY_BROWSER_PROTOCOL, type RelayPrincipalType } from "@apreal/shared";
+import {
+	assertRelayPairingCode,
+	assertRelayPrincipalId,
+	RELAY_BROWSER_PROTOCOL,
+	type RelayPrincipalType,
+} from "@apreal/shared";
 import jwt, { type JwtPayload } from "jsonwebtoken";
 
 // The relay accepts only two authenticated peer roles.
@@ -17,6 +22,7 @@ export type UserType = RelayPrincipalType;
 export type AuthTokenPayload = {
 	type: UserType;
 	id: string;
+	pairingCode?: string;
 	iat: number;
 	exp: number;
 };
@@ -24,6 +30,7 @@ export type AuthTokenPayload = {
 type GenerateTokenInput = {
 	type: UserType;
 	id: string;
+	pairingCode?: string;
 };
 
 // Relay auth failures are treated as controlled protocol failures, not as
@@ -75,6 +82,14 @@ function ensureNumber(value: unknown, field: string): number {
 	return value;
 }
 
+function ensurePairingCode(value: unknown, field: string): string {
+	try {
+		return assertRelayPairingCode(value, field);
+	} catch {
+		throw new AuthError(`invalid token field: ${field}`);
+	}
+}
+
 // Verification proves the signature is valid, but it does not automatically
 // guarantee that the payload matches the relay's expected contract. This
 // function performs the final structural validation before the connection is
@@ -91,6 +106,7 @@ function validateTokenPayload(payload: string | JwtPayload): AuthTokenPayload {
 	return {
 		type: payload.type,
 		id: ensureString(payload.id, "id"),
+		pairingCode: payload.pairingCode === undefined ? undefined : ensurePairingCode(payload.pairingCode, "pairingCode"),
 		iat: ensureNumber(payload.iat, "iat"),
 		exp: ensureNumber(payload.exp, "exp"),
 	};
@@ -169,14 +185,17 @@ export function authenticateRequest(request: IncomingMessage): AuthTokenPayload 
 // Helper used for provisioning and local testing. The relay itself does not
 // mint tokens during websocket handling; it only verifies them. Keeping the
 // helper here ensures token creation and token validation share one contract.
-export function generateToken({ type, id }: GenerateTokenInput): string {
+export function generateToken({ type, id, pairingCode }: GenerateTokenInput): string {
 	if (!isUserType(type)) {
 		throw new AuthError("invalid token role");
 	}
 
 	ensureString(id, "id");
+	if (pairingCode !== undefined) {
+		ensurePairingCode(pairingCode, "pairingCode");
+	}
 
-	return jwt.sign({ type, id }, getJwtSecret(), {
+	return jwt.sign({ type, id, pairingCode }, getJwtSecret(), {
 		algorithm: "HS256",
 		expiresIn: RELAY_JWT_EXPIRES_IN,
 	});

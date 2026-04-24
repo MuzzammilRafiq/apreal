@@ -2,6 +2,7 @@ import {
 	RELAY_CLIENT_ID_STORAGE_KEY,
 	RELAY_SESSION_ACTION,
 	normalizeRelayPrincipalId,
+	type RelayPairingStateMessage,
 	type RelayClientBootstrapResponse,
 } from "@apreal/shared";
 import { useEffect, useRef, useState } from "react";
@@ -27,6 +28,7 @@ type ClientMessage =
 
 type ServerMessage =
 	| { type: "connected"; clientId: string; message: string; tools?: string }
+	| RelayPairingStateMessage
 	| { type: "sessions_updated"; sessions: SessionSummary[] }
 	| { type: "session_created"; session: SessionSummary; transcript: TranscriptMessage[] }
 	| { type: "session_snapshot"; session: SessionSummary; transcript: TranscriptMessage[] }
@@ -46,26 +48,20 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function createWirePayload(message: ClientMessage, relayAgentId?: string | null): string {
+function createWirePayload(message: ClientMessage): string {
 	if (transportConfig.mode === "local") {
 		return JSON.stringify(message);
 	}
 
-	if (!relayAgentId) {
-		throw new Error("relay bootstrap has not completed yet");
-	}
-
 	return JSON.stringify({
 		type: "command",
-		to: "agent",
-		targetId: relayAgentId,
 		action: RELAY_SESSION_ACTION,
 		payload: message,
 	});
 }
 
-function sendClientMessage(socket: WebSocket, message: ClientMessage, relayAgentId?: string | null) {
-	socket.send(createWirePayload(message, relayAgentId));
+function sendClientMessage(socket: WebSocket, message: ClientMessage) {
+	socket.send(createWirePayload(message));
 }
 
 function parseIncomingServerMessage(rawData: unknown): ServerMessage | null {
@@ -85,6 +81,14 @@ function parseIncomingServerMessage(rawData: unknown): ServerMessage | null {
 	}
 
 	if (transportConfig.mode === "local") {
+		return value as ServerMessage;
+	}
+
+	if (
+		value.type === "pairing_state" &&
+		(value.status === "pending" || value.status === "paired") &&
+		typeof value.clientId === "string"
+	) {
 		return value as ServerMessage;
 	}
 
@@ -132,13 +136,14 @@ function isRelayBootstrapResponse(value: unknown): value is RelayBootstrapSessio
 	}
 
 	return (
+		isObjectRecord(value.pairing) &&
+		(value.pairing.status === "pending" || value.pairing.status === "paired") &&
 		typeof value.token === "string" &&
 		value.token.trim().length > 0 &&
 		typeof value.websocketUrl === "string" &&
 		value.websocketUrl.trim().length > 0 &&
 		typeof value.expiresAt === "number" &&
-		normalizeRelayPrincipalId(value.clientId) !== null &&
-		normalizeRelayPrincipalId(value.agentId) !== null
+		normalizeRelayPrincipalId(value.clientId) !== null
 	);
 }
 
@@ -163,7 +168,14 @@ async function fetchRelayBootstrap(bootstrapUrl: string, clientId: string): Prom
 	return {
 		...data,
 		clientId: normalizeRelayPrincipalId(data.clientId)!,
-		agentId: normalizeRelayPrincipalId(data.agentId)!,
+		pairing: {
+			...data.pairing,
+			clientId: normalizeRelayPrincipalId(data.pairing.clientId) ?? data.clientId,
+			agentId:
+				typeof data.pairing.agentId === "string"
+					? normalizeRelayPrincipalId(data.pairing.agentId)
+					: null,
+		},
 	};
 }
 
@@ -230,6 +242,7 @@ export function App() {
 	const [sessionCache, setSessionCache] = useState<Map<string, SessionCacheEntry>>(() => new Map());
 	const [activeSessionId, setActiveSessionId] = useState<string | null>(() => readStoredSessionId());
 	const [prompt, setPrompt] = useState("");
+	const [pairingState, setPairingState] = useState<RelayPairingStateMessage | null>(null);
 
 	const socketRef = useRef<WebSocket | null>(null);
 	const reconnectTimerRef = useRef<number | null>(null);
@@ -239,6 +252,7 @@ export function App() {
 	const transcriptRef = useRef<HTMLDivElement | null>(null);
 	const sessionCacheRef = useRef(sessionCache);
 	const activeSessionIdRef = useRef(activeSessionId);
+	const pairingStateRef = useRef(pairingState);
 
 	useEffect(() => {
 		sessionCacheRef.current = sessionCache;
@@ -248,10 +262,15 @@ export function App() {
 		activeSessionIdRef.current = activeSessionId;
 	}, [activeSessionId]);
 
+	useEffect(() => {
+		pairingStateRef.current = pairingState;
+	}, [pairingState]);
+
 	const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
 	const activeTranscript = activeSessionId ? sessionCache.get(activeSessionId)?.transcript ?? [] : [];
 	const isBusy = pendingDraft || Boolean(activeSession?.busy);
-	const canSend = connected && !isBusy && prompt.trim().length > 0;
+	const pairingReady = transportConfig.mode !== "relay" || pairingState?.status === "paired";
+	const canSend = connected && pairingReady && !isBusy && prompt.trim().length > 0;
 
 	function focusPrompt() {
 		window.requestAnimationFrame(() => {
@@ -259,17 +278,13 @@ export function App() {
 		});
 	}
 
-	function getRelayAgentId(): string | null {
-		return transportConfig.mode === "relay" ? relayBootstrapRef.current?.agentId ?? null : null;
-	}
-
 	function sendMessage(socket: WebSocket, message: ClientMessage) {
-		sendClientMessage(socket, message, getRelayAgentId());
+		sendClientMessage(socket, message);
 	}
 
 	function submitPrompt(trimmedPrompt: string) {
 		const socket = socketRef.current;
-		if (!trimmedPrompt || !socket || socket.readyState !== WebSocket.OPEN || isBusy) {
+		if (!trimmedPrompt || !socket || socket.readyState !== WebSocket.OPEN || isBusy || !pairingReady) {
 			return;
 		}
 
@@ -450,6 +465,7 @@ export function App() {
 					clientIdRef.current = bootstrap.clientId;
 					storeClientId(bootstrap.clientId);
 					relayBootstrapRef.current = bootstrap;
+					setPairingState(bootstrap.pairing);
 					socket = new WebSocket(bootstrap.websocketUrl, createRelayProtocols(bootstrap.token));
 				} else {
 					socket = new WebSocket(transportConfig.websocketUrl);
@@ -479,17 +495,26 @@ export function App() {
 					return;
 				}
 
-				switch (message.type) {
-					case "connected": {
+					switch (message.type) {
+						case "connected": {
 						const normalizedClientId = normalizeRelayPrincipalId(message.clientId);
 						if (normalizedClientId) {
 							clientIdRef.current = normalizedClientId;
 							storeClientId(normalizedClientId);
 						}
-						setTools(message.tools || "read, bash, edit, write");
-						break;
-					}
-					case "sessions_updated": {
+							setTools(message.tools || "read, bash, edit, write");
+							break;
+						}
+						case "pairing_state": {
+							const shouldSendHello =
+								message.status === "paired" && pairingStateRef.current?.status !== "paired";
+							setPairingState(message);
+							if (shouldSendHello && socket.readyState === WebSocket.OPEN) {
+								sendMessage(socket, { type: "hello" });
+							}
+							break;
+						}
+						case "sessions_updated": {
 						setSessions(message.sessions);
 						setSessionCache((previous) => {
 							const next = new Map(previous);
@@ -559,6 +584,7 @@ export function App() {
 					socketRef.current = null;
 				}
 				relayBootstrapRef.current = null;
+				setPairingState(null);
 				setConnected(false);
 				setPendingDraft(false);
 
@@ -600,10 +626,20 @@ export function App() {
 
 	const emptyState = !activeSession
 		? {
-			title: pendingDraft ? "Creating session..." : "Ready when you are",
-			body: pendingDraft
-				? "The server is opening a shared session from your first prompt."
-				: "Start with a coding task, file request, or bug report. The first prompt creates a reusable session that stays available in the left rail.",
+			title:
+				transportConfig.mode === "relay" && pairingState?.status !== "paired"
+					? "Waiting for agent pairing"
+					: pendingDraft
+						? "Creating session..."
+						: "Ready when you are",
+			body:
+				transportConfig.mode === "relay" && pairingState?.status !== "paired"
+					? pairingState?.pairingCode
+						? `Copy pairing code ${pairingState.pairingCode} into your agent server to finish connecting through the relay.`
+						: "Waiting for the relay to issue a pairing code."
+					: pendingDraft
+						? "The server is opening a shared session from your first prompt."
+						: "Start with a coding task, file request, or bug report. The first prompt creates a reusable session that stays available in the left rail.",
 		}
 		: activeTranscript.length === 0
 			? {
@@ -618,6 +654,7 @@ export function App() {
 			<Sidebar
 				connected={connected}
 				pendingDraft={pendingDraft}
+				pairingState={pairingState}
 				sessions={sessions}
 				activeSessionId={activeSessionId}
 				sessionState={sessionState}
@@ -631,6 +668,7 @@ export function App() {
 					<Composer
 						connected={connected}
 						connectionLabel={transportConfig.label}
+						pairingState={pairingState}
 						activeSession={activeSession}
 						activeSessionId={activeSessionId}
 						canSend={canSend}

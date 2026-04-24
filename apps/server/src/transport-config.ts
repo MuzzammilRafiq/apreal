@@ -8,6 +8,7 @@ export type ServerTransportConfig = {
 	mode: ServerTransportMode;
 	relayUrl: string | null;
 	relayAgentId: string;
+	relayPairingCode: string | null;
 	relayAgentTokenProvider: RelayAgentTokenProvider;
 };
 
@@ -19,10 +20,10 @@ function parseMode(value: string | undefined): ServerTransportMode {
 	return "local";
 }
 
-function createRelayAgentTokenProvider(relayAgentId: string): RelayAgentTokenProvider {
+function createRelayAgentTokenProvider(relayAgentId: string, relayPairingCode: string | null): RelayAgentTokenProvider {
 	return () => {
 		if (relayAgentId && process.env.JWT_SECRET?.trim()) {
-			return generateToken({ type: "agent", id: relayAgentId });
+			return generateToken({ type: "agent", id: relayAgentId, pairingCode: relayPairingCode ?? undefined });
 		}
 
 		return process.env.PI_RELAY_AGENT_JWT?.trim() || null;
@@ -31,12 +32,14 @@ function createRelayAgentTokenProvider(relayAgentId: string): RelayAgentTokenPro
 
 export function getServerTransportConfig(): ServerTransportConfig {
 	const relayAgentId = process.env.PI_RELAY_AGENT_ID?.trim() || "";
+	const relayPairingCode = process.env.PI_RELAY_PAIRING_CODE?.trim() || null;
 
 	return {
 		mode: parseMode(process.env.PI_CONNECTION_MODE),
 		relayUrl: process.env.PI_RELAY_URL?.trim() || null,
 		relayAgentId,
-		relayAgentTokenProvider: createRelayAgentTokenProvider(relayAgentId),
+		relayPairingCode,
+		relayAgentTokenProvider: createRelayAgentTokenProvider(relayAgentId, relayPairingCode),
 	};
 }
 

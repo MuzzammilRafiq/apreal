@@ -6,6 +6,7 @@ import {
 	RELAY_HANDSHAKE_STATES,
 	type RelayConnectionStatus,
 	type RelayOutboundEnvelope,
+	type RelayPairingRequestRecord,
 	type RelayPairingRecord,
 	type RelayPrincipalType,
 	type RelayQueuedEnvelopeMetadata,
@@ -36,6 +37,13 @@ type RelayStorePairingInput = {
 	clientId: string;
 	agentId: string;
 	at: number;
+};
+
+type RelayStorePairingRequestInput = {
+	clientId: string;
+	pairingCode: string;
+	createdAt: number;
+	expiresAt: number;
 };
 
 type RelayStoreQueuedEnvelope = RelayQueuedEnvelopeMetadata & {
@@ -88,6 +96,15 @@ export class RelayStateStore {
 				updated_at INTEGER NOT NULL
 			);
 
+			CREATE TABLE IF NOT EXISTS pairing_requests (
+				client_id TEXT PRIMARY KEY,
+				pairing_code TEXT NOT NULL UNIQUE,
+				created_at INTEGER NOT NULL,
+				expires_at INTEGER NOT NULL,
+				claimed_at INTEGER,
+				claimed_by_agent_id TEXT
+			);
+
 			CREATE TABLE IF NOT EXISTS queued_envelopes (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				message_type TEXT NOT NULL,
@@ -101,6 +118,7 @@ export class RelayStateStore {
 			);
 
 			CREATE INDEX IF NOT EXISTS idx_principals_type ON principals (principal_type);
+			CREATE INDEX IF NOT EXISTS idx_pairing_requests_code ON pairing_requests (pairing_code);
 			CREATE INDEX IF NOT EXISTS idx_queued_target ON queued_envelopes (target_type, target_id, created_at, id);
 		`);
 	}
@@ -256,6 +274,107 @@ export class RelayStateStore {
 			createdAt: row.created_at,
 			updatedAt: row.updated_at,
 		};
+	}
+
+	upsertPairingRequest(input: RelayStorePairingRequestInput): RelayPairingRequestRecord {
+		this.database
+			.prepare(
+				`INSERT INTO pairing_requests (
+					client_id,
+					pairing_code,
+					created_at,
+					expires_at,
+					claimed_at,
+					claimed_by_agent_id
+				) VALUES (?, ?, ?, ?, NULL, NULL)
+				ON CONFLICT(client_id) DO UPDATE SET
+					pairing_code = excluded.pairing_code,
+					created_at = excluded.created_at,
+					expires_at = excluded.expires_at,
+					claimed_at = NULL,
+					claimed_by_agent_id = NULL`,
+			)
+			.run(input.clientId, input.pairingCode, input.createdAt, input.expiresAt);
+
+		return this.getPairingRequestByClientId(input.clientId)!;
+	}
+
+	getPairingRequestByClientId(clientId: string): RelayPairingRequestRecord | null {
+		const row = this.database
+			.prepare(
+				`SELECT client_id, pairing_code, created_at, expires_at, claimed_at, claimed_by_agent_id
+				FROM pairing_requests
+				WHERE client_id = ?`,
+			)
+			.get(clientId) as
+			| {
+					client_id: string;
+					pairing_code: string;
+					created_at: number;
+					expires_at: number;
+					claimed_at: number | null;
+					claimed_by_agent_id: string | null;
+				}
+			| undefined;
+
+		if (!row) {
+			return null;
+		}
+
+		return {
+			clientId: row.client_id,
+			pairingCode: row.pairing_code,
+			createdAt: row.created_at,
+			expiresAt: row.expires_at,
+			claimedAt: row.claimed_at,
+			claimedByAgentId: row.claimed_by_agent_id,
+		};
+	}
+
+	getPairingRequestByCode(pairingCode: string): RelayPairingRequestRecord | null {
+		const row = this.database
+			.prepare(
+				`SELECT client_id, pairing_code, created_at, expires_at, claimed_at, claimed_by_agent_id
+				FROM pairing_requests
+				WHERE pairing_code = ?`,
+			)
+			.get(pairingCode) as
+			| {
+					client_id: string;
+					pairing_code: string;
+					created_at: number;
+					expires_at: number;
+					claimed_at: number | null;
+					claimed_by_agent_id: string | null;
+				}
+			| undefined;
+
+		if (!row) {
+			return null;
+		}
+
+		return {
+			clientId: row.client_id,
+			pairingCode: row.pairing_code,
+			createdAt: row.created_at,
+			expiresAt: row.expires_at,
+			claimedAt: row.claimed_at,
+			claimedByAgentId: row.claimed_by_agent_id,
+		};
+	}
+
+	markPairingRequestClaimed(clientId: string, agentId: string, claimedAt: number) {
+		this.database
+			.prepare(
+				`UPDATE pairing_requests
+				SET claimed_at = ?, claimed_by_agent_id = ?
+				WHERE client_id = ?`,
+			)
+			.run(claimedAt, agentId, clientId);
+	}
+
+	deletePairingRequestByClientId(clientId: string) {
+		this.database.prepare(`DELETE FROM pairing_requests WHERE client_id = ?`).run(clientId);
 	}
 
 	enqueueEnvelope(envelope: RelayOutboundEnvelope<Record<string, unknown>>, createdAt: number): RelayQueuedEnvelopeMetadata {

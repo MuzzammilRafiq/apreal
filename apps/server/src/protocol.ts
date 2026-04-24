@@ -8,6 +8,14 @@ export type ClientAppMessage =
 
 export type ServerAppMessage<SessionSummary, TranscriptMessage> =
 	| { type: "connected"; clientId: string; message: string; tools?: string }
+	| {
+			type: "pairing_state";
+			status: "pending" | "paired";
+			clientId: string;
+			pairingCode: string | null;
+			agentId: string | null;
+			expiresAt: number | null;
+	  }
 	| { type: "sessions_updated"; sessions: SessionSummary[] }
 	| { type: "session_created"; session: SessionSummary; transcript: TranscriptMessage[] }
 	| { type: "session_snapshot"; session: SessionSummary; transcript: TranscriptMessage[] }

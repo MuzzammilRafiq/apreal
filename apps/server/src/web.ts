@@ -1,14 +1,17 @@
 import { dirname, join } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
+import { stdin as input, stdout as output } from "node:process";
 import {
 	RELAY_BOOTSTRAP_PATH,
 	RELAY_SESSION_ACTION,
+	normalizeRelayPairingCode,
 	normalizeRelayPrincipalId,
 	type RelayClientBootstrapRequest,
 	type RelayClientBootstrapResponse,
 } from "@apreal/shared";
+import { generateToken } from "../../relay-server/src/auth.ts";
 import { getConfiguredToolsLabel } from "./agent-tools.ts";
-import { generateToken, RELAY_JWT_TTL_MS } from "../../relay-server/src/auth.ts";
 import { createRelayAgentClient } from "./relay-client.ts";
 import {
 	parseClientAppMessage,
@@ -26,6 +29,7 @@ import {
 import {
 	assertRelayServerTransportConfig,
 	getServerTransportConfig,
+	type RelayAgentTokenProvider,
 	type ServerTransportMode,
 } from "./transport-config.ts";
 import { createLogger, summarizePrompt } from "./logger.ts";
@@ -246,6 +250,93 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 	const sessions = new Map<string, SharedSessionState>();
 	const logger = createLogger("web-server");
 	let relayAgentClient: ReturnType<typeof createRelayAgentClient> | null = null;
+	let relayPairingCode = transportConfig.relayPairingCode;
+	let pairingPromptPromise: Promise<void> | null = null;
+	const relayLogger = createLogger("relay-agent");
+	const getRelayAgentJwt: RelayAgentTokenProvider = () => {
+		if (transportConfig.relayAgentId && process.env.JWT_SECRET?.trim()) {
+			return generateToken({
+				type: "agent",
+				id: transportConfig.relayAgentId,
+				pairingCode: relayPairingCode ?? undefined,
+			});
+		}
+
+		return process.env.PI_RELAY_AGENT_JWT?.trim() || null;
+	};
+
+	async function ensureRelayPairingCode(reason: string) {
+		if (relayPairingCode) {
+			return;
+		}
+
+		if (pairingPromptPromise) {
+			return pairingPromptPromise;
+		}
+
+		pairingPromptPromise = (async () => {
+			const prompt = createInterface({ input, output });
+			try {
+				const answer = await prompt.question(
+					`Relay pairing required (${reason}). Paste the pairing code from the web client: `,
+				);
+				const normalized = normalizeRelayPairingCode(answer);
+				if (!normalized) {
+					throw new Error("Invalid relay pairing code.");
+				}
+
+				relayPairingCode = normalized;
+				logger.info("stored relay pairing code for this server process");
+			} finally {
+				prompt.close();
+				pairingPromptPromise = null;
+			}
+		})();
+
+		return pairingPromptPromise;
+	}
+
+	function disposeRelayAgentClient() {
+		if (!relayAgentClient) {
+			return;
+		}
+
+		relayAgentClient.dispose();
+		relayAgentClient = null;
+	}
+
+	function startRelayAgentClient() {
+		if (transportConfig.mode !== "relay" || relayAgentClient || !relayPairingCode) {
+			return;
+		}
+
+		relayAgentClient = createRelayAgentClient({
+			relayUrl: transportConfig.relayUrl!,
+			agentId: transportConfig.relayAgentId,
+			getAgentJwt() {
+				const token = getRelayAgentJwt();
+				if (!token) {
+					throw new Error("PI_RELAY_AGENT_JWT is required when PI_CONNECTION_MODE=relay");
+				}
+
+				return token;
+			},
+			logger: relayLogger,
+			onClientMessage(clientId, payload) {
+				void handleRelayPayload(clientId, payload);
+			},
+			onDisconnect(_code, reason) {
+				if (reason === "pairing_required" || reason === "pairing_invalid" || reason === "pairing_expired") {
+					disposeRelayAgentClient();
+					relayPairingCode = null;
+					void ensureRelayPairingCode(reason).then(() => {
+						startRelayAgentClient();
+					});
+				}
+				removeRelayClients("relay_transport_closed");
+			},
+		});
+	}
 
 	async function handleRelayBootstrapRequest(request: Request): Promise<Response> {
 		if (request.method === "OPTIONS") {
@@ -286,13 +377,22 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 		}
 
 		try {
-			const response = {
-				clientId: bootstrapRequest.clientId,
-				agentId: relayAgentId,
-				token: generateToken({ type: "client", id: bootstrapRequest.clientId }),
-				expiresAt: Date.now() + RELAY_JWT_TTL_MS,
-				websocketUrl: transportConfig.relayUrl,
-			} satisfies RelayClientBootstrapResponse;
+			const relayResponse = await fetch(RELAY_BOOTSTRAP_PATH, {
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+				},
+				body: JSON.stringify(bootstrapRequest satisfies RelayClientBootstrapRequest),
+			});
+
+			if (!relayResponse.ok) {
+				return json(
+					{ message: `relay bootstrap failed with status ${relayResponse.status}` },
+					{ status: 502, headers: createCorsHeaders() },
+				);
+			}
+
+			const response = (await relayResponse.json()) as RelayClientBootstrapResponse;
 
 			return json(response, {
 				status: 200,
@@ -1175,25 +1275,13 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 	}
 
 	if (transportConfig.mode === "relay") {
-		relayAgentClient = createRelayAgentClient({
-			relayUrl: transportConfig.relayUrl!,
-			agentId: transportConfig.relayAgentId,
-			getAgentJwt() {
-				const token = transportConfig.relayAgentTokenProvider();
-				if (!token) {
-					throw new Error("PI_RELAY_AGENT_JWT is required when PI_CONNECTION_MODE=relay");
-				}
-
-				return token;
-			},
-			logger: createLogger("relay-agent"),
-			onClientMessage(clientId, payload) {
-				void handleRelayPayload(clientId, payload);
-			},
-			onDisconnect() {
-				removeRelayClients("relay_transport_closed");
-			},
-		});
+		if (relayPairingCode) {
+			startRelayAgentClient();
+		} else {
+			void ensureRelayPairingCode("startup").then(() => {
+				startRelayAgentClient();
+			});
+		}
 	}
 
 	void prewarmAgentRuntime().catch((error) => {
