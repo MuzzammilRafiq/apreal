@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { SessionSummary } from "../chatTypes";
 import { formatRelativeTime, getSessionCardClassName } from "../chatView";
 import type { RelayPairingStateMessage } from "@apreal/shared";
@@ -13,7 +14,7 @@ type SidebarProps = {
 	onActivateSession: (sessionId: string) => void;
 };
 
-export function Sidebar({
+export const Sidebar = memo(function Sidebar({
 	connected,
 	pendingDraft,
 	pairingState,
@@ -101,4 +102,4 @@ export function Sidebar({
 			</div>
 		</aside>
 	);
-}
+});

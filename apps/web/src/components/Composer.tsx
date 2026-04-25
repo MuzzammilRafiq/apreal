@@ -1,4 +1,4 @@
-import { useLayoutEffect, type RefObject } from "react";
+import { memo, useEffect, useLayoutEffect, useState, type RefObject } from "react";
 import type { SessionSummary } from "../chatTypes";
 import type { RelayPairingStateMessage } from "@apreal/shared";
 
@@ -8,28 +8,24 @@ type ComposerProps = {
   pairingState: RelayPairingStateMessage | null;
   activeSession: SessionSummary | null;
   activeSessionId: string | null;
-  canSend: boolean;
-  prompt: string;
   promptInputRef: RefObject<HTMLTextAreaElement | null>;
-  onPromptChange: (value: string) => void;
-  onSend: () => void;
+  onSend: (prompt: string) => boolean;
   onAbort: () => void;
 };
 
-export function Composer({
+export const Composer = memo(function Composer({
   connected,
   connectionLabel,
   pairingState,
   activeSession,
   activeSessionId,
-  canSend,
-  prompt,
   promptInputRef,
-  onPromptChange,
   onSend,
   onAbort,
 }: ComposerProps) {
+  const [prompt, setPrompt] = useState("");
   const pairingReady = !pairingState || pairingState.status === "paired";
+  const canSend = connected && pairingReady && !activeSession?.busy && prompt.trim().length > 0;
 
   function resizePromptInput() {
     const node = promptInputRef.current;
@@ -53,6 +49,27 @@ export function Composer({
     resizePromptInput();
   }, [prompt]);
 
+  useEffect(() => {
+    if (!connected) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      promptInputRef.current?.focus();
+    });
+  }, [activeSessionId, connected, promptInputRef]);
+
+  function submitPrompt() {
+    const trimmedPrompt = prompt.trim();
+    if (!trimmedPrompt) {
+      return;
+    }
+
+    if (onSend(trimmedPrompt)) {
+      setPrompt("");
+    }
+  }
+
   return (
     <div className="pointer-events-auto mx-auto flex w-full max-w-310 items-end gap-3  border border-line/70 bg-chat-overlay px-3 py-3 shadow-[0_22px_60px_rgba(23,21,18,0.14)] backdrop-blur-xl">
       <textarea
@@ -61,11 +78,11 @@ export function Composer({
         name="prompt"
         rows={1}
         value={prompt}
-        onChange={(event) => onPromptChange(event.target.value)}
+        onChange={(event) => setPrompt(event.target.value)}
         onKeyDown={(event) => {
           if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
             event.preventDefault();
-            onSend();
+            submitPrompt();
           }
         }}
         disabled={!connected}
@@ -93,7 +110,7 @@ export function Composer({
             return;
           }
 
-          onSend();
+          submitPrompt();
         }}
       >
         {activeSession?.busy ? (
@@ -121,4 +138,4 @@ export function Composer({
       </button>
     </div>
   );
-}
+});
