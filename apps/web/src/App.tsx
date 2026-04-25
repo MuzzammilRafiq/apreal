@@ -1,9 +1,11 @@
 import {
 	RELAY_CLIENT_ID_STORAGE_KEY,
+	RELAY_CLIENT_TOKEN_STORAGE_KEY,
 	RELAY_SESSION_ACTION,
 	normalizeRelayPrincipalId,
 	type RelayPairingStateMessage,
 	type RelayClientBootstrapResponse,
+	type RelayStoredClientAuth,
 } from "@apreal/shared";
 import { useEffect, useRef, useState } from "react";
 import { Composer } from "./components/Composer";
@@ -17,6 +19,8 @@ const ACTIVE_SESSION_STORAGE_KEY = "pi-browser-active-session";
 const transportConfig = getWebTransportConfig();
 
 type RelayBootstrapSession = RelayClientBootstrapResponse;
+
+type StoredRelayClientAuth = RelayStoredClientAuth;
 
 type ClientMessage =
 	| { type: "hello" }
@@ -122,6 +126,98 @@ function getOrCreateStoredClientId(): string {
 	return clientId;
 }
 
+function isStoredRelayClientAuth(value: unknown): value is StoredRelayClientAuth {
+	if (!isObjectRecord(value)) {
+		return false;
+	}
+
+	return (
+		normalizeRelayPrincipalId(value.clientId) !== null &&
+		typeof value.token === "string" &&
+		value.token.trim().length > 0 &&
+		typeof value.websocketUrl === "string" &&
+		value.websocketUrl.trim().length > 0 &&
+		typeof value.expiresAt === "number" &&
+		Number.isFinite(value.expiresAt)
+	);
+}
+
+function readStoredRelayClientAuth(clientId: string): StoredRelayClientAuth | null {
+	try {
+		const rawValue = window.localStorage.getItem(RELAY_CLIENT_TOKEN_STORAGE_KEY);
+		if (!rawValue) {
+			return null;
+		}
+
+		const parsed: unknown = JSON.parse(rawValue);
+		if (!isStoredRelayClientAuth(parsed)) {
+			window.localStorage.removeItem(RELAY_CLIENT_TOKEN_STORAGE_KEY);
+			return null;
+		}
+
+		if (parsed.clientId !== clientId) {
+			return null;
+		}
+
+		if (parsed.expiresAt <= Date.now()) {
+			window.localStorage.removeItem(RELAY_CLIENT_TOKEN_STORAGE_KEY);
+			return null;
+		}
+
+		return {
+			clientId: normalizeRelayPrincipalId(parsed.clientId)!,
+			token: parsed.token,
+			expiresAt: parsed.expiresAt,
+			websocketUrl: parsed.websocketUrl,
+		};
+	} catch {
+		return null;
+	}
+}
+
+function storeRelayClientAuth(session: RelayBootstrapSession) {
+	try {
+		const stored: StoredRelayClientAuth = {
+			clientId: session.clientId,
+			token: session.token,
+			expiresAt: session.expiresAt,
+			websocketUrl: session.websocketUrl,
+		};
+		window.localStorage.setItem(RELAY_CLIENT_TOKEN_STORAGE_KEY, JSON.stringify(stored));
+	} catch {
+		// Ignore browser storage failures.
+	}
+}
+
+function clearStoredRelayClientAuth() {
+	try {
+		window.localStorage.removeItem(RELAY_CLIENT_TOKEN_STORAGE_KEY);
+	} catch {
+		// Ignore browser storage failures.
+	}
+}
+
+function toBootstrapSession(auth: StoredRelayClientAuth, pairing: RelayPairingStateMessage): RelayBootstrapSession {
+	return {
+		clientId: auth.clientId,
+		token: auth.token,
+		expiresAt: auth.expiresAt,
+		websocketUrl: auth.websocketUrl,
+		pairing,
+	};
+}
+
+function createPendingPairingState(clientId: string): RelayPairingStateMessage {
+	return {
+		type: "pairing_state",
+		status: "pending",
+		clientId,
+		pairingCode: null,
+		agentId: null,
+		expiresAt: null,
+	};
+}
+
 function isRelayBootstrapResponse(value: unknown): value is RelayBootstrapSession {
 	if (!isObjectRecord(value)) {
 		return false;
@@ -169,6 +265,21 @@ async function fetchRelayBootstrap(bootstrapUrl: string, clientId: string): Prom
 					: null,
 		},
 	};
+}
+
+async function resolveRelayBootstrapSession(
+	bootstrapUrl: string,
+	clientId: string,
+	currentPairingState: RelayPairingStateMessage | null,
+): Promise<RelayBootstrapSession> {
+	const storedAuth = readStoredRelayClientAuth(clientId);
+	if (storedAuth) {
+		return toBootstrapSession(storedAuth, currentPairingState ?? createPendingPairingState(clientId));
+	}
+
+	const bootstrap = await fetchRelayBootstrap(bootstrapUrl, clientId);
+	storeRelayClientAuth(bootstrap);
+	return bootstrap;
 }
 
 function readStoredSessionId(): string | null {
@@ -448,13 +559,18 @@ export function App() {
 			let socket: WebSocket;
 			try {
 				const clientId = clientIdRef.current ?? getOrCreateStoredClientId();
-				const bootstrap = await fetchRelayBootstrap(transportConfig.bootstrapUrl, clientId);
+				const bootstrap = await resolveRelayBootstrapSession(
+					transportConfig.bootstrapUrl,
+					clientId,
+					pairingStateRef.current,
+				);
 				if (disposed) {
 					return;
 				}
 
 				clientIdRef.current = bootstrap.clientId;
 				storeClientId(bootstrap.clientId);
+				storeRelayClientAuth(bootstrap);
 				relayBootstrapRef.current = bootstrap;
 				setPairingState(bootstrap.pairing);
 				socket = new WebSocket(bootstrap.websocketUrl, createRelayProtocols(bootstrap.token));
@@ -497,6 +613,12 @@ export function App() {
 							const shouldSendHello =
 								message.status === "paired" && pairingStateRef.current?.status !== "paired";
 							setPairingState(message);
+							if (message.status === "paired") {
+								const currentBootstrap = relayBootstrapRef.current;
+								if (currentBootstrap) {
+									storeRelayClientAuth(currentBootstrap);
+								}
+							}
 							if (shouldSendHello && socket.readyState === WebSocket.OPEN) {
 								sendMessage(socket, { type: "hello" });
 							}
@@ -567,12 +689,15 @@ export function App() {
 				}
 			});
 
-			socket.addEventListener("close", () => {
+			socket.addEventListener("close", (event) => {
+				const bootstrap = relayBootstrapRef.current;
+				if (event.reason === "unauthorized" || (bootstrap && bootstrap.expiresAt <= Date.now())) {
+					clearStoredRelayClientAuth();
+				}
 				if (socketRef.current === socket) {
 					socketRef.current = null;
 				}
 				relayBootstrapRef.current = null;
-				setPairingState(null);
 				setConnected(false);
 				setPendingDraft(false);
 

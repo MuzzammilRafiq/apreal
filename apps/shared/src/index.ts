@@ -1,5 +1,6 @@
 export const RELAY_BROWSER_PROTOCOL = "relay.jwt";
 export const RELAY_CLIENT_ID_STORAGE_KEY = "pi-browser-client-id";
+export const RELAY_CLIENT_TOKEN_STORAGE_KEY = "pi-browser-relay-token";
 export const RELAY_BOOTSTRAP_PATH = "/api/relay/bootstrap";
 export const RELAY_SESSION_ACTION = "session_message" as const;
 export const RELAY_ALLOWED_ACTIONS = ["ping", "read_file", "session_message"] as const;
@@ -88,6 +89,13 @@ export type RelayClientBootstrapResponse = {
 	expiresAt: number;
 	websocketUrl: string;
 	pairing: RelayPairingStateMessage;
+};
+
+export type RelayStoredClientAuth = {
+	clientId: string;
+	token: string;
+	expiresAt: number;
+	websocketUrl: string;
 };
 
 const PRINCIPAL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;
