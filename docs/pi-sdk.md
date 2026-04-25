@@ -1,3 +1,11 @@
+# Pi SDK Reference Notes
+
+This document is an external reference for the separate Pi monorepo, not a map of files in this `desktop` workspace.
+
+- Source repo location used when this note was written: `~/Code/downloads/pi-mono`
+- Use it when we need to inspect Pi SDK or Python/RPC integration details alongside this relay-based desktop app.
+- Do not assume the `packages/...` paths listed below exist in this repository.
+
 # Pi Monorepo: Where To Look
 # Located at ~/Code/downloads/pi-mono
 This is a navigation guide for the `pi-mono` repo, written with one goal in mind: help you quickly find the right place to read when building a custom agent around pi.
