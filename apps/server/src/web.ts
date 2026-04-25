@@ -30,7 +30,6 @@ import {
 	assertRelayServerTransportConfig,
 	getServerTransportConfig,
 	type RelayAgentTokenProvider,
-	type ServerTransportMode,
 } from "./transport-config.ts";
 import { createLogger, summarizePrompt } from "./logger.ts";
 
@@ -38,11 +37,7 @@ const DEFAULT_PORT = 3000;
 const SERVER_SRC_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_WORKSPACE_ROOT = join(SERVER_SRC_DIR, "..", "..", "..");
 
-type WebSocketData = {
-	clientId: string;
-};
-
-type ClientTransport = "local" | "relay";
+type ClientTransport = "relay";
 
 type ServerMessage = ServerAppMessage<SessionSummary, TranscriptMessage>;
 
@@ -306,7 +301,7 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 	}
 
 	function startRelayAgentClient() {
-		if (transportConfig.mode !== "relay" || relayAgentClient || !relayPairingCode) {
+		if (relayAgentClient || !relayPairingCode) {
 			return;
 		}
 
@@ -316,7 +311,7 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 			getAgentJwt() {
 				const token = getRelayAgentJwt();
 				if (!token) {
-					throw new Error("PI_RELAY_AGENT_JWT is required when PI_CONNECTION_MODE=relay");
+					throw new Error("PI_RELAY_AGENT_JWT is required");
 				}
 
 				return token;
@@ -351,13 +346,6 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 				status: 405,
 				headers: createCorsHeaders(),
 			});
-		}
-
-		if (transportConfig.mode !== "relay") {
-			return json(
-				{ message: "Relay bootstrap is available only when PI_CONNECTION_MODE=relay." },
-				{ status: 404, headers: createCorsHeaders() },
-			);
 		}
 
 		const bootstrapRequest = await parseRelayBootstrapRequest(request);
@@ -483,10 +471,6 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 
 	function removeRelayClients(reason: string) {
 		for (const client of Array.from(clients.values())) {
-			if (client.transport !== "relay") {
-				continue;
-			}
-
 			removeClientConnection(client.clientId, reason);
 		}
 	}
@@ -1270,18 +1254,12 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 		await handleClientMessage(clientId, message);
 	}
 
-	function transportModeLabel(mode: ServerTransportMode): string {
-		return mode === "relay" ? "relay" : "local";
-	}
-
-	if (transportConfig.mode === "relay") {
-		if (relayPairingCode) {
+	if (relayPairingCode) {
+		startRelayAgentClient();
+	} else {
+		void ensureRelayPairingCode("startup").then(() => {
 			startRelayAgentClient();
-		} else {
-			void ensureRelayPairingCode("startup").then(() => {
-				startRelayAgentClient();
-			});
-		}
+		});
 	}
 
 	void prewarmAgentRuntime().catch((error) => {
@@ -1290,11 +1268,11 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 		});
 	});
 
-	let server: Bun.Server<WebSocketData>;
+	let server: ReturnType<typeof Bun.serve>;
 	try {
-		server = Bun.serve<WebSocketData>({
+		server = Bun.serve({
 			port,
-			async fetch(request, serverInstance) {
+			async fetch(request) {
 				const url = new URL(request.url);
 				logger.debug("incoming request", {
 					method: request.method,
@@ -1304,29 +1282,10 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 					return handleRelayBootstrapRequest(request);
 				}
 
-				if (url.pathname === "/ws") {
-					if (transportConfig.mode !== "local") {
-						return new Response("WebSocket endpoint disabled in relay mode.", { status: 404 });
-					}
-
-					const clientId = crypto.randomUUID();
-					if (
-						serverInstance.upgrade(request, {
-							data: { clientId },
-						})
-					) {
-						logger.info("websocket upgrade accepted", { clientId });
-						return;
-					}
-
-					logger.warn("websocket upgrade failed");
-					return new Response("WebSocket upgrade failed.", { status: 400 });
-				}
-
 				if (url.pathname === "/health") {
 					return json({
 						status: "ok",
-						transport: transportModeLabel(transportConfig.mode),
+						transport: "relay",
 						clients: clients.size,
 						sessions: sessions.size,
 						cwd,
@@ -1334,35 +1293,6 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 				}
 
 				return new Response("Not Found", { status: 404 });
-			},
-			websocket: {
-				idleTimeout: 120,
-				open(ws) {
-					registerClientConnection(ws.data.clientId, "local", (payload) => {
-						ws.send(JSON.stringify(payload));
-						return true;
-					});
-				},
-				async message(ws, rawMessage) {
-					const message = parseClientAppMessage(rawMessage);
-					if (!message) {
-						logger.warn("invalid websocket payload", {
-							clientId: ws.data.clientId,
-						});
-						sendError(ws.data.clientId, "Invalid message payload.");
-						return;
-					}
-
-					logger.debug("websocket message received", {
-						clientId: ws.data.clientId,
-						type: message.type,
-					});
-
-					await handleClientMessage(ws.data.clientId, message);
-				},
-				close(ws) {
-					removeClientConnection(ws.data.clientId, "local_socket_closed");
-				},
 			},
 		});
 	} catch (error) {
@@ -1377,17 +1307,13 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 		cwd,
 		port: server.port,
 		logLevel: process.env.LOG_LEVEL ?? "info",
-		transport: transportModeLabel(transportConfig.mode),
+		transport: "relay",
 	});
 	console.log(`Pi web server ready in ${cwd}`);
 	console.log("Frontend UI: http://localhost:5173");
 	console.log(`Health check: http://localhost:${server.port}/health`);
-	if (transportConfig.mode === "local") {
-		console.log(`WebSocket endpoint: ws://localhost:${server.port}/ws`);
-	} else {
-		console.log(`Relay endpoint: ${transportConfig.relayUrl}`);
-		console.log(`Relay agent id: ${transportConfig.relayAgentId}`);
-	}
+	console.log(`Relay endpoint: ${transportConfig.relayUrl}`);
+	console.log(`Relay agent id: ${transportConfig.relayAgentId}`);
 	console.log("Browser chat sessions are shared across tabs while the server is running.");
 
 	return server;

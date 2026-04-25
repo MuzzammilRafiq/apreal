@@ -49,10 +49,6 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function createWirePayload(message: ClientMessage): string {
-	if (transportConfig.mode === "local") {
-		return JSON.stringify(message);
-	}
-
 	return JSON.stringify({
 		type: "command",
 		action: RELAY_SESSION_ACTION,
@@ -78,10 +74,6 @@ function parseIncomingServerMessage(rawData: unknown): ServerMessage | null {
 
 	if (!isObjectRecord(value) || typeof value.type !== "string") {
 		return null;
-	}
-
-	if (transportConfig.mode === "local") {
-		return value as ServerMessage;
 	}
 
 	if (
@@ -247,7 +239,7 @@ export function App() {
 	const socketRef = useRef<WebSocket | null>(null);
 	const reconnectTimerRef = useRef<number | null>(null);
 	const relayBootstrapRef = useRef<RelayBootstrapSession | null>(null);
-	const clientIdRef = useRef<string | null>(transportConfig.mode === "relay" ? getOrCreateStoredClientId() : null);
+	const clientIdRef = useRef<string | null>(getOrCreateStoredClientId());
 	const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
 	const transcriptRef = useRef<HTMLDivElement | null>(null);
 	const sessionCacheRef = useRef(sessionCache);
@@ -269,7 +261,7 @@ export function App() {
 	const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
 	const activeTranscript = activeSessionId ? sessionCache.get(activeSessionId)?.transcript ?? [] : [];
 	const isBusy = pendingDraft || Boolean(activeSession?.busy);
-	const pairingReady = transportConfig.mode !== "relay" || pairingState?.status === "paired";
+	const pairingReady = pairingState?.status === "paired";
 	const canSend = connected && pairingReady && !isBusy && prompt.trim().length > 0;
 
 	function focusPrompt() {
@@ -455,21 +447,17 @@ export function App() {
 
 			let socket: WebSocket;
 			try {
-				if (transportConfig.mode === "relay") {
-					const clientId = clientIdRef.current ?? getOrCreateStoredClientId();
-					const bootstrap = await fetchRelayBootstrap(transportConfig.bootstrapUrl, clientId);
-					if (disposed) {
-						return;
-					}
-
-					clientIdRef.current = bootstrap.clientId;
-					storeClientId(bootstrap.clientId);
-					relayBootstrapRef.current = bootstrap;
-					setPairingState(bootstrap.pairing);
-					socket = new WebSocket(bootstrap.websocketUrl, createRelayProtocols(bootstrap.token));
-				} else {
-					socket = new WebSocket(transportConfig.websocketUrl);
+				const clientId = clientIdRef.current ?? getOrCreateStoredClientId();
+				const bootstrap = await fetchRelayBootstrap(transportConfig.bootstrapUrl, clientId);
+				if (disposed) {
+					return;
 				}
+
+				clientIdRef.current = bootstrap.clientId;
+				storeClientId(bootstrap.clientId);
+				relayBootstrapRef.current = bootstrap;
+				setPairingState(bootstrap.pairing);
+				socket = new WebSocket(bootstrap.websocketUrl, createRelayProtocols(bootstrap.token));
 			} catch (error) {
 				console.error(error);
 				scheduleReconnect();
@@ -627,13 +615,13 @@ export function App() {
 	const emptyState = !activeSession
 		? {
 			title:
-				transportConfig.mode === "relay" && pairingState?.status !== "paired"
+				pairingState?.status !== "paired"
 					? "Waiting for agent pairing"
 					: pendingDraft
 						? "Creating session..."
 						: "Ready when you are",
 			body:
-				transportConfig.mode === "relay" && pairingState?.status !== "paired"
+				pairingState?.status !== "paired"
 					? pairingState?.pairingCode
 						? `Copy pairing code ${pairingState.pairingCode} into your agent server to finish connecting through the relay.`
 						: "Waiting for the relay to issue a pairing code."
