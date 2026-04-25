@@ -15,6 +15,7 @@
     "build:server": "bun run --cwd apps/server build",
     "build:web": "bun run --cwd apps/web build",
     "build:relay": "bun run --cwd apps/relay-server build",
+    "build:shared": "bun run --cwd apps/shared build",
     "start:server": "bun run --cwd apps/server start",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
