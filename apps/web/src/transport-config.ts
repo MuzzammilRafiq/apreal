@@ -1,9 +1,7 @@
-import { RELAY_BOOTSTRAP_PATH, RELAY_JWT_PROTOCOL } from "@apreal/shared";
-
 export type WebTransportConfig = {
 	label: string;
-	bootstrapUrl: string;
-	relayWebSocketUrl: string | null;
+	messageUrl: string;
+	streamUrl: string;
 };
 
 function resolveServerBaseUrl(): URL {
@@ -30,68 +28,12 @@ function resolveServerBaseUrl(): URL {
 	return url;
 }
 
-function resolveHttpBaseUrl(rawUrl: string): URL {
-	const url = new URL(rawUrl, window.location.href);
-	if (url.protocol === "ws:") {
-		url.protocol = "http:";
-	}
-	if (url.protocol === "wss:") {
-		url.protocol = "https:";
-	}
-	if (url.pathname.endsWith("/ws")) {
-		url.pathname = url.pathname.slice(0, -3) || "/";
-	}
-
-	return url;
-}
-
-function resolveWebSocketUrl(rawUrl: string): string {
-	const url = new URL(rawUrl, window.location.href);
-	if (url.protocol === "http:") {
-		url.protocol = "ws:";
-	}
-	if (url.protocol === "https:") {
-		url.protocol = "wss:";
-	}
-	if (url.protocol !== "ws:" && url.protocol !== "wss:") {
-		throw new Error("VITE_PI_RELAY_URL must use ws, wss, http, or https");
-	}
-
-	return url.toString();
-}
-
-function resolveBootstrapUrl(): string {
-	const explicitBootstrapUrl = import.meta.env.VITE_PI_BOOTSTRAP_URL?.trim();
-	if (explicitBootstrapUrl) {
-		return new URL(RELAY_BOOTSTRAP_PATH, resolveHttpBaseUrl(explicitBootstrapUrl)).toString();
-	}
-
-	const configuredServerUrl = import.meta.env.VITE_PI_SERVER_URL?.trim();
-	if (configuredServerUrl) {
-		return new URL(RELAY_BOOTSTRAP_PATH, resolveServerBaseUrl()).toString();
-	}
-
-	const relayUrl = import.meta.env.VITE_PI_RELAY_URL?.trim();
-	if (!relayUrl) {
-		throw new Error("VITE_PI_BOOTSTRAP_URL, VITE_PI_SERVER_URL, or VITE_PI_RELAY_URL is required");
-	}
-
-	return new URL(RELAY_BOOTSTRAP_PATH, resolveHttpBaseUrl(relayUrl)).toString();
-}
-
-function resolveRelayWebSocketUrl(): string | null {
-	const relayUrl = import.meta.env.VITE_PI_RELAY_URL?.trim();
-	return relayUrl ? resolveWebSocketUrl(relayUrl) : null;
-}
-
-export function createRelayProtocols(token: string): string[] {
-	return [RELAY_JWT_PROTOCOL, token];
-}
-
 export function getWebTransportConfig(): WebTransportConfig {
+	const serverBaseUrl = resolveServerBaseUrl();
+
 	return {
-		label: "relay",
-		bootstrapUrl: resolveBootstrapUrl(),
-		relayWebSocketUrl: resolveRelayWebSocketUrl(),
+		label: "http-stream",
+		messageUrl: new URL("/api/client/message", serverBaseUrl).toString(),
+		streamUrl: new URL("/api/client/stream", serverBaseUrl).toString(),
 	};
 }

@@ -1,49 +1,33 @@
-import { randomInt, randomUUID } from "node:crypto";
+/*
+WebSocket relay server intentionally disabled.
+
+The previous upgrade handling, pairing, socket registries, and queued envelope
+delivery were removed from the active runtime so the relay can move toward a
+stateless HTTP design. Keep this file focused on authenticated HTTP endpoints
+until streaming is wired.
+*/
+
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import WebSocket, { WebSocketServer, type RawData } from "ws";
 import {
-	RELAY_ALLOWED_ACTIONS,
 	RELAY_BOOTSTRAP_PATH,
-	RELAY_BROWSER_PROTOCOL,
-	RELAY_CLOSE_REPLACED,
-	isRelayAllowedAction,
-	normalizeRelayPrincipalId,
-	type RelayClientBootstrapRequest,
-	type RelayClientBootstrapResponse,
-	type RelayInboundEnvelope,
-	type RelayOutboundEnvelope,
-	type RelayPairingRequestRecord,
-	type RelayPairingStateMessage,
+	RELAY_CONNECTION_PATH,
+	type RelayConnectionRequest,
+	type RelayConnectionResponse,
 	type RelayPrincipalType,
 } from "@apreal/shared";
 import {
 	AuthError,
-	authenticateRequest,
-	generateToken,
-	RELAY_JWT_TTL_MS,
+	authenticateHttpRequest,
 	type AuthTokenPayload,
 	type UserType,
 } from "./auth.ts";
-import { RelayStateStore } from "./state-store.ts";
 import { config } from "dotenv";
 
 config();
-const DEFAULT_PORT = 3001;
-const RELAY_PAIRING_CODE_TTL_MS = 10 * 60 * 1000;
-const PAIRING_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-type RelayInboundMessage = RelayInboundEnvelope<Record<string, unknown>>;
-type RelayOutboundMessage = RelayOutboundEnvelope<Record<string, unknown>>;
 
-type RelaySocket = WebSocket & {
-	user?: AuthTokenPayload;
-	connectionId?: string;
-};
+const DEFAULT_PORT = 3001;
 
 type LogLevel = "info" | "warn" | "error";
-
-const agents = new Map<string, RelaySocket>();
-const clients = new Map<string, RelaySocket>();
-const stateStore = new RelayStateStore(process.env.RELAY_SQLITE_PATH?.trim() || undefined);
 
 function parsePort(rawPort: string | undefined): number {
 	const candidate = Number.parseInt(rawPort ?? `${DEFAULT_PORT}`, 10);
@@ -79,7 +63,7 @@ function createCorsHeaders(): Record<string, string> {
 	return {
 		"access-control-allow-origin": process.env.RELAY_CORS_ALLOW_ORIGIN?.trim() || "*",
 		"access-control-allow-methods": "POST, OPTIONS",
-		"access-control-allow-headers": "content-type",
+		"access-control-allow-headers": "authorization, content-type",
 	};
 }
 
@@ -123,7 +107,7 @@ function readRequestBody(request: IncomingMessage): Promise<string> {
 	});
 }
 
-async function parseRelayBootstrapRequest(request: IncomingMessage): Promise<RelayClientBootstrapRequest | null> {
+async function parseRelayConnectionRequest(request: IncomingMessage): Promise<RelayConnectionRequest | null> {
 	let value: unknown;
 	try {
 		const rawBody = await readRequestBody(request);
@@ -132,575 +116,86 @@ async function parseRelayBootstrapRequest(request: IncomingMessage): Promise<Rel
 		return null;
 	}
 
-	if (!isObjectRecord(value)) {
+	if (!isObjectRecord(value) || typeof value.targetId !== "string") {
 		return null;
 	}
 
-	const clientId = normalizeRelayPrincipalId(value.clientId);
-	if (!clientId) {
-		return null;
-	}
-
-	return { clientId };
-}
-
-function getForwardedHeader(request: IncomingMessage, name: string): string | null {
-	const value = request.headers[name];
-	if (Array.isArray(value)) {
-		return value[0]?.trim() || null;
-	}
-
-	return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-}
-
-function normalizeWebSocketUrl(rawUrl: string, field: string): string {
-	const trimmedUrl = rawUrl.trim();
-	if (!trimmedUrl) {
-		throw new Error(`${field} is empty`);
-	}
-
-	const url = new URL(trimmedUrl);
-	if (url.protocol === "http:") {
-		url.protocol = "ws:";
-	}
-	if (url.protocol === "https:") {
-		url.protocol = "wss:";
-	}
-	if (url.protocol !== "ws:" && url.protocol !== "wss:") {
-		throw new Error(`${field} must use ws, wss, http, or https`);
-	}
-
-	return url.toString();
-}
-
-function resolvePublicWebSocketUrl(request: IncomingMessage): string {
-	const configuredUrl = process.env.RELAY_PUBLIC_WEBSOCKET_URL?.trim();
-	if (configuredUrl) {
-		return normalizeWebSocketUrl(configuredUrl, "RELAY_PUBLIC_WEBSOCKET_URL");
-	}
-
-	const forwardedProtocol = getForwardedHeader(request, "x-forwarded-proto");
-	const host = getForwardedHeader(request, "x-forwarded-host") ?? getForwardedHeader(request, "host");
-	if (!host) {
-		throw new Error("missing host header");
-	}
-
-	const protocol = forwardedProtocol === "https" ? "wss" : forwardedProtocol === "http" ? "ws" : "ws";
-	const forwardedPrefix = getForwardedHeader(request, "x-forwarded-prefix") ?? "";
-	const publicPath = process.env.RELAY_PUBLIC_WEBSOCKET_PATH?.trim() || forwardedPrefix;
-	const normalizedPath = publicPath && publicPath !== "/" ? `/${publicPath.replace(/^\/+|\/+$/g, "")}` : "";
-
-	return normalizeWebSocketUrl(`${protocol}://${host}${normalizedPath}`, "public websocket URL");
-}
-
-function rawMessageToString(rawMessage: RawData): string {
-	if (typeof rawMessage === "string") {
-		return rawMessage;
-	}
-
-	if (Array.isArray(rawMessage)) {
-		return Buffer.concat(rawMessage).toString("utf8");
-	}
-
-	if (rawMessage instanceof ArrayBuffer) {
-		return Buffer.from(rawMessage).toString("utf8");
-	}
-
-	return rawMessage.toString("utf8");
-}
-
-function parseRelayMessage(rawMessage: RawData): RelayInboundMessage | null {
-	let value: unknown;
-	try {
-		value = JSON.parse(rawMessageToString(rawMessage));
-	} catch {
-		return null;
-	}
-
-	if (!isObjectRecord(value)) {
-		return null;
-	}
-
-	if (value.type !== "command" && value.type !== "response") {
-		return null;
-	}
-
-	if (!isRelayAllowedAction(value.action) || !isObjectRecord(value.payload)) {
+	if (value.targetType !== undefined && value.targetType !== "agent" && value.targetType !== "client") {
 		return null;
 	}
 
 	return {
-		type: value.type,
-		action: value.action,
-		payload: value.payload,
+		targetId: value.targetId.trim(),
+		targetType: value.targetType,
 	};
 }
 
-function createPairingCode(length = 8): string {
-	let code = "";
-	for (let index = 0; index < length; index += 1) {
-		code += PAIRING_CODE_ALPHABET[randomInt(0, PAIRING_CODE_ALPHABET.length)]!;
-	}
-
-	return code;
+function getDefaultTargetType(type: UserType): RelayPrincipalType {
+	return type === "client" ? "agent" : "client";
 }
 
-function createPairingStateMessage(
-	clientId: string,
-	request: RelayPairingRequestRecord | null,
-	agentId: string | null,
-): RelayPairingStateMessage {
-	if (agentId) {
-		return {
-			type: "pairing_state",
-			status: "paired",
-			clientId,
-			pairingCode: null,
-			agentId,
-			expiresAt: null,
-		};
+function authorizeRelayConnection(
+	principal: AuthTokenPayload,
+	request: RelayConnectionRequest,
+): RelayConnectionResponse {
+	const targetType = request.targetType ?? getDefaultTargetType(principal.type);
+	const expectedTargetType = getDefaultTargetType(principal.type);
+	if (targetType !== expectedTargetType) {
+		throw new AuthError(`invalid target type for ${principal.type}`);
+	}
+
+	if (principal.targetType && principal.targetType !== targetType) {
+		throw new AuthError("token target type mismatch");
+	}
+
+	if (principal.targetId && principal.targetId !== request.targetId) {
+		throw new AuthError("token target id mismatch");
 	}
 
 	return {
-		type: "pairing_state",
-		status: "pending",
-		clientId,
-		pairingCode: request?.pairingCode ?? null,
-		agentId: null,
-		expiresAt: request?.expiresAt ?? null,
+		principal: {
+			id: principal.id,
+			type: principal.type,
+			expiresAt: principal.exp * 1000,
+			scopedToTarget: Boolean(principal.targetId || principal.targetType),
+		},
+		target: {
+			id: request.targetId,
+			type: targetType,
+		},
 	};
 }
 
-function sendPairingState(clientId: string) {
-	const socket = clients.get(clientId);
-	if (!socket || socket.readyState !== WebSocket.OPEN) {
-		return;
-	}
-
-	const pairing = stateStore.getPairingByClientId(clientId);
-	const request = pairing ? null : stateStore.getPairingRequestByClientId(clientId);
-	socket.send(JSON.stringify(createPairingStateMessage(clientId, request, pairing?.agentId ?? null)));
-}
-
-function resolveOrCreatePendingPairing(clientId: string): RelayPairingRequestRecord {
-	const now = Date.now();
-	const existing = stateStore.getPairingRequestByClientId(clientId);
-	if (existing && existing.expiresAt > now) {
-		return existing;
-	}
-
-	for (let attempts = 0; attempts < 5; attempts += 1) {
-		const pairingCode = createPairingCode();
-		try {
-			return stateStore.upsertPairingRequest({
-				clientId,
-				pairingCode,
-				createdAt: now,
-				expiresAt: now + RELAY_PAIRING_CODE_TTL_MS,
-			});
-		} catch (error) {
-			if (!(error instanceof Error) || !error.message.includes("UNIQUE")) {
-				throw error;
-			}
-		}
-	}
-
-	throw new Error("failed to allocate unique pairing code");
-}
-
-function ensureAgentPairing(user: AuthTokenPayload) {
-	const existingPairing = stateStore.getPairingByAgentId(user.id);
-	const requestedPairing = user.pairingCode ? stateStore.getPairingRequestByCode(user.pairingCode) : null;
-
-	if (requestedPairing) {
-		if (requestedPairing.expiresAt <= Date.now()) {
-			stateStore.deletePairingRequestByClientId(requestedPairing.clientId);
-			if (!existingPairing) {
-				throw new AuthError("pairing code expired");
-			}
-		} else {
-			const at = Date.now();
-			const previousClientId =
-				existingPairing && existingPairing.clientId !== requestedPairing.clientId ? existingPairing.clientId : null;
-
-			stateStore.replacePairing({ clientId: requestedPairing.clientId, agentId: user.id, at });
-			stateStore.markPairingRequestClaimed(requestedPairing.clientId, user.id, at);
-			stateStore.deletePairingRequestByClientId(requestedPairing.clientId);
-			log("info", "relay pairing claimed", {
-				clientId: requestedPairing.clientId,
-				agentId: user.id,
-				reassigned: previousClientId !== null,
-			});
-			sendPairingState(requestedPairing.clientId);
-
-			if (previousClientId) {
-				resolveOrCreatePendingPairing(previousClientId);
-				sendPairingState(previousClientId);
-			}
-			return;
-		}
-	}
-
-	if (existingPairing) {
-		sendPairingState(existingPairing.clientId);
-		return;
-	}
-
-	if (!user.pairingCode) {
-		throw new AuthError("agent pairing code is required");
-	}
-
-	if (!requestedPairing) {
-		throw new AuthError("unknown pairing code");
-	}
-
-	if (requestedPairing.expiresAt <= Date.now()) {
-		stateStore.deletePairingRequestByClientId(requestedPairing.clientId);
-		throw new AuthError("pairing code expired");
-	}
-}
-
-function getRegistry(type: UserType): Map<string, RelaySocket> {
-	return type === "agent" ? agents : clients;
-}
-
-function closeUnauthorized(socket: RelaySocket, reason = "unauthorized") {
-	try {
-		socket.close(1008, reason);
-	} catch (error) {
-		log("warn", "failed to close unauthorized socket", {
-			error: error instanceof Error ? error.message : String(error),
-		});
-	}
-}
-
-function createConnectionId(): string {
-	return randomUUID();
-}
-
-function mapAuthFailureReason(error: unknown): string {
+function mapRelayConnectionErrorStatus(error: unknown): number {
 	const message = error instanceof Error ? error.message : String(error);
-	if (message === "agent pairing code is required") {
-		return "pairing_required";
+	if (
+		message === "invalid target type for client" ||
+		message === "invalid target type for agent" ||
+		message === "token target type mismatch" ||
+		message === "token target id mismatch"
+	) {
+		return 403;
 	}
 
-	if (message === "pairing code expired") {
-		return "pairing_expired";
-	}
-
-	if (message === "unknown pairing code") {
-		return "pairing_invalid";
-	}
-
-	return "unauthorized";
-}
-
-function sendError(socket: RelaySocket, code: string, message: string) {
-	if (socket.readyState !== WebSocket.OPEN) {
-		return;
-	}
-
-	socket.send(JSON.stringify({ type: "error", code, message }));
-}
-
-function markPrincipalConnected(user: AuthTokenPayload) {
-	stateStore.upsertPrincipal({
-		principalId: user.id,
-		principalType: user.type,
-		connectionStatus: "online",
-		handshakeState: "ready",
-		at: Date.now(),
-	});
-}
-
-function markPrincipalDisconnected(user: AuthTokenPayload) {
-	stateStore.markPrincipalDisconnected(user.id, Date.now());
-}
-
-function registerConnection(socket: RelaySocket) {
-	const user = socket.user;
-	if (!user) {
-		closeUnauthorized(socket);
-		return;
-	}
-
-	if (user.type === "agent") {
-		ensureAgentPairing(user);
-	}
-
-	const registry = getRegistry(user.type);
-	const existingSocket = registry.get(user.id);
-	if (existingSocket && existingSocket !== socket && existingSocket.readyState === WebSocket.OPEN) {
-		log("info", "replacing existing relay connection", {
-			id: user.id,
-			type: user.type,
-			previousConnectionId: existingSocket.connectionId ?? null,
-			nextConnectionId: socket.connectionId ?? null,
-		});
-		existingSocket.close(RELAY_CLOSE_REPLACED, "replaced");
-	}
-
-	registry.set(user.id, socket);
-	markPrincipalConnected(user);
-	if (user.type === "agent") {
-		discardQueuedMessages(socket);
-	} else {
-		flushQueuedMessages(socket);
-	}
-	if (user.type === "client") {
-		sendPairingState(user.id);
-	}
-	log("info", "authenticated relay connection", {
-		id: user.id,
-		type: user.type,
-		connectionId: socket.connectionId,
-	});
-}
-
-function cleanupConnection(socket: RelaySocket, code?: number, reason?: string) {
-	const user = socket.user;
-	if (!user) {
-		return;
-	}
-
-	const registry = getRegistry(user.type);
-	if (registry.get(user.id) === socket) {
-		registry.delete(user.id);
-		markPrincipalDisconnected(user);
-	}
-
-	log("info", "relay connection closed", {
-		id: user.id,
-		type: user.type,
-		connectionId: socket.connectionId,
-		code,
-		reason: reason || null,
-	});
-}
-
-function resolvePairedTarget(user: AuthTokenPayload): { targetId: string; targetType: RelayPrincipalType } | null {
-	if (user.type === "client") {
-		const pairing = stateStore.getPairingByClientId(user.id);
-		return pairing ? { targetId: pairing.agentId, targetType: "agent" } : null;
-	}
-
-	const pairing = stateStore.getPairingByAgentId(user.id);
-	return pairing ? { targetId: pairing.clientId, targetType: "client" } : null;
-}
-
-function isAuthorizedRoute(user: AuthTokenPayload, message: RelayInboundMessage): boolean {
-	if (user.type === "client") {
-		return message.type === "command";
-	}
-
-	if (user.type === "agent") {
-		return message.type === "response";
-	}
-
-	return false;
-}
-
-function buildOutboundMessage(user: AuthTokenPayload, message: RelayInboundMessage): RelayOutboundMessage | null {
-	const target = resolvePairedTarget(user);
-	if (!target) {
-		return null;
-	}
-
-	return {
-		type: message.type,
-		to: target.targetType,
-		targetId: target.targetId,
-		action: message.action,
-		payload: message.payload,
-		fromId: user.id,
-		fromType: user.type,
-	};
-}
-
-function deliverEnvelope(target: RelaySocket, envelope: RelayOutboundMessage): boolean {
-	if (target.readyState !== WebSocket.OPEN) {
-		return false;
-	}
-
-	try {
-		target.send(JSON.stringify(envelope));
-		return true;
-	} catch (error) {
-		log("error", "failed to forward relay message", {
-			fromId: envelope.fromId,
-			fromType: envelope.fromType,
-			targetId: envelope.targetId,
-			error: error instanceof Error ? error.message : String(error),
-		});
-		return false;
-	}
-}
-
-function enqueueEnvelope(envelope: RelayOutboundMessage) {
-	const metadata = stateStore.enqueueEnvelope(envelope, Date.now());
-	log("info", "queued relay message for offline target", {
-		id: metadata.id,
-		fromId: metadata.fromId,
-		fromType: metadata.fromType,
-		targetId: metadata.targetId,
-		targetType: metadata.targetType,
-		action: metadata.action,
-	});
-}
-
-function discardQueuedMessages(socket: RelaySocket) {
-	const user = socket.user;
-	if (!user) {
-		return;
-	}
-
-	const queuedEnvelopes = stateStore.listQueuedEnvelopesForTarget(user.type, user.id);
-	if (queuedEnvelopes.length === 0) {
-		return;
-	}
-
-	for (const queuedEnvelope of queuedEnvelopes) {
-		stateStore.deleteQueuedEnvelope(queuedEnvelope.id);
-	}
-
-	log("info", "discarded queued relay messages", {
-		targetId: user.id,
-		targetType: user.type,
-		count: queuedEnvelopes.length,
-	});
-}
-
-function flushQueuedMessages(socket: RelaySocket) {
-	const user = socket.user;
-	if (!user) {
-		return;
-	}
-
-	const queuedEnvelopes = stateStore.listQueuedEnvelopesForTarget(user.type, user.id);
-	if (queuedEnvelopes.length === 0) {
-		return;
-	}
-
-	for (const queuedEnvelope of queuedEnvelopes) {
-		if (!deliverEnvelope(socket, queuedEnvelope.envelope)) {
-			break;
-		}
-
-		stateStore.deleteQueuedEnvelope(queuedEnvelope.id);
-		log("info", "flushed queued relay message", {
-			id: queuedEnvelope.id,
-			targetId: user.id,
-			targetType: user.type,
-		});
-	}
-}
-
-function handleOfflineTarget(socket: RelaySocket, outboundMessage: RelayOutboundMessage, context: string) {
-	if (outboundMessage.to === "agent") {
-		log("warn", "rejected message for offline relay target", {
-			fromId: outboundMessage.fromId,
-			fromType: outboundMessage.fromType,
-			targetId: outboundMessage.targetId,
-			targetType: outboundMessage.to,
-			action: outboundMessage.action,
-			context,
-		});
-		sendError(socket, "server_unavailable", "Server is not connected. Retry after it reconnects.");
-		return;
-	}
-
-	try {
-		enqueueEnvelope(outboundMessage);
-	} catch (error) {
-		log("error", "failed to queue relay message", {
-			fromId: outboundMessage.fromId,
-			fromType: outboundMessage.fromType,
-			targetId: outboundMessage.targetId,
-			targetType: outboundMessage.to,
-			context,
-			error: error instanceof Error ? error.message : String(error),
-		});
-		sendError(socket, "delivery_failed", "failed to queue message for offline target");
-	}
-}
-
-function forwardMessage(socket: RelaySocket, message: RelayInboundMessage) {
-	const user = socket.user;
-	if (!user) {
-		closeUnauthorized(socket);
-		return;
-	}
-
-	if (!isAuthorizedRoute(user, message)) {
-		log("warn", "rejected unauthorized route", {
-			fromId: user.id,
-			fromType: user.type,
-			messageType: message.type,
-			action: message.action,
-		});
-		sendError(socket, "forbidden", "route not allowed for this role");
-		return;
-	}
-
-	const outboundMessage = buildOutboundMessage(user, message);
-	if (!outboundMessage) {
-		sendError(socket, "pairing_required", "pairing has not completed yet");
-		return;
-	}
-
-	const target = getRegistry(outboundMessage.to).get(outboundMessage.targetId);
-	if (!target || target.readyState !== WebSocket.OPEN) {
-		handleOfflineTarget(socket, outboundMessage, "target_not_open");
-		return;
-	}
-
-	if (!deliverEnvelope(target, outboundMessage)) {
-		handleOfflineTarget(socket, outboundMessage, "live_delivery_failed");
-	}
-}
-
-function handleMessage(socket: RelaySocket, rawMessage: RawData) {
-	const message = parseRelayMessage(rawMessage);
-	if (!message) {
-		const user = socket.user;
-		log("warn", "rejected invalid relay message", {
-			id: user?.id,
-			type: user?.type,
-		});
-		sendError(socket, "invalid_message", "message must be valid JSON with the relay schema");
-		return;
-	}
-
-	forwardMessage(socket, message);
+	return 401;
 }
 
 export function runRelayServer(options?: { port?: number }) {
 	const port = options?.port ?? parsePort(process.env.PORT);
-	const wss = new WebSocketServer({
-		noServer: true,
-		handleProtocols(protocols) {
-			if (protocols.has(RELAY_BROWSER_PROTOCOL)) {
-				return RELAY_BROWSER_PROTOCOL;
-			}
-
-			const firstProtocol = protocols.values().next();
-			return firstProtocol.done ? false : firstProtocol.value;
-		},
-	});
 	const server = createServer(async (request, response) => {
 		const pathname = new URL(request.url ?? "/", "http://relay.local").pathname;
+		const corsHeaders = createCorsHeaders();
 
 		if (pathname === "/health") {
 			sendJson(response, 200, {
 				ok: true,
 				service: "relay-server",
+				websocketTransport: "disabled",
 			});
 			return;
 		}
 
-		if (pathname === RELAY_BOOTSTRAP_PATH) {
-			const corsHeaders = createCorsHeaders();
-
+		if (pathname === RELAY_CONNECTION_PATH) {
 			if (request.method === "OPTIONS") {
 				response.statusCode = 204;
 				setHeaders(response, corsHeaders);
@@ -713,97 +208,62 @@ export function runRelayServer(options?: { port?: number }) {
 				return;
 			}
 
-			const bootstrapRequest = await parseRelayBootstrapRequest(request);
-			if (!bootstrapRequest) {
-				sendJson(response, 400, { message: "Invalid relay bootstrap request." }, corsHeaders);
+			const connectionRequest = await parseRelayConnectionRequest(request);
+			if (!connectionRequest) {
+				sendJson(response, 400, { message: "Invalid relay connection request." }, corsHeaders);
 				return;
 			}
 
 			try {
-				const pairing = stateStore.getPairingByClientId(bootstrapRequest.clientId);
-				const pendingRequest = pairing ? null : resolveOrCreatePendingPairing(bootstrapRequest.clientId);
-					const payload = {
-						clientId: bootstrapRequest.clientId,
-						token: generateToken({ type: "client", id: bootstrapRequest.clientId }),
-						expiresAt: Date.now() + RELAY_JWT_TTL_MS,
-						websocketUrl: resolvePublicWebSocketUrl(request),
-					pairing: createPairingStateMessage(
-						bootstrapRequest.clientId,
-						pendingRequest,
-						pairing?.agentId ?? null,
-						),
-					} satisfies RelayClientBootstrapResponse;
-					log("info", "issued relay bootstrap token", {
-						clientId: bootstrapRequest.clientId,
-						pairingStatus: payload.pairing.status,
-						websocketUrl: payload.websocketUrl,
-					});
-					sendJson(response, 200, payload, corsHeaders);
-				} catch (error) {
-				log("error", "failed to issue relay bootstrap token", {
-					clientId: bootstrapRequest.clientId,
-					error: error instanceof Error ? error.message : String(error),
+				const principal = authenticateHttpRequest(request);
+				const payload = authorizeRelayConnection(principal, connectionRequest);
+				log("info", "authenticated relay http connection", {
+					principalId: payload.principal.id,
+					principalType: payload.principal.type,
+					targetId: payload.target.id,
+					targetType: payload.target.type,
+					scopedToTarget: payload.principal.scopedToTarget,
 				});
-				sendJson(
-					response,
-					500,
-					{ message: error instanceof Error ? error.message : "failed to issue relay bootstrap token" },
-					corsHeaders,
-				);
+				sendJson(response, 200, payload, corsHeaders);
+			} catch (error) {
+				const statusCode = mapRelayConnectionErrorStatus(error);
+				const message = error instanceof Error ? error.message : "relay connection authorization failed";
+				log("warn", "relay http connection rejected", {
+					error: message,
+				});
+				sendJson(response, statusCode, { message }, corsHeaders);
 			}
 			return;
 		}
 
-		sendText(response, 426, "Upgrade Required");
-	});
+		if (pathname === RELAY_BOOTSTRAP_PATH) {
+			if (request.method === "OPTIONS") {
+				response.statusCode = 204;
+				setHeaders(response, corsHeaders);
+				response.end();
+				return;
+			}
 
-	wss.on("connection", (socket: RelaySocket, request) => {
-		socket.connectionId = createConnectionId();
-		try {
-			socket.user = authenticateRequest(request);
-			registerConnection(socket);
-		} catch (error) {
-			const reason = error instanceof AuthError ? error.message : "unknown auth error";
-			log("warn", "relay authentication failed", {
-				reason,
-				remoteAddress: request.socket.remoteAddress,
-			});
-			closeUnauthorized(socket, mapAuthFailureReason(error));
+			sendJson(
+				response,
+				410,
+				{ message: "Relay WebSocket bootstrap is disabled pending HTTP transport implementation." },
+				corsHeaders,
+			);
 			return;
 		}
 
-		socket.on("message", (rawMessage) => {
-			handleMessage(socket, rawMessage);
-		});
-
-		socket.on("error", (error) => {
-			log("warn", "relay socket error", {
-				id: socket.user?.id,
-				type: socket.user?.type,
-				error: error.message,
-			});
-		});
-
-		socket.on("close", (code, reason) => {
-			cleanupConnection(socket, code, reason.toString());
-		});
-	});
-
-	server.on("upgrade", (request, socket, head) => {
-		wss.handleUpgrade(request, socket, head, (websocket) => {
-			wss.emit("connection", websocket, request);
-		});
+		sendText(response, 404, "Not Found", corsHeaders);
 	});
 
 	server.listen(port);
 
 	log("info", "relay server listening", {
 		port,
-		allowedActions: RELAY_ALLOWED_ACTIONS,
-		sqlitePath: process.env.RELAY_SQLITE_PATH?.trim() || ".data/relay-state.sqlite",
+		websocketTransport: "disabled",
 	});
 
-	return wss;
+	return server;
 }
 
 if (import.meta.main) {

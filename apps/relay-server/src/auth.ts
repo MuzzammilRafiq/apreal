@@ -23,6 +23,8 @@ export type AuthTokenPayload = {
 	type: UserType;
 	id: string;
 	pairingCode?: string;
+	targetId?: string;
+	targetType?: UserType;
 	iat: number;
 	exp: number;
 };
@@ -31,6 +33,8 @@ type GenerateTokenInput = {
 	type: UserType;
 	id: string;
 	pairingCode?: string;
+	targetId?: string;
+	targetType?: UserType;
 };
 
 // Relay auth failures are treated as controlled protocol failures, not as
@@ -107,6 +111,15 @@ function validateTokenPayload(payload: string | JwtPayload): AuthTokenPayload {
 		type: payload.type,
 		id: ensureString(payload.id, "id"),
 		pairingCode: payload.pairingCode === undefined ? undefined : ensurePairingCode(payload.pairingCode, "pairingCode"),
+		targetId: payload.targetId === undefined ? undefined : ensureString(payload.targetId, "targetId"),
+		targetType:
+			payload.targetType === undefined
+				? undefined
+				: isUserType(payload.targetType)
+					? payload.targetType
+					: (() => {
+						throw new AuthError("invalid token field: targetType");
+					})(),
 		iat: ensureNumber(payload.iat, "iat"),
 		exp: ensureNumber(payload.exp, "exp"),
 	};
@@ -149,7 +162,11 @@ function extractProtocolToken(headerValue: string | string[] | undefined): strin
 	return protocols[markerIndex + 1] ?? "";
 }
 
-function extractRequestToken(request: IncomingMessage): string {
+function extractRequestToken(request: IncomingMessage, source: "authorization" | "authorization-or-protocol"): string {
+	if (source === "authorization") {
+		return extractBearerToken(request.headers.authorization);
+	}
+
 	try {
 		return extractBearerToken(request.headers.authorization);
 	} catch (error) {
@@ -161,11 +178,7 @@ function extractRequestToken(request: IncomingMessage): string {
 	return extractProtocolToken(request.headers["sec-websocket-protocol"]);
 }
 
-// Authenticate a websocket upgrade request using the configured shared secret.
-// Only HS256 is allowed so peers cannot switch to a weaker or unintended
-// algorithm through crafted token headers.
-export function authenticateRequest(request: IncomingMessage): AuthTokenPayload {
-	const token = extractRequestToken(request);
+function verifyRelayToken(token: string): AuthTokenPayload {
 	let decoded: string | JwtPayload;
 	try {
 		decoded = jwt.verify(token, getJwtSecret(), {
@@ -182,10 +195,21 @@ export function authenticateRequest(request: IncomingMessage): AuthTokenPayload 
 	return validateTokenPayload(decoded);
 }
 
+// Authenticate a websocket upgrade request using the configured shared secret.
+// Only HS256 is allowed so peers cannot switch to a weaker or unintended
+// algorithm through crafted token headers.
+export function authenticateRequest(request: IncomingMessage): AuthTokenPayload {
+	return verifyRelayToken(extractRequestToken(request, "authorization-or-protocol"));
+}
+
+export function authenticateHttpRequest(request: IncomingMessage): AuthTokenPayload {
+	return verifyRelayToken(extractRequestToken(request, "authorization"));
+}
+
 // Helper used for provisioning and local testing. The relay itself does not
 // mint tokens during websocket handling; it only verifies them. Keeping the
 // helper here ensures token creation and token validation share one contract.
-export function generateToken({ type, id, pairingCode }: GenerateTokenInput): string {
+export function generateToken({ type, id, pairingCode, targetId, targetType }: GenerateTokenInput): string {
 	if (!isUserType(type)) {
 		throw new AuthError("invalid token role");
 	}
@@ -194,8 +218,14 @@ export function generateToken({ type, id, pairingCode }: GenerateTokenInput): st
 	if (pairingCode !== undefined) {
 		ensurePairingCode(pairingCode, "pairingCode");
 	}
+	if (targetId !== undefined) {
+		ensureString(targetId, "targetId");
+	}
+	if (targetType !== undefined && !isUserType(targetType)) {
+		throw new AuthError("invalid token field: targetType");
+	}
 
-	return jwt.sign({ type, id, pairingCode }, getJwtSecret(), {
+	return jwt.sign({ type, id, pairingCode, targetId, targetType }, getJwtSecret(), {
 		algorithm: "HS256",
 		expiresIn: RELAY_JWT_EXPIRES_IN,
 	});

@@ -39,8 +39,13 @@ const DEFAULT_PORT = 3000;
 const SERVER_SRC_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_WORKSPACE_ROOT = join(SERVER_SRC_DIR, "..", "..", "..");
 const PI_AGENT_RELAY_AUTH_PATH = join(homedir(), ".pi", "agent", "relay-auth.json");
+const CLIENT_EVENT_STREAM_PATH = "/api/client/stream";
+const CLIENT_MESSAGE_PATH = "/api/client/message";
+const DEFAULT_HTTP_CLIENT_ID = "default-client";
+const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
+const SSE_ENCODER = new TextEncoder();
 
-type ClientTransport = "relay";
+type ClientTransport = "relay" | "http";
 
 type ServerMessage = ServerAppMessage<SessionSummary, TranscriptMessage>;
 
@@ -191,7 +196,7 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
 function createCorsHeaders(): Record<string, string> {
 	return {
 		"access-control-allow-origin": "*",
-		"access-control-allow-methods": "POST, OPTIONS",
+		"access-control-allow-methods": "GET, POST, OPTIONS",
 		"access-control-allow-headers": "content-type",
 	};
 }
@@ -411,55 +416,144 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 			});
 		}
 
-		const bootstrapRequest = await parseRelayBootstrapRequest(request);
-		if (!bootstrapRequest) {
+		/*
+		The WebSocket bootstrap handoff is intentionally disabled while the relay
+		moves to stateless HTTP streaming.
+		*/
+		return json(
+			{ message: "Relay WebSocket bootstrap is disabled pending HTTP transport implementation." },
+			{ status: 410, headers: createCorsHeaders() },
+		);
+	}
+
+	function createSseChunk(payload: ServerMessage): Uint8Array {
+		return SSE_ENCODER.encode(`data: ${JSON.stringify(payload)}\n\n`);
+	}
+
+	function createSseComment(comment: string): Uint8Array {
+		return SSE_ENCODER.encode(`: ${comment}\n\n`);
+	}
+
+	function createSseStreamResponse(request: Request): Response {
+		const clientId = DEFAULT_HTTP_CLIENT_ID;
+		const stream = new TransformStream<Uint8Array, Uint8Array>();
+		const writer = stream.writable.getWriter();
+		let closed = false;
+		let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+		const closeStream = (reason: string) => {
+			if (closed) {
+				return;
+			}
+
+			closed = true;
+			if (heartbeatTimer) {
+				clearInterval(heartbeatTimer);
+				heartbeatTimer = null;
+			}
+
+			const existingClient = clients.get(clientId);
+			if (existingClient?.send === sendPayload) {
+				removeClientConnection(clientId, reason);
+			}
+
+			void writer.close().catch(() => {
+				// Ignore stream close races from disconnects.
+			});
+		};
+
+		const sendPayload: ClientConnection["send"] = (payload) => {
+			if (closed) {
+				return false;
+			}
+
+			void writer.write(createSseChunk(payload)).catch((error) => {
+				logger.warn("failed to write http stream payload", {
+					clientId,
+					error: getErrorMessage(error),
+				});
+				closeStream("http_stream_write_failed");
+			});
+			return true;
+		};
+
+		void writer.write(createSseComment("connected")).catch(() => {
+			closeStream("http_stream_open_failed");
+		});
+
+		const client = registerClientConnection(clientId, "http", sendPayload);
+		client.ready = true;
+		sendConnected(clientId);
+		sendSessionsUpdated(clientId);
+
+		heartbeatTimer = setInterval(() => {
+			if (closed) {
+				return;
+			}
+
+			void writer.write(createSseComment("ping")).catch(() => {
+				closeStream("http_stream_heartbeat_failed");
+			});
+		}, SSE_HEARTBEAT_INTERVAL_MS);
+
+		request.signal.addEventListener("abort", () => {
+			closeStream("http_stream_closed");
+		});
+
+		return new Response(stream.readable, {
+			headers: {
+				...createCorsHeaders(),
+				"cache-control": "no-store",
+				connection: "keep-alive",
+				"content-type": "text/event-stream; charset=utf-8",
+				"x-accel-buffering": "no",
+			},
+		});
+	}
+
+	async function handleHttpClientMessage(request: Request): Promise<Response> {
+		if (request.method === "OPTIONS") {
+			return new Response(null, {
+				status: 204,
+				headers: createCorsHeaders(),
+			});
+		}
+
+		if (request.method !== "POST") {
+			return new Response("Method Not Allowed", {
+				status: 405,
+				headers: createCorsHeaders(),
+			});
+		}
+
+		const client = clients.get(DEFAULT_HTTP_CLIENT_ID);
+		if (!client || client.closed) {
 			return json(
-				{ message: "Invalid relay bootstrap request." },
+				{ message: "Client event stream is not connected." },
+				{ status: 409, headers: createCorsHeaders() },
+			);
+		}
+
+		let payload: unknown;
+		try {
+			payload = await request.json();
+		} catch {
+			return json(
+				{ message: "Invalid client message payload." },
 				{ status: 400, headers: createCorsHeaders() },
 			);
 		}
 
-		const relayAgentId = normalizeRelayPrincipalId(transportConfig.relayAgentId);
-		if (!relayAgentId || !transportConfig.relayUrl) {
+		const message = parseClientAppMessage(payload);
+		if (!message) {
 			return json(
-				{ message: "Relay transport is not configured." },
-				{ status: 500, headers: createCorsHeaders() },
+				{ message: "Invalid client message payload." },
+				{ status: 400, headers: createCorsHeaders() },
 			);
 		}
 
-		try {
-			const relayBootstrapUrl = new URL(RELAY_BOOTSTRAP_PATH, transportConfig.relayUrl.replace(/^ws/i, "http"));
-			const relayResponse = await fetch(relayBootstrapUrl, {
-				method: "POST",
-				headers: {
-					"content-type": "application/json",
-				},
-				body: JSON.stringify(bootstrapRequest satisfies RelayClientBootstrapRequest),
-			});
-
-			if (!relayResponse.ok) {
-				return json(
-					{ message: `relay bootstrap failed with status ${relayResponse.status}` },
-					{ status: 502, headers: createCorsHeaders() },
-				);
-			}
-
-			const response = (await relayResponse.json()) as RelayClientBootstrapResponse;
-
-			return json(response, {
-				status: 200,
-				headers: createCorsHeaders(),
-			});
-		} catch (error) {
-			logger.error("failed to issue relay bootstrap token", {
-				clientId: bootstrapRequest.clientId,
-				error: getErrorMessage(error),
-			});
-			return json(
-				{ message: getErrorMessage(error) },
-				{ status: 500, headers: createCorsHeaders() },
-			);
-		}
+		await handleClientMessage(DEFAULT_HTTP_CLIENT_ID, message);
+		return json({ ok: true }, { status: 202, headers: createCorsHeaders() });
 	}
 
 	function sendClientPayload(
@@ -1078,7 +1172,7 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 			sessionLogger.info("creating shared browser session", { cwd, sessionId: session.id });
 			const controller = await createAgentController(cwd, {
 				sessionId: session.id,
-				transport: "websocket",
+				transport: "http",
 			});
 			session.controller = controller;
 			session.model = formatModelLabel(controller.model);
@@ -1340,10 +1434,32 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 					return handleRelayBootstrapRequest(request);
 				}
 
+				if (url.pathname === CLIENT_EVENT_STREAM_PATH) {
+					if (request.method === "OPTIONS") {
+						return new Response(null, {
+							status: 204,
+							headers: createCorsHeaders(),
+						});
+					}
+
+					if (request.method !== "GET") {
+						return new Response("Method Not Allowed", {
+							status: 405,
+							headers: createCorsHeaders(),
+						});
+					}
+
+					return createSseStreamResponse(request);
+				}
+
+				if (url.pathname === CLIENT_MESSAGE_PATH) {
+					return handleHttpClientMessage(request);
+				}
+
 				if (url.pathname === "/health") {
 					return json({
 						status: "ok",
-						transport: "relay",
+						transport: "http-sse",
 						clients: clients.size,
 						sessions: sessions.size,
 						cwd,
@@ -1365,13 +1481,14 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 		cwd,
 		port: server.port,
 		logLevel: process.env.LOG_LEVEL ?? "info",
-		transport: "relay",
+		transport: "relay-http-pending",
 	});
 	console.log(`Pi web server ready in ${cwd}`);
 	console.log("Frontend UI: http://localhost:5173");
 	console.log(`Health check: http://localhost:${server.port}/health`);
 	console.log(`Relay endpoint: ${transportConfig.relayUrl}`);
 	console.log(`Relay agent id: ${transportConfig.relayAgentId}`);
+	console.log("Relay WebSocket transport is disabled pending HTTP transport implementation.");
 	console.log("Browser chat sessions are shared across tabs while the server is running.");
 
 	return server;

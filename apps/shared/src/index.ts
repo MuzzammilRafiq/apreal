@@ -4,6 +4,7 @@ export const RELAY_CLOSE_REPLACED = 4001;
 export const RELAY_CLIENT_ID_STORAGE_KEY = "pi-browser-client-id";
 export const RELAY_CLIENT_TOKEN_STORAGE_KEY = "pi-browser-relay-token";
 export const RELAY_BOOTSTRAP_PATH = "/api/relay/bootstrap";
+export const RELAY_CONNECTION_PATH = "/api/relay/connection";
 export const RELAY_SESSION_ACTION = "session_message" as const;
 export const RELAY_ALLOWED_ACTIONS = ["ping", "read_file", "session_message"] as const;
 export const RELAY_HANDSHAKE_STATES = ["awaiting_hello", "ready"] as const;
@@ -83,6 +84,24 @@ export type RelayPairingStateMessage = {
 
 export type RelayClientBootstrapRequest = {
 	clientId: string;
+};
+
+export type RelayConnectionRequest = {
+	targetId: string;
+	targetType?: RelayPrincipalType;
+};
+
+export type RelayConnectionResponse = {
+	principal: {
+		id: string;
+		type: RelayPrincipalType;
+		expiresAt: number;
+		scopedToTarget: boolean;
+	};
+	target: {
+		id: string;
+		type: RelayPrincipalType;
+	};
 };
 
 export type RelayClientBootstrapResponse = {
