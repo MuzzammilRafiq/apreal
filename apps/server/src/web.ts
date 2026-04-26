@@ -428,7 +428,8 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 		}
 
 		try {
-			const relayResponse = await fetch(RELAY_BOOTSTRAP_PATH, {
+			const relayBootstrapUrl = new URL(RELAY_BOOTSTRAP_PATH, transportConfig.relayUrl.replace(/^ws/i, "http"));
+			const relayResponse = await fetch(relayBootstrapUrl, {
 				method: "POST",
 				headers: {
 					"content-type": "application/json",

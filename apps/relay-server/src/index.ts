@@ -1,10 +1,11 @@
-import { randomInt } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 import {
 	RELAY_ALLOWED_ACTIONS,
 	RELAY_BOOTSTRAP_PATH,
 	RELAY_BROWSER_PROTOCOL,
+	RELAY_CLOSE_REPLACED,
 	isRelayAllowedAction,
 	normalizeRelayPrincipalId,
 	type RelayClientBootstrapRequest,
@@ -24,16 +25,18 @@ import {
 	type UserType,
 } from "./auth.ts";
 import { RelayStateStore } from "./state-store.ts";
+import { config } from "dotenv";
 
+config();
 const DEFAULT_PORT = 3001;
 const RELAY_PAIRING_CODE_TTL_MS = 10 * 60 * 1000;
 const PAIRING_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
 type RelayInboundMessage = RelayInboundEnvelope<Record<string, unknown>>;
 type RelayOutboundMessage = RelayOutboundEnvelope<Record<string, unknown>>;
 
 type RelaySocket = WebSocket & {
 	user?: AuthTokenPayload;
+	connectionId?: string;
 };
 
 type LogLevel = "info" | "warn" | "error";
@@ -150,7 +153,32 @@ function getForwardedHeader(request: IncomingMessage, name: string): string | nu
 	return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+function normalizeWebSocketUrl(rawUrl: string, field: string): string {
+	const trimmedUrl = rawUrl.trim();
+	if (!trimmedUrl) {
+		throw new Error(`${field} is empty`);
+	}
+
+	const url = new URL(trimmedUrl);
+	if (url.protocol === "http:") {
+		url.protocol = "ws:";
+	}
+	if (url.protocol === "https:") {
+		url.protocol = "wss:";
+	}
+	if (url.protocol !== "ws:" && url.protocol !== "wss:") {
+		throw new Error(`${field} must use ws, wss, http, or https`);
+	}
+
+	return url.toString();
+}
+
 function resolvePublicWebSocketUrl(request: IncomingMessage): string {
+	const configuredUrl = process.env.RELAY_PUBLIC_WEBSOCKET_URL?.trim();
+	if (configuredUrl) {
+		return normalizeWebSocketUrl(configuredUrl, "RELAY_PUBLIC_WEBSOCKET_URL");
+	}
+
 	const forwardedProtocol = getForwardedHeader(request, "x-forwarded-proto");
 	const host = getForwardedHeader(request, "x-forwarded-host") ?? getForwardedHeader(request, "host");
 	if (!host) {
@@ -158,7 +186,11 @@ function resolvePublicWebSocketUrl(request: IncomingMessage): string {
 	}
 
 	const protocol = forwardedProtocol === "https" ? "wss" : forwardedProtocol === "http" ? "ws" : "ws";
-	return `${protocol}://${host}`;
+	const forwardedPrefix = getForwardedHeader(request, "x-forwarded-prefix") ?? "";
+	const publicPath = process.env.RELAY_PUBLIC_WEBSOCKET_PATH?.trim() || forwardedPrefix;
+	const normalizedPath = publicPath && publicPath !== "/" ? `/${publicPath.replace(/^\/+|\/+$/g, "")}` : "";
+
+	return normalizeWebSocketUrl(`${protocol}://${host}${normalizedPath}`, "public websocket URL");
 }
 
 function rawMessageToString(rawMessage: RawData): string {
@@ -278,6 +310,37 @@ function resolveOrCreatePendingPairing(clientId: string): RelayPairingRequestRec
 
 function ensureAgentPairing(user: AuthTokenPayload) {
 	const existingPairing = stateStore.getPairingByAgentId(user.id);
+	const requestedPairing = user.pairingCode ? stateStore.getPairingRequestByCode(user.pairingCode) : null;
+
+	if (requestedPairing) {
+		if (requestedPairing.expiresAt <= Date.now()) {
+			stateStore.deletePairingRequestByClientId(requestedPairing.clientId);
+			if (!existingPairing) {
+				throw new AuthError("pairing code expired");
+			}
+		} else {
+			const at = Date.now();
+			const previousClientId =
+				existingPairing && existingPairing.clientId !== requestedPairing.clientId ? existingPairing.clientId : null;
+
+			stateStore.replacePairing({ clientId: requestedPairing.clientId, agentId: user.id, at });
+			stateStore.markPairingRequestClaimed(requestedPairing.clientId, user.id, at);
+			stateStore.deletePairingRequestByClientId(requestedPairing.clientId);
+			log("info", "relay pairing claimed", {
+				clientId: requestedPairing.clientId,
+				agentId: user.id,
+				reassigned: previousClientId !== null,
+			});
+			sendPairingState(requestedPairing.clientId);
+
+			if (previousClientId) {
+				resolveOrCreatePendingPairing(previousClientId);
+				sendPairingState(previousClientId);
+			}
+			return;
+		}
+	}
+
 	if (existingPairing) {
 		sendPairingState(existingPairing.clientId);
 		return;
@@ -287,25 +350,14 @@ function ensureAgentPairing(user: AuthTokenPayload) {
 		throw new AuthError("agent pairing code is required");
 	}
 
-	const request = stateStore.getPairingRequestByCode(user.pairingCode);
-	if (!request) {
+	if (!requestedPairing) {
 		throw new AuthError("unknown pairing code");
 	}
 
-	if (request.expiresAt <= Date.now()) {
-		stateStore.deletePairingRequestByClientId(request.clientId);
+	if (requestedPairing.expiresAt <= Date.now()) {
+		stateStore.deletePairingRequestByClientId(requestedPairing.clientId);
 		throw new AuthError("pairing code expired");
 	}
-
-	const at = Date.now();
-	stateStore.replacePairing({ clientId: request.clientId, agentId: user.id, at });
-	stateStore.markPairingRequestClaimed(request.clientId, user.id, at);
-	stateStore.deletePairingRequestByClientId(request.clientId);
-	log("info", "relay pairing claimed", {
-		clientId: request.clientId,
-		agentId: user.id,
-	});
-	sendPairingState(request.clientId);
 }
 
 function getRegistry(type: UserType): Map<string, RelaySocket> {
@@ -320,6 +372,10 @@ function closeUnauthorized(socket: RelaySocket, reason = "unauthorized") {
 			error: error instanceof Error ? error.message : String(error),
 		});
 	}
+}
+
+function createConnectionId(): string {
+	return randomUUID();
 }
 
 function mapAuthFailureReason(error: unknown): string {
@@ -375,22 +431,33 @@ function registerConnection(socket: RelaySocket) {
 	const registry = getRegistry(user.type);
 	const existingSocket = registry.get(user.id);
 	if (existingSocket && existingSocket !== socket && existingSocket.readyState === WebSocket.OPEN) {
-		existingSocket.close(1008, "replaced");
+		log("info", "replacing existing relay connection", {
+			id: user.id,
+			type: user.type,
+			previousConnectionId: existingSocket.connectionId ?? null,
+			nextConnectionId: socket.connectionId ?? null,
+		});
+		existingSocket.close(RELAY_CLOSE_REPLACED, "replaced");
 	}
 
 	registry.set(user.id, socket);
 	markPrincipalConnected(user);
-	flushQueuedMessages(socket);
+	if (user.type === "agent") {
+		discardQueuedMessages(socket);
+	} else {
+		flushQueuedMessages(socket);
+	}
 	if (user.type === "client") {
 		sendPairingState(user.id);
 	}
 	log("info", "authenticated relay connection", {
 		id: user.id,
 		type: user.type,
+		connectionId: socket.connectionId,
 	});
 }
 
-function cleanupConnection(socket: RelaySocket) {
+function cleanupConnection(socket: RelaySocket, code?: number, reason?: string) {
 	const user = socket.user;
 	if (!user) {
 		return;
@@ -399,12 +466,15 @@ function cleanupConnection(socket: RelaySocket) {
 	const registry = getRegistry(user.type);
 	if (registry.get(user.id) === socket) {
 		registry.delete(user.id);
+		markPrincipalDisconnected(user);
 	}
 
-	markPrincipalDisconnected(user);
 	log("info", "relay connection closed", {
 		id: user.id,
 		type: user.type,
+		connectionId: socket.connectionId,
+		code,
+		reason: reason || null,
 	});
 }
 
@@ -478,6 +548,28 @@ function enqueueEnvelope(envelope: RelayOutboundMessage) {
 	});
 }
 
+function discardQueuedMessages(socket: RelaySocket) {
+	const user = socket.user;
+	if (!user) {
+		return;
+	}
+
+	const queuedEnvelopes = stateStore.listQueuedEnvelopesForTarget(user.type, user.id);
+	if (queuedEnvelopes.length === 0) {
+		return;
+	}
+
+	for (const queuedEnvelope of queuedEnvelopes) {
+		stateStore.deleteQueuedEnvelope(queuedEnvelope.id);
+	}
+
+	log("info", "discarded queued relay messages", {
+		targetId: user.id,
+		targetType: user.type,
+		count: queuedEnvelopes.length,
+	});
+}
+
 function flushQueuedMessages(socket: RelaySocket) {
 	const user = socket.user;
 	if (!user) {
@@ -500,6 +592,35 @@ function flushQueuedMessages(socket: RelaySocket) {
 			targetId: user.id,
 			targetType: user.type,
 		});
+	}
+}
+
+function handleOfflineTarget(socket: RelaySocket, outboundMessage: RelayOutboundMessage, context: string) {
+	if (outboundMessage.to === "agent") {
+		log("warn", "rejected message for offline relay target", {
+			fromId: outboundMessage.fromId,
+			fromType: outboundMessage.fromType,
+			targetId: outboundMessage.targetId,
+			targetType: outboundMessage.to,
+			action: outboundMessage.action,
+			context,
+		});
+		sendError(socket, "server_unavailable", "Server is not connected. Retry after it reconnects.");
+		return;
+	}
+
+	try {
+		enqueueEnvelope(outboundMessage);
+	} catch (error) {
+		log("error", "failed to queue relay message", {
+			fromId: outboundMessage.fromId,
+			fromType: outboundMessage.fromType,
+			targetId: outboundMessage.targetId,
+			targetType: outboundMessage.to,
+			context,
+			error: error instanceof Error ? error.message : String(error),
+		});
+		sendError(socket, "delivery_failed", "failed to queue message for offline target");
 	}
 }
 
@@ -529,32 +650,12 @@ function forwardMessage(socket: RelaySocket, message: RelayInboundMessage) {
 
 	const target = getRegistry(outboundMessage.to).get(outboundMessage.targetId);
 	if (!target || target.readyState !== WebSocket.OPEN) {
-		try {
-			enqueueEnvelope(outboundMessage);
-		} catch (error) {
-			log("error", "failed to queue relay message", {
-				fromId: user.id,
-				fromType: user.type,
-				targetId: outboundMessage.targetId,
-				error: error instanceof Error ? error.message : String(error),
-			});
-			sendError(socket, "delivery_failed", "failed to queue message for offline target");
-		}
+		handleOfflineTarget(socket, outboundMessage, "target_not_open");
 		return;
 	}
 
 	if (!deliverEnvelope(target, outboundMessage)) {
-		try {
-			enqueueEnvelope(outboundMessage);
-		} catch (error) {
-			log("error", "failed to queue relay message after live delivery failure", {
-				fromId: user.id,
-				fromType: user.type,
-				targetId: outboundMessage.targetId,
-				error: error instanceof Error ? error.message : String(error),
-			});
-			sendError(socket, "delivery_failed", "failed to deliver or queue message");
-		}
+		handleOfflineTarget(socket, outboundMessage, "live_delivery_failed");
 	}
 }
 
@@ -621,19 +722,24 @@ export function runRelayServer(options?: { port?: number }) {
 			try {
 				const pairing = stateStore.getPairingByClientId(bootstrapRequest.clientId);
 				const pendingRequest = pairing ? null : resolveOrCreatePendingPairing(bootstrapRequest.clientId);
-				const payload = {
-					clientId: bootstrapRequest.clientId,
-					token: generateToken({ type: "client", id: bootstrapRequest.clientId }),
-					expiresAt: Date.now() + RELAY_JWT_TTL_MS,
-					websocketUrl: resolvePublicWebSocketUrl(request),
+					const payload = {
+						clientId: bootstrapRequest.clientId,
+						token: generateToken({ type: "client", id: bootstrapRequest.clientId }),
+						expiresAt: Date.now() + RELAY_JWT_TTL_MS,
+						websocketUrl: resolvePublicWebSocketUrl(request),
 					pairing: createPairingStateMessage(
 						bootstrapRequest.clientId,
 						pendingRequest,
 						pairing?.agentId ?? null,
-					),
-				} satisfies RelayClientBootstrapResponse;
-				sendJson(response, 200, payload, corsHeaders);
-			} catch (error) {
+						),
+					} satisfies RelayClientBootstrapResponse;
+					log("info", "issued relay bootstrap token", {
+						clientId: bootstrapRequest.clientId,
+						pairingStatus: payload.pairing.status,
+						websocketUrl: payload.websocketUrl,
+					});
+					sendJson(response, 200, payload, corsHeaders);
+				} catch (error) {
 				log("error", "failed to issue relay bootstrap token", {
 					clientId: bootstrapRequest.clientId,
 					error: error instanceof Error ? error.message : String(error),
@@ -652,6 +758,7 @@ export function runRelayServer(options?: { port?: number }) {
 	});
 
 	wss.on("connection", (socket: RelaySocket, request) => {
+		socket.connectionId = createConnectionId();
 		try {
 			socket.user = authenticateRequest(request);
 			registerConnection(socket);
@@ -677,8 +784,8 @@ export function runRelayServer(options?: { port?: number }) {
 			});
 		});
 
-		socket.on("close", () => {
-			cleanupConnection(socket);
+		socket.on("close", (code, reason) => {
+			cleanupConnection(socket, code, reason.toString());
 		});
 	});
 

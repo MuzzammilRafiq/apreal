@@ -1,4 +1,6 @@
-export const RELAY_BROWSER_PROTOCOL = "relay.jwt";
+export const RELAY_JWT_PROTOCOL = "relay.jwt";
+export const RELAY_BROWSER_PROTOCOL = RELAY_JWT_PROTOCOL;
+export const RELAY_CLOSE_REPLACED = 4001;
 export const RELAY_CLIENT_ID_STORAGE_KEY = "pi-browser-client-id";
 export const RELAY_CLIENT_TOKEN_STORAGE_KEY = "pi-browser-relay-token";
 export const RELAY_BOOTSTRAP_PATH = "/api/relay/bootstrap";

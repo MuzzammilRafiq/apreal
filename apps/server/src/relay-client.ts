@@ -1,5 +1,10 @@
 import WebSocket from "ws";
-import { RELAY_SESSION_ACTION, type RelayOutboundEnvelope } from "@apreal/shared";
+import {
+	RELAY_CLOSE_REPLACED,
+	RELAY_JWT_PROTOCOL,
+	RELAY_SESSION_ACTION,
+	type RelayOutboundEnvelope,
+} from "@apreal/shared";
 import { getErrorMessage } from "./session.ts";
 
 type LoggerLike = {
@@ -107,7 +112,7 @@ export function createRelayAgentClient(options: RelayAgentClientOptions) {
 			agentId,
 		});
 
-		socket = new WebSocket(relayUrl, {
+		socket = new WebSocket(relayUrl, [RELAY_JWT_PROTOCOL, agentJwt], {
 			headers: {
 				Authorization: `Bearer ${agentJwt}`,
 			},
@@ -151,6 +156,9 @@ export function createRelayAgentClient(options: RelayAgentClientOptions) {
 			});
 			socket = null;
 			onDisconnect(code, closeReason);
+			if (closeReason === "replaced" || code === RELAY_CLOSE_REPLACED) {
+				return;
+			}
 			scheduleReconnect();
 		});
 	}
