@@ -1,11 +1,9 @@
 import { memo, useEffect, useLayoutEffect, useState, type RefObject } from "react";
 import type { SessionSummary } from "../chatTypes";
-import type { RelayPairingStateMessage } from "@apreal/shared";
 
 type ComposerProps = {
   connected: boolean;
   connectionLabel: string;
-  pairingState: RelayPairingStateMessage | null;
   activeSession: SessionSummary | null;
   activeSessionId: string | null;
   promptInputRef: RefObject<HTMLTextAreaElement | null>;
@@ -16,7 +14,6 @@ type ComposerProps = {
 export const Composer = memo(function Composer({
   connected,
   connectionLabel,
-  pairingState,
   activeSession,
   activeSessionId,
   promptInputRef,
@@ -24,8 +21,7 @@ export const Composer = memo(function Composer({
   onAbort,
 }: ComposerProps) {
   const [prompt, setPrompt] = useState("");
-  const pairingReady = !pairingState || pairingState.status === "paired";
-  const canSend = connected && pairingReady && !activeSession?.busy && prompt.trim().length > 0;
+	const canSend = connected && !activeSession?.busy && prompt.trim().length > 0;
 
   function resizePromptInput() {
     const node = promptInputRef.current;
@@ -90,9 +86,7 @@ export const Composer = memo(function Composer({
         placeholder={
           !connected
             ? `Reconnecting to the ${connectionLabel}...`
-            : !pairingReady
-              ? "Paste the relay pairing code into your agent server to unlock chat"
-            : activeSessionId
+				: activeSessionId
               ? "Continue this session with the next task, follow-up, or code request"
               : "Describe what you want Pi to inspect, fix, or build"
         }
@@ -102,7 +96,7 @@ export const Composer = memo(function Composer({
         type="button"
         id={activeSession?.busy ? "abort-button" : "send-button"}
         className="flex h-13 w-13 shrink-0 items-center justify-center  border border-transparent bg-ink text-sidebar-ink shadow-[0_10px_24px_rgba(23,21,18,0.18)] transition duration-150 hover:bg-ink-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-[0.34]"
-        disabled={!connected || !pairingReady || (!canSend && !activeSession?.busy)}
+    		disabled={!connected || (!canSend && !activeSession?.busy)}
         aria-label={activeSession?.busy ? "Stop run" : "Send prompt"}
         onClick={() => {
           if (activeSession?.busy) {

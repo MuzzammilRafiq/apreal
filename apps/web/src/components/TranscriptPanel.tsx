@@ -21,7 +21,7 @@ type TranscriptPanelProps = {
 	activeSession: SessionSummary | null;
 	activeTranscript: TranscriptMessage[];
 	emptyState: EmptyState | null;
-	relayError: string | null;
+	connectionError: string | null;
 };
 
 function getCodeBlockLanguage(children: ReactNode) {
@@ -135,7 +135,7 @@ function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 	);
 }
 
-export function TranscriptPanel({ transcriptRef, activeTranscript, emptyState, relayError }: TranscriptPanelProps) {
+export function TranscriptPanel({ transcriptRef, activeTranscript, emptyState, connectionError }: TranscriptPanelProps) {
 	return (
 		<div className="min-h-0 min-w-0 flex-1 bg-stage">
 			<div
@@ -144,12 +144,12 @@ export function TranscriptPanel({ transcriptRef, activeTranscript, emptyState, r
 				className="flex h-full flex-col gap-6.5 overflow-y-auto px-8 pt-8.5 pb-44 max-[860px]:px-5 max-[860px]:pb-48"
 				aria-live="polite"
 			>
-				{relayError ? (
+				{connectionError ? (
 					<div
 						role="alert"
 						className="mr-auto w-full max-w-3xl border-l-2 border-danger bg-danger-soft px-4.5 py-4 text-base leading-[1.78] text-ink max-[520px]:px-3.75 max-[520px]:py-3.5"
 					>
-						{relayError}
+						{connectionError}
 					</div>
 				) : null}
 				{emptyState ? (

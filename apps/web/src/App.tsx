@@ -1,4 +1,3 @@
-import type { RelayPairingStateMessage } from "@apreal/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Composer } from "./components/Composer";
 import { Sidebar } from "./components/Sidebar";
@@ -168,12 +167,11 @@ export function App() {
 	const [sessions, setSessions] = useState<SessionSummary[]>([]);
 	const [sessionCache, setSessionCache] = useState<Map<string, SessionCacheEntry>>(() => new Map());
 	const [activeSessionId, setActiveSessionId] = useState<string | null>(() => readStoredSessionId());
-	const [relayError, setRelayError] = useState<string | null>(null);
+	const [connectionError, setConnectionError] = useState<string | null>(null);
 	const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
 	const transcriptRef = useRef<HTMLDivElement | null>(null);
 	const sessionCacheRef = useRef(sessionCache);
 	const activeSessionIdRef = useRef(activeSessionId);
-	const pairingState: RelayPairingStateMessage | null = null;
 
 	useEffect(() => {
 		sessionCacheRef.current = sessionCache;
@@ -225,7 +223,7 @@ export function App() {
 		}
 
 		void sendClientMessage({ type: "load_session", sessionId }).catch((error) => {
-			setRelayError(getErrorMessage(error));
+			setConnectionError(getErrorMessage(error));
 		});
 	}, [sendClientMessage]);
 
@@ -262,7 +260,7 @@ export function App() {
 
 		eventSource.onopen = () => {
 			setConnected(true);
-			setRelayError(null);
+			setConnectionError(null);
 		};
 
 		eventSource.onmessage = (event) => {
@@ -274,7 +272,7 @@ export function App() {
 			switch (message.type) {
 				case "connected": {
 					setConnected(true);
-					setRelayError(null);
+					setConnectionError(null);
 					break;
 				}
 				case "sessions_updated": {
@@ -309,14 +307,14 @@ export function App() {
 					break;
 				}
 				case "session_created": {
-					setRelayError(null);
+					setConnectionError(null);
 					upsertSessionSnapshot(message.session, message.transcript);
 					setPendingDraft(false);
 					activateSession(message.session.id, { load: false });
 					break;
 				}
 				case "session_snapshot": {
-					setRelayError(null);
+					setConnectionError(null);
 					upsertSessionSnapshot(message.session, message.transcript);
 					break;
 				}
@@ -390,7 +388,7 @@ export function App() {
 				}
 				case "error": {
 					setPendingDraft(false);
-					setRelayError(message.message);
+					setConnectionError(message.message);
 					break;
 				}
 				case "pong": {
@@ -401,7 +399,7 @@ export function App() {
 
 		eventSource.onerror = () => {
 			setConnected(false);
-			setRelayError((current) => current ?? STREAM_DISCONNECTED_MESSAGE);
+			setConnectionError((current) => current ?? STREAM_DISCONNECTED_MESSAGE);
 		};
 
 		return () => {
@@ -415,7 +413,7 @@ export function App() {
 			return false;
 		}
 
-		setRelayError(null);
+		setConnectionError(null);
 		setPendingDraft(!activeSessionId);
 		void sendClientMessage({
 			type: "prompt",
@@ -423,7 +421,7 @@ export function App() {
 			sessionId: activeSessionId,
 		}).catch((error) => {
 			setPendingDraft(false);
-			setRelayError(getErrorMessage(error));
+			setConnectionError(getErrorMessage(error));
 		});
 		focusPrompt();
 		return true;
@@ -435,7 +433,7 @@ export function App() {
 		}
 
 		void sendClientMessage({ type: "abort", sessionId: activeSession.id }).catch((error) => {
-			setRelayError(getErrorMessage(error));
+			setConnectionError(getErrorMessage(error));
 		});
 	}, [activeSession, sendClientMessage]);
 
@@ -459,7 +457,6 @@ export function App() {
 			<Sidebar
 				connected={connected}
 				pendingDraft={pendingDraft}
-				pairingState={pairingState}
 				sessions={sessions}
 				activeSessionId={activeSessionId}
 				sessionState={sessionState}
@@ -473,13 +470,12 @@ export function App() {
 					activeSession={activeSession}
 					activeTranscript={activeTranscript}
 					emptyState={emptyState}
-					relayError={relayError}
+					connectionError={connectionError}
 				/>
 				<div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-4 max-[860px]:px-3">
 					<Composer
 						connected={connected}
 						connectionLabel={transportConfig.label}
-						pairingState={pairingState}
 						activeSession={activeSession}
 						activeSessionId={activeSessionId}
 						promptInputRef={promptInputRef}

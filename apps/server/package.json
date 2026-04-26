@@ -11,12 +11,10 @@
 	"dependencies": {
 		"@apreal/shared": "workspace:*",
 		"@mariozechner/pi-ai": "^0.67.1",
-		"@mariozechner/pi-coding-agent": "^0.67.1",
-		"ws": "^8.20.0"
+		"@mariozechner/pi-coding-agent": "^0.67.1"
 	},
 	"devDependencies": {
 		"@types/bun": "latest",
-		"@types/ws": "^8.18.1",
 		"typescript": "^5.9.3"
 	}
 }

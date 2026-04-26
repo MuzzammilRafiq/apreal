@@ -2,7 +2,6 @@ import type { IncomingMessage } from "node:http";
 import {
 	assertRelayPairingCode,
 	assertRelayPrincipalId,
-	RELAY_BROWSER_PROTOCOL,
 	type RelayPrincipalType,
 } from "@apreal/shared";
 import jwt, { type JwtPayload } from "jsonwebtoken";
@@ -143,41 +142,6 @@ function extractBearerToken(headerValue: string | string[] | undefined): string 
 	return match[1];
 }
 
-function extractProtocolToken(headerValue: string | string[] | undefined): string {
-	if (!headerValue) {
-		throw new AuthError("missing websocket protocol token");
-	}
-
-	const header = Array.isArray(headerValue) ? headerValue.join(",") : headerValue;
-	const protocols = header
-		.split(",")
-		.map((value) => value.trim())
-		.filter(Boolean);
-
-	const markerIndex = protocols.indexOf(RELAY_BROWSER_PROTOCOL);
-	if (markerIndex === -1 || markerIndex === protocols.length - 1) {
-		throw new AuthError("invalid websocket protocol token");
-	}
-
-	return protocols[markerIndex + 1] ?? "";
-}
-
-function extractRequestToken(request: IncomingMessage, source: "authorization" | "authorization-or-protocol"): string {
-	if (source === "authorization") {
-		return extractBearerToken(request.headers.authorization);
-	}
-
-	try {
-		return extractBearerToken(request.headers.authorization);
-	} catch (error) {
-		if (!(error instanceof AuthError)) {
-			throw error;
-		}
-	}
-
-	return extractProtocolToken(request.headers["sec-websocket-protocol"]);
-}
-
 function verifyRelayToken(token: string): AuthTokenPayload {
 	let decoded: string | JwtPayload;
 	try {
@@ -195,20 +159,12 @@ function verifyRelayToken(token: string): AuthTokenPayload {
 	return validateTokenPayload(decoded);
 }
 
-// Authenticate a websocket upgrade request using the configured shared secret.
-// Only HS256 is allowed so peers cannot switch to a weaker or unintended
-// algorithm through crafted token headers.
-export function authenticateRequest(request: IncomingMessage): AuthTokenPayload {
-	return verifyRelayToken(extractRequestToken(request, "authorization-or-protocol"));
-}
-
 export function authenticateHttpRequest(request: IncomingMessage): AuthTokenPayload {
-	return verifyRelayToken(extractRequestToken(request, "authorization"));
+	return verifyRelayToken(extractBearerToken(request.headers.authorization));
 }
 
-// Helper used for provisioning and local testing. The relay itself does not
-// mint tokens during websocket handling; it only verifies them. Keeping the
-// helper here ensures token creation and token validation share one contract.
+// Helper used for provisioning and local testing. Keeping the helper here
+// ensures token creation and token validation share one contract.
 export function generateToken({ type, id, pairingCode, targetId, targetType }: GenerateTokenInput): string {
 	if (!isUserType(type)) {
 		throw new AuthError("invalid token role");

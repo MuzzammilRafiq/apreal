@@ -1,15 +1,11 @@
 /*
-WebSocket relay server intentionally disabled.
+HTTP relay server.
 
-The previous upgrade handling, pairing, socket registries, and queued envelope
-delivery were removed from the active runtime so the relay can move toward a
-stateless HTTP design. Keep this file focused on authenticated HTTP endpoints
-until streaming is wired.
+Only authenticated HTTP endpoints remain active here.
 */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import {
-	RELAY_BOOTSTRAP_PATH,
 	RELAY_CONNECTION_PATH,
 	type RelayConnectionRequest,
 	type RelayConnectionResponse,
@@ -190,7 +186,7 @@ export function runRelayServer(options?: { port?: number }) {
 			sendJson(response, 200, {
 				ok: true,
 				service: "relay-server",
-				websocketTransport: "disabled",
+				transport: "http",
 			});
 			return;
 		}
@@ -236,23 +232,6 @@ export function runRelayServer(options?: { port?: number }) {
 			return;
 		}
 
-		if (pathname === RELAY_BOOTSTRAP_PATH) {
-			if (request.method === "OPTIONS") {
-				response.statusCode = 204;
-				setHeaders(response, corsHeaders);
-				response.end();
-				return;
-			}
-
-			sendJson(
-				response,
-				410,
-				{ message: "Relay WebSocket bootstrap is disabled pending HTTP transport implementation." },
-				corsHeaders,
-			);
-			return;
-		}
-
 		sendText(response, 404, "Not Found", corsHeaders);
 	});
 
@@ -260,7 +239,7 @@ export function runRelayServer(options?: { port?: number }) {
 
 	log("info", "relay server listening", {
 		port,
-		websocketTransport: "disabled",
+		transport: "http",
 	});
 
 	return server;

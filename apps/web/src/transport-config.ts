@@ -14,18 +14,7 @@ function resolveServerBaseUrl(): URL {
 		return new URL(window.location.href);
 	}
 
-	const url = new URL(configuredUrl, window.location.href);
-	if (url.protocol === "ws:") {
-		url.protocol = "http:";
-	}
-	if (url.protocol === "wss:") {
-		url.protocol = "https:";
-	}
-	if (url.pathname.endsWith("/ws")) {
-		url.pathname = url.pathname.slice(0, -3) || "/";
-	}
-
-	return url;
+	return new URL(configuredUrl, window.location.href);
 }
 
 export function getWebTransportConfig(): WebTransportConfig {

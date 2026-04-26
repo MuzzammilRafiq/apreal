@@ -5,7 +5,7 @@ This repo is now structured as a small monorepo so the desktop surface can grow 
 ## Layout
 
 - `apps/web`: React + Vite browser client.
-- `apps/server`: Bun server that owns the Pi SDK session runtime and WebSocket transport.
+- `apps/server`: Bun server that owns the Pi SDK session runtime and the browser HTTP/SSE transport.
 - `docs`: markdown documentation and notes.
 - `mobile/react-native`: planned for later, not scaffolded yet.
 
@@ -58,7 +58,9 @@ That runner writes to:
 The server listens on `http://localhost:3000` by default and exposes:
 
 - `GET /health`
-- `POST /api/relay/bootstrap`
+- `GET /api/client/stream`
+- `POST /api/client/message`
+- `POST /api/relay/connection`
 
 The browser UI is only served by the Vite app at `http://localhost:5173` in development. The Bun server no longer serves frontend assets. Set `VITE_PI_SERVER_URL` if you want the web app to connect to a different server origin.
 
@@ -73,10 +75,8 @@ bun run typecheck
 
 - Put `OPENROUTER_API_KEY` in your shell or `.env.local`.
 - `LOG_LEVEL` supports `debug`, `info`, `warn`, and `error`.
-- The laptop-side server always connects through the relay server.
-- The browser persists a random `clientId` in local storage and fetches a short-lived client JWT from the server before opening the relay socket.
-- `VITE_PI_BOOTSTRAP_URL` can point the browser at a deployed bootstrap origin when the JWT-issuing app server is not on the same origin as the relay WebSocket URL.
-- `JWT_SECRET` must match between `apps/server` and `apps/relay-server` when relay mode is enabled because the server mints client JWTs that the relay verifies.
-- The browser no longer requires a bundled `VITE_PI_RELAY_TOKEN` for normal relay mode.
+- The browser talks directly to `apps/server` over `POST /api/client/message` plus `GET /api/client/stream`.
+- The relay package currently exposes authenticated HTTP endpoints only; it is not in the active browser chat path.
+- `JWT_SECRET` is only required by `apps/relay-server` for relay token verification and local token generation.
 - Browser chats stay shared in memory across tabs while the server is running.
 - CLI mode was removed; configuration now flows through the web client only.

@@ -1,20 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { homedir } from "node:os";
-import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
-import { stdin as input, stdout as output } from "node:process";
-import {
-	RELAY_BOOTSTRAP_PATH,
-	RELAY_SESSION_ACTION,
-	normalizeRelayPairingCode,
-	normalizeRelayPrincipalId,
-	type RelayClientBootstrapRequest,
-	type RelayClientBootstrapResponse,
-} from "@apreal/shared";
-import { generateToken } from "../../relay-server/src/auth.ts";
 import { getConfiguredToolsLabel } from "./agent-tools.ts";
-import { createRelayAgentClient } from "./relay-client.ts";
 import {
 	parseClientAppMessage,
 	type ClientAppMessage,
@@ -28,24 +14,18 @@ import {
 	type AgentController,
 	type AgentStreamEvent,
 } from "./session.ts";
-import {
-	assertRelayServerTransportConfig,
-	getServerTransportConfig,
-	type RelayAgentTokenProvider,
-} from "./transport-config.ts";
 import { createLogger, summarizePrompt } from "./logger.ts";
 
 const DEFAULT_PORT = 3000;
 const SERVER_SRC_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_WORKSPACE_ROOT = join(SERVER_SRC_DIR, "..", "..", "..");
-const PI_AGENT_RELAY_AUTH_PATH = join(homedir(), ".pi", "agent", "relay-auth.json");
 const CLIENT_EVENT_STREAM_PATH = "/api/client/stream";
 const CLIENT_MESSAGE_PATH = "/api/client/message";
 const DEFAULT_HTTP_CLIENT_ID = "default-client";
 const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 const SSE_ENCODER = new TextEncoder();
 
-type ClientTransport = "relay" | "http";
+type ClientTransport = "http";
 
 type ServerMessage = ServerAppMessage<SessionSummary, TranscriptMessage>;
 
@@ -129,13 +109,6 @@ type SessionSummary = {
 	messageCount: number;
 };
 
-type StoredRelayAuth = {
-	agentId: string;
-	pairingCode: string | null;
-	agentJwt?: string | null;
-	updatedAt: number;
-};
-
 function parsePort(rawPort: string | undefined): number {
 	const candidate = Number.parseInt(rawPort ?? `${DEFAULT_PORT}`, 10);
 	if (Number.isNaN(candidate) || candidate <= 0) {
@@ -201,68 +174,6 @@ function createCorsHeaders(): Record<string, string> {
 	};
 }
 
-function readStoredRelayAuth(agentId: string): StoredRelayAuth | null {
-	if (!agentId || !existsSync(PI_AGENT_RELAY_AUTH_PATH)) {
-		return null;
-	}
-
-	try {
-		const content = readFileSync(PI_AGENT_RELAY_AUTH_PATH, "utf8");
-		const parsed = JSON.parse(content) as Record<string, unknown>;
-		const storedAgentId = normalizeRelayPrincipalId(parsed.agentId);
-		if (!storedAgentId || storedAgentId !== agentId) {
-			return null;
-		}
-
-		const pairingCode =
-			parsed.pairingCode === null ? null : normalizeRelayPairingCode(parsed.pairingCode);
-		const agentJwt = typeof parsed.agentJwt === "string" && parsed.agentJwt.trim() ? parsed.agentJwt.trim() : null;
-		return {
-			agentId: storedAgentId,
-			pairingCode,
-			agentJwt,
-			updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
-		};
-	} catch {
-		return null;
-	}
-}
-
-function writeStoredRelayAuth(agentId: string, pairingCode: string | null, agentJwt: string | null) {
-	if (!agentId) {
-		return;
-	}
-
-	mkdirSync(dirname(PI_AGENT_RELAY_AUTH_PATH), { recursive: true });
-	const payload: StoredRelayAuth = {
-		agentId,
-		pairingCode,
-		agentJwt,
-		updatedAt: Date.now(),
-	};
-	writeFileSync(PI_AGENT_RELAY_AUTH_PATH, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-}
-
-async function parseRelayBootstrapRequest(request: Request): Promise<RelayClientBootstrapRequest | null> {
-	let value: unknown;
-	try {
-		value = await request.json();
-	} catch {
-		return null;
-	}
-
-	if (!isObjectRecord(value)) {
-		return null;
-	}
-
-	const clientId = normalizeRelayPrincipalId(value.clientId);
-	if (!clientId) {
-		return null;
-	}
-
-	return { clientId };
-}
-
 function createSessionTitle(prompt: string): string {
 	return summarizePrompt(prompt, 42) || "New chat";
 }
@@ -296,135 +207,9 @@ function cloneTranscript(transcript: TranscriptMessage[]): TranscriptMessage[] {
 export function runWebServer(options?: { cwd?: string; port?: number }) {
 	const cwd = options?.cwd ?? process.env.PI_WORKSPACE_ROOT ?? DEFAULT_WORKSPACE_ROOT;
 	const port = options?.port ?? parsePort(process.env.PORT);
-	const transportConfig = getServerTransportConfig();
-	assertRelayServerTransportConfig(transportConfig);
-	const storedRelayAuth = readStoredRelayAuth(transportConfig.relayAgentId);
 	const clients = new Map<string, ClientConnection>();
 	const sessions = new Map<string, SharedSessionState>();
 	const logger = createLogger("web-server");
-	let relayAgentClient: ReturnType<typeof createRelayAgentClient> | null = null;
-	let relayPairingCode = transportConfig.relayPairingCode ?? storedRelayAuth?.pairingCode ?? null;
-	let relayAgentJwt = process.env.PI_RELAY_AGENT_JWT?.trim() || storedRelayAuth?.agentJwt || null;
-	let pairingPromptPromise: Promise<void> | null = null;
-	const relayLogger = createLogger("relay-agent");
-	if (relayPairingCode || relayAgentJwt) {
-		writeStoredRelayAuth(transportConfig.relayAgentId, relayPairingCode, relayAgentJwt);
-	}
-	const getRelayAgentJwt: RelayAgentTokenProvider = () => {
-		if (transportConfig.relayAgentId && process.env.JWT_SECRET?.trim()) {
-			return generateToken({
-				type: "agent",
-				id: transportConfig.relayAgentId,
-				pairingCode: relayPairingCode ?? undefined,
-			});
-		}
-
-		return relayAgentJwt;
-	};
-
-	async function ensureRelayPairingCode(reason: string) {
-		if (relayPairingCode) {
-			return;
-		}
-
-		if (pairingPromptPromise) {
-			return pairingPromptPromise;
-		}
-
-		pairingPromptPromise = (async () => {
-			const prompt = createInterface({ input, output });
-			try {
-				const answer = await prompt.question(
-					`Relay pairing required (${reason}). Paste the pairing code from the web client: `,
-				);
-				const normalized = normalizeRelayPairingCode(answer);
-				if (!normalized) {
-					throw new Error("Invalid relay pairing code.");
-				}
-
-				relayPairingCode = normalized;
-				writeStoredRelayAuth(transportConfig.relayAgentId, relayPairingCode, relayAgentJwt);
-				logger.info("stored relay pairing code for server restarts", {
-					path: PI_AGENT_RELAY_AUTH_PATH,
-				});
-			} finally {
-				prompt.close();
-				pairingPromptPromise = null;
-			}
-		})();
-
-		return pairingPromptPromise;
-	}
-
-	function disposeRelayAgentClient() {
-		if (!relayAgentClient) {
-			return;
-		}
-
-		relayAgentClient.dispose();
-		relayAgentClient = null;
-	}
-
-	function startRelayAgentClient() {
-		if (relayAgentClient) {
-			return;
-		}
-
-		relayAgentClient = createRelayAgentClient({
-			relayUrl: transportConfig.relayUrl!,
-			agentId: transportConfig.relayAgentId,
-			getAgentJwt() {
-				const token = getRelayAgentJwt();
-				if (!token) {
-					throw new Error("PI_RELAY_AGENT_JWT is required");
-				}
-
-				return token;
-			},
-			logger: relayLogger,
-			onClientMessage(clientId, payload) {
-				void handleRelayPayload(clientId, payload);
-			},
-			onDisconnect(_code, reason) {
-				if (reason === "pairing_required" || reason === "pairing_invalid" || reason === "pairing_expired") {
-					disposeRelayAgentClient();
-					if (reason === "pairing_invalid" || reason === "pairing_expired") {
-						relayPairingCode = null;
-						writeStoredRelayAuth(transportConfig.relayAgentId, null, relayAgentJwt);
-					}
-					void ensureRelayPairingCode(reason).then(() => {
-						startRelayAgentClient();
-					});
-				}
-				removeRelayClients("relay_transport_closed");
-			},
-		});
-	}
-
-	async function handleRelayBootstrapRequest(request: Request): Promise<Response> {
-		if (request.method === "OPTIONS") {
-			return new Response(null, {
-				status: 204,
-				headers: createCorsHeaders(),
-			});
-		}
-
-		if (request.method !== "POST") {
-			return new Response("Method Not Allowed", {
-				status: 405,
-				headers: createCorsHeaders(),
-			});
-		}
-
-		/*
-		The WebSocket bootstrap handoff is intentionally disabled while the relay
-		moves to stateless HTTP streaming.
-		*/
-		return json(
-			{ message: "Relay WebSocket bootstrap is disabled pending HTTP transport implementation." },
-			{ status: 410, headers: createCorsHeaders() },
-		);
-	}
 
 	function createSseChunk(payload: ServerMessage): Uint8Array {
 		return SSE_ENCODER.encode(`data: ${JSON.stringify(payload)}\n\n`);
@@ -625,12 +410,6 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 			reason,
 			clients: clients.size,
 		});
-	}
-
-	function removeRelayClients(reason: string) {
-		for (const client of Array.from(clients.values())) {
-			removeClientConnection(client.clientId, reason);
-		}
 	}
 
 	function sendError(clientId: string, message: string, sessionId?: string) {
@@ -1343,18 +1122,6 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 			return;
 		}
 
-		if (message.type === "hello") {
-			client.ready = true;
-			sendConnected(clientId);
-			sendSessionsUpdated(clientId);
-			return;
-		}
-
-		if (message.type === "disconnect") {
-			removeClientConnection(clientId, "client_requested_disconnect");
-			return;
-		}
-
 		if (!client.ready) {
 			sendError(clientId, "Client must send hello before other messages.");
 			return;
@@ -1386,34 +1153,6 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 		}
 	}
 
-	async function handleRelayPayload(clientId: string, payload: unknown) {
-		const relayClient = relayAgentClient;
-		if (!relayClient) {
-			logger.warn("dropping relay payload because relay client is unavailable", {
-				clientId,
-			});
-			return;
-		}
-
-		registerClientConnection(clientId, "relay", (message) => relayClient.sendToClient(clientId, message));
-		const message = parseClientAppMessage(payload);
-		if (!message) {
-			logger.warn("invalid relay payload", { clientId });
-			sendError(clientId, "Invalid message payload.");
-			return;
-		}
-
-		logger.debug("relay client message received", {
-			clientId,
-			type: message.type,
-			action: RELAY_SESSION_ACTION,
-		});
-
-		await handleClientMessage(clientId, message);
-	}
-
-	startRelayAgentClient();
-
 	void prewarmAgentRuntime().catch((error) => {
 		logger.warn("agent runtime prewarm failed", {
 			error: getErrorMessage(error),
@@ -1430,10 +1169,6 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 					method: request.method,
 					path: url.pathname,
 				});
-				if (url.pathname === RELAY_BOOTSTRAP_PATH) {
-					return handleRelayBootstrapRequest(request);
-				}
-
 				if (url.pathname === CLIENT_EVENT_STREAM_PATH) {
 					if (request.method === "OPTIONS") {
 						return new Response(null, {
@@ -1481,14 +1216,11 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 		cwd,
 		port: server.port,
 		logLevel: process.env.LOG_LEVEL ?? "info",
-		transport: "relay-http-pending",
+		transport: "http-sse",
 	});
 	console.log(`Pi web server ready in ${cwd}`);
 	console.log("Frontend UI: http://localhost:5173");
 	console.log(`Health check: http://localhost:${server.port}/health`);
-	console.log(`Relay endpoint: ${transportConfig.relayUrl}`);
-	console.log(`Relay agent id: ${transportConfig.relayAgentId}`);
-	console.log("Relay WebSocket transport is disabled pending HTTP transport implementation.");
 	console.log("Browser chat sessions are shared across tabs while the server is running.");
 
 	return server;

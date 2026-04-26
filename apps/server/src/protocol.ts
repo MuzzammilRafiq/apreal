@@ -1,6 +1,4 @@
 export type ClientAppMessage =
-	| { type: "hello" }
-	| { type: "disconnect" }
 	| { type: "prompt"; prompt: string; sessionId?: string | null }
 	| { type: "abort"; sessionId: string }
 	| { type: "load_session"; sessionId: string }
@@ -8,14 +6,6 @@ export type ClientAppMessage =
 
 export type ServerAppMessage<SessionSummary, TranscriptMessage> =
 	| { type: "connected"; clientId: string; message: string; tools?: string }
-	| {
-			type: "pairing_state";
-			status: "pending" | "paired";
-			clientId: string;
-			pairingCode: string | null;
-			agentId: string | null;
-			expiresAt: number | null;
-	  }
 	| { type: "sessions_updated"; sessions: SessionSummary[] }
 	| { type: "session_created"; session: SessionSummary; transcript: TranscriptMessage[] }
 	| { type: "session_snapshot"; session: SessionSummary; transcript: TranscriptMessage[] }
@@ -50,14 +40,6 @@ export function parseClientAppMessage(rawMessage: string | Buffer | unknown): Cl
 
 	if (!isObjectRecord(value) || typeof value.type !== "string") {
 		return null;
-	}
-
-	if (value.type === "hello") {
-		return { type: "hello" };
-	}
-
-	if (value.type === "disconnect") {
-		return { type: "disconnect" };
 	}
 
 	if (value.type === "prompt" && typeof value.prompt === "string") {

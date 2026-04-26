@@ -1,12 +1,10 @@
 import { memo } from "react";
 import type { SessionSummary } from "../chatTypes";
 import { formatRelativeTime, getSessionCardClassName } from "../chatView";
-import type { RelayPairingStateMessage } from "@apreal/shared";
 
 type SidebarProps = {
 	connected: boolean;
 	pendingDraft: boolean;
-	pairingState: RelayPairingStateMessage | null;
 	sessions: SessionSummary[];
 	activeSessionId: string | null;
 	sessionState: string;
@@ -17,7 +15,6 @@ type SidebarProps = {
 export const Sidebar = memo(function Sidebar({
 	connected,
 	pendingDraft,
-	pairingState,
 	sessions,
 	activeSessionId,
 	sessionState,
@@ -27,24 +24,11 @@ export const Sidebar = memo(function Sidebar({
 	return (
 		<aside className="flex h-full min-h-0 flex-col border-b border-white/10 bg-sidebar-bg text-sidebar-ink min-[721px]:border-r min-[721px]:border-b-0">
 			<div className="border-b border-white/10 px-6 pt-7 pb-6 max-[860px]:px-5">
-				{pairingState && pairingState.status !== "paired" ? (
-					<div className="border border-white/10 bg-sidebar-panel px-4 py-4 text-sm leading-6 text-sidebar-muted">
-						<p className="font-mono text-[0.72rem] font-medium uppercase tracking-[0.12em] text-sidebar-muted">
-							Relay Pairing Code
-						</p>
-						<p className="mt-2 font-mono text-lg font-semibold tracking-[0.2em] text-sidebar-ink">
-							{pairingState.pairingCode ?? "Issuing..."}
-						</p>
-						<p className="mt-2 text-[0.82rem] leading-[1.6]">
-							Paste this into the agent server once. Future reconnects reuse the saved pairing.
-						</p>
-					</div>
-				) : null}
 				<button
 					type="button"
 					id="new-chat-button"
 					className={[
-						`${pairingState && pairingState.status !== "paired" ? "mt-4" : "mt-6"} w-full border border-white/15 bg-sidebar-surface px-4 py-3.5 text-left text-[0.92rem] font-medium text-sidebar-ink transition duration-150 hover:border-white/25 hover:bg-white/8 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring enabled:active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40`,
+						"mt-6 w-full border border-white/15 bg-sidebar-surface px-4 py-3.5 text-left text-[0.92rem] font-medium text-sidebar-ink transition duration-150 hover:border-white/25 hover:bg-white/8 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring enabled:active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40",
 						!activeSessionId && !pendingDraft ? "border-white/25 bg-white/8" : "",
 					].join(" ")}
 					onClick={onStartNewChat}
