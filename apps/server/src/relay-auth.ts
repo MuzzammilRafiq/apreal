@@ -27,6 +27,7 @@ export type StoredRelayAgentAuth = {
 	expiresAt: number | null;
 	targetId: string | null;
 	targetType: RelayPrincipalType | null;
+	serverUrl: string | null;
 	updatedAt: number;
 };
 
@@ -61,6 +62,7 @@ function readStoredRelayAgentAuth(): StoredRelayAgentAuth | null {
 			targetId: typeof parsed.targetId === "string" && parsed.targetId.trim() ? parsed.targetId.trim() : null,
 			targetType:
 				parsed.targetType === "agent" || parsed.targetType === "client" ? parsed.targetType : null,
+			serverUrl: typeof parsed.serverUrl === "string" && parsed.serverUrl.trim() ? parsed.serverUrl.trim() : null,
 			updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
 		};
 	} catch {
@@ -83,6 +85,7 @@ function createAgentIdentity(existing: StoredRelayAgentAuth | null, relayUrl: st
 		targetId: existing?.targetId ?? null,
 		targetType: existing?.targetType ?? null,
 		updatedAt: Date.now(),
+		serverUrl: null,
 	};
 }
 
@@ -174,6 +177,7 @@ export async function ensureRelayAgentAuth(
 				expiresAt: refreshed.expiresAt,
 				targetId: refreshed.target.id,
 				targetType: refreshed.target.type,
+				serverUrl: null,
 				updatedAt: Date.now(),
 			};
 			writeStoredRelayAgentAuth(nextAuth);
@@ -203,6 +207,7 @@ export async function ensureRelayAgentAuth(
 		expiresAt: issued.expiresAt,
 		targetId: issued.target.id,
 		targetType: issued.target.type,
+		serverUrl: null,
 		updatedAt: Date.now(),
 	};
 	writeStoredRelayAgentAuth(nextAuth);
@@ -237,6 +242,7 @@ export async function reauthenticateRelayAgent(
 		expiresAt: issued.expiresAt,
 		targetId: issued.target.id,
 		targetType: issued.target.type,
+		serverUrl: null,
 		updatedAt: Date.now(),
 	};
 	writeStoredRelayAgentAuth(nextAuth);

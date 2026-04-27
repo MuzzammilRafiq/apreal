@@ -4,6 +4,7 @@ import type { SessionSummary } from "../chatTypes";
 type ComposerProps = {
   connected: boolean;
   authReady: boolean;
+  streamRequested: boolean;
   connectionLabel: string;
   activeSession: SessionSummary | null;
   activeSessionId: string | null;
@@ -12,9 +13,10 @@ type ComposerProps = {
   onAbort: () => void;
 };
 
-export const Composer = memo(function Composer({
+	export const Composer = memo(function Composer({
   connected,
   authReady,
+  streamRequested,
   connectionLabel,
   activeSession,
   activeSessionId,
@@ -22,8 +24,8 @@ export const Composer = memo(function Composer({
   onSend,
   onAbort,
 }: ComposerProps) {
-  const [prompt, setPrompt] = useState("");
-  const canSend = connected && authReady && !activeSession?.busy && prompt.trim().length > 0;
+	const [prompt, setPrompt] = useState("");
+	const canSend = authReady && !activeSession?.busy && prompt.trim().length > 0;
 
   function resizePromptInput() {
     const node = promptInputRef.current;
@@ -48,14 +50,14 @@ export const Composer = memo(function Composer({
   }, [prompt]);
 
   useEffect(() => {
-    if (!connected) {
-      return;
-    }
+		if (!authReady) {
+			return;
+		}
 
     window.requestAnimationFrame(() => {
       promptInputRef.current?.focus();
     });
-  }, [activeSessionId, connected, promptInputRef]);
+	}, [activeSessionId, authReady, promptInputRef]);
 
   function submitPrompt() {
     const trimmedPrompt = prompt.trim();
@@ -83,16 +85,18 @@ export const Composer = memo(function Composer({
             submitPrompt();
           }
         }}
-        disabled={!connected}
+		disabled={!authReady}
         onInput={resizePromptInput}
         placeholder={
           !authReady
 				? "Enter the browser authentication code on the server to finish pairing"
 				: !connected
-            ? `Reconnecting to the ${connectionLabel}...`
+					? streamRequested
+						? `Connecting to the ${connectionLabel}...`
+						: "Send a message to connect"
 				: activeSessionId
-              ? "Continue this session with the next task, follow-up, or code request"
-              : "Describe what you want Pi to inspect, fix, or build"
+					? "Continue this session with the next task, follow-up, or code request"
+					: "Describe what you want Pi to inspect, fix, or build"
         }
         className="min-h-[calc(1.75em+1.5rem)] max-h-[calc((1.75em*7)+1.5rem)] flex-1 resize-none overflow-hidden border-none bg-transparent px-3 py-3 text-[1.05rem] leading-[1.75] text-ink outline-none placeholder:text-faint focus-visible:outline-none"
       />
@@ -100,7 +104,7 @@ export const Composer = memo(function Composer({
         type="button"
         id={activeSession?.busy ? "abort-button" : "send-button"}
         className="flex h-13 w-13 shrink-0 items-center justify-center  border border-transparent bg-ink text-sidebar-ink shadow-[0_10px_24px_rgba(23,21,18,0.18)] transition duration-150 hover:bg-ink-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-[0.34]"
-	    	disabled={!connected || !authReady || (!canSend && !activeSession?.busy)}
+	    		disabled={!authReady || (!canSend && !activeSession?.busy)}
         aria-label={activeSession?.busy ? "Stop run" : "Send prompt"}
         onClick={() => {
           if (activeSession?.busy) {

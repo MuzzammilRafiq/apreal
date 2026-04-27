@@ -69,6 +69,7 @@
         "@apreal/shared": "workspace:*",
         "@mariozechner/pi-ai": "^0.67.1",
         "@mariozechner/pi-coding-agent": "^0.67.1",
+        "dotenv": "^17.4.2",
       },
       "devDependencies": {
         "@types/bun": "latest",

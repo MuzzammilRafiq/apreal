@@ -8,14 +8,17 @@ export type WebTransportConfig = {
 };
 
 const DEFAULT_API_BASE_URL = "https://api.malikmuzzammilrafiq.store";
+const DEV_PROXY_BASE_PATH = "/api/";
 
 function resolveRelayBaseUrl(): URL {
 	const configuredUrl = import.meta.env.VITE_PI_RELAY_URL?.trim();
-	if (!configuredUrl) {
-		return new URL(DEFAULT_API_BASE_URL);
+	const relayUrl = configuredUrl ? new URL(configuredUrl, window.location.href) : new URL(DEFAULT_API_BASE_URL);
+
+	if (import.meta.env.DEV && relayUrl.origin !== window.location.origin) {
+		return new URL(DEV_PROXY_BASE_PATH, window.location.origin);
 	}
 
-	return new URL(configuredUrl, window.location.href);
+	return relayUrl;
 }
 
 export function getWebTransportConfig(): WebTransportConfig {

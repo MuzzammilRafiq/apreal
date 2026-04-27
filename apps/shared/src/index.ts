@@ -3,6 +3,8 @@ export const CLIENT_MESSAGE_PATH = "/api/client/message";
 export const RELAY_CLIENT_AUTH_PATH = "/api/relay/auth/client";
 export const RELAY_CLIENT_HEARTBEAT_PATH = "/api/relay/heartbeat";
 export const RELAY_AGENT_AUTH_PATH = "/api/relay/auth/agent";
+export const RELAY_AGENT_STREAM_PATH = "/api/relay/agent/stream";
+export const RELAY_AGENT_MESSAGE_PATH = "/api/relay/agent/message";
 export const RELAY_CONNECTION_PATH = "/api/relay/connection";
 export const RELAY_PRINCIPAL_TYPES = ["agent", "client"] as const;
 
@@ -67,6 +69,28 @@ export type RelayClientHeartbeatRequest = RelayClientAuthRequest;
 export type RelayClientHeartbeatResponse = RelayClientAuthResponse & {
 	serverReady: boolean;
 	transportReady: boolean;
+};
+
+export type RelayAgentCommand =
+	| {
+		type: "client_connect";
+		clientId: string;
+	}
+	| {
+		type: "client_disconnect";
+		clientId: string;
+		reason?: string;
+	}
+	| {
+		type: "client_message";
+		clientId: string;
+		message: unknown;
+	};
+
+export type RelayAgentMessage = {
+	type: "server_message";
+	clientId: string;
+	message: unknown;
 };
 
 const PRINCIPAL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;

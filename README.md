@@ -62,7 +62,7 @@ The server listens on `http://localhost:3000` by default and exposes:
 - `POST /api/client/message`
 - `POST /api/relay/connection`
 
-The browser UI is only served by the Vite app at `http://localhost:5173` in development. The Bun server no longer serves frontend assets. The browser should point `VITE_PI_RELAY_URL` at the relay host, and the server must set `PI_SERVER_URL` so the relay knows where to proxy paired browser traffic.
+The browser UI is only served by the Vite app at `http://localhost:5173` in development. The Bun server no longer serves frontend assets. The browser should point `VITE_PI_RELAY_URL` at the relay host, and the Pi server opens an outbound authenticated stream to that relay for browser traffic.
 
 ## Build And Checks
 
@@ -76,7 +76,7 @@ bun run typecheck
 - Put `OPENROUTER_API_KEY` in your shell or `.env.local`.
 - `LOG_LEVEL` supports `debug`, `info`, `warn`, and `error`.
 - The browser talks only to the relay host for auth plus chat transport.
-- The relay proxies `POST /api/client/message` and `GET /api/client/stream` to the paired server registered by `PI_SERVER_URL` during agent auth.
+- The browser talks only to the relay host. The Pi server keeps an outbound authenticated stream open to the relay, and browser messages are forwarded over that live channel.
 - `JWT_SECRET` is only required by `apps/relay-server` for relay token verification and local token generation.
 - Browser chats stay shared in memory across tabs while the server is running.
 - CLI mode was removed; configuration now flows through the web client only.

@@ -32,6 +32,11 @@ function getDefaultStorePath(): string {
 		return resolve(configuredPath);
 	}
 
+	const legacyConfiguredPath = process.env.RELAY_SQLITE_PATH?.trim();
+	if (legacyConfiguredPath) {
+		return resolve(dirname(resolve(legacyConfiguredPath)), "relay-issued-tokens.json");
+	}
+
 	return resolve(process.cwd(), ".data", "relay-issued-tokens.json");
 }
 
@@ -40,6 +45,14 @@ export class RelayTokenStore {
 
 	constructor(filePath = getDefaultStorePath()) {
 		this.filePath = filePath;
+	}
+
+	getFilePath(): string {
+		return this.filePath;
+	}
+
+	countTokens(options?: { allowExpired?: boolean }): number {
+		return this.listTokens(options).length;
 	}
 
 	findActiveToken(token: string): StoredRelayToken | null {

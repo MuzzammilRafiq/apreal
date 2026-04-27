@@ -1,8 +1,15 @@
 
 import { createInterface } from "node:readline";
 import { dirname, join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { CLIENT_EVENT_STREAM_PATH, CLIENT_MESSAGE_PATH } from "@apreal/shared";
+import {
+	CLIENT_EVENT_STREAM_PATH,
+	CLIENT_MESSAGE_PATH,
+	RELAY_AGENT_MESSAGE_PATH,
+	RELAY_AGENT_STREAM_PATH,
+	type RelayAgentCommand,
+} from "@apreal/shared";
 import { getConfiguredToolsLabel } from "./agent-tools.ts";
 import {
 	parseClientAppMessage,
@@ -29,10 +36,11 @@ import { createLogger, summarizePrompt } from "./logger.ts";
 const DEFAULT_PORT = 3000;
 const SERVER_SRC_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_WORKSPACE_ROOT = join(SERVER_SRC_DIR, "..", "..", "..");
+const RELAY_STREAM_RETRY_MS = 1_000;
 const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 const SSE_ENCODER = new TextEncoder();
 
-type ClientTransport = "http";
+type ClientTransport = "http" | "relay";
 
 type ServerMessage = ServerAppMessage<SessionSummary, TranscriptMessage>;
 
@@ -115,6 +123,44 @@ type SessionSummary = {
 	model: string | null;
 	messageCount: number;
 };
+
+function parseRelayAgentCommand(rawMessage: string): RelayAgentCommand | null {
+	let value: unknown;
+	try {
+		value = JSON.parse(rawMessage);
+	} catch {
+		return null;
+	}
+
+	if (!isObjectRecord(value) || typeof value.type !== "string" || typeof value.clientId !== "string") {
+		return null;
+	}
+
+	if (value.type === "client_connect") {
+		return {
+			type: "client_connect",
+			clientId: value.clientId,
+		};
+	}
+
+	if (value.type === "client_disconnect") {
+		return {
+			type: "client_disconnect",
+			clientId: value.clientId,
+			reason: typeof value.reason === "string" ? value.reason : undefined,
+		};
+	}
+
+	if (value.type === "client_message") {
+		return {
+			type: "client_message",
+			clientId: value.clientId,
+			message: value.message,
+		};
+	}
+
+	return null;
+}
 
 function parsePort(rawPort: string | undefined): number {
 	const candidate = Number.parseInt(rawPort ?? `${DEFAULT_PORT}`, 10);
@@ -218,6 +264,9 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	const relayUrl = getRelayServerUrl();
 	let relayAgentAuth: Awaited<ReturnType<typeof ensureRelayAgentAuth>> | null = null;
 	let relayStartupError: string | null = null;
+	let relayTransportConnected = false;
+	let relayTransportGeneration = 0;
+	let relayTransportAbortController: AbortController | null = null;
 
 	try {
 		relayAgentAuth = await ensureRelayAgentAuth(logger, relayUrl);
@@ -258,6 +307,227 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		}
 	}
 
+	function resetRelayClientConnections(reason: string) {
+		for (const [clientId, client] of Array.from(clients.entries())) {
+			if (client.transport === "relay") {
+				removeClientConnection(clientId, reason);
+			}
+		}
+	}
+
+	function setRelayTransportDisconnected(reason: string) {
+		relayTransportConnected = false;
+		resetRelayClientConnections(reason);
+	}
+
+	async function postRelayServerMessage(clientId: string, payload: ServerMessage) {
+		if (!relayAgentAuth?.token) {
+			throw new Error("Relay agent transport is not authenticated.");
+		}
+
+		const response = await fetch(new URL(RELAY_AGENT_MESSAGE_PATH, relayUrl), {
+			method: "POST",
+			headers: {
+				authorization: `Bearer ${relayAgentAuth.token}`,
+				"content-type": "application/json",
+			},
+			body: JSON.stringify({
+				type: "server_message",
+				clientId,
+				message: payload,
+			}),
+		});
+
+		if (response.ok) {
+			return;
+		}
+
+		let message = `relay agent message failed with status ${response.status}`;
+		try {
+			const body: unknown = await response.json();
+			if (isObjectRecord(body) && typeof body.message === "string") {
+				message = body.message;
+			}
+		} catch {
+			// Ignore malformed bodies and use the status fallback above.
+		}
+
+		throw new Error(message);
+	}
+
+	function createRelaySendPayload(clientId: string): ClientConnection["send"] {
+		return (payload) => {
+			void postRelayServerMessage(clientId, payload).catch((error) => {
+				logger.warn("failed to deliver relay client payload", {
+					clientId,
+					error: getErrorMessage(error),
+				});
+				removeClientConnection(clientId, "relay_delivery_failed");
+			});
+			return true;
+		};
+	}
+
+	function ensureRelayClientConnection(clientId: string) {
+		const existing = clients.get(clientId);
+		const wasReady = existing?.ready ?? false;
+		const client = registerClientConnection(clientId, "relay", createRelaySendPayload(clientId));
+		client.ready = true;
+		if (!wasReady) {
+			sendConnected(clientId);
+			sendSessionsUpdated(clientId);
+		}
+		return client;
+	}
+
+	async function handleRelayAgentCommand(command: RelayAgentCommand) {
+		switch (command.type) {
+			case "client_connect": {
+				ensureRelayClientConnection(command.clientId);
+				break;
+			}
+			case "client_disconnect": {
+				removeClientConnection(command.clientId, command.reason ?? "relay_client_disconnected");
+				break;
+			}
+			case "client_message": {
+				ensureRelayClientConnection(command.clientId);
+				const message = parseClientAppMessage(command.message);
+				if (!message) {
+					sendError(command.clientId, "Invalid client message payload.");
+					return;
+				}
+
+				await handleClientMessage(command.clientId, message);
+				break;
+			}
+		}
+	}
+
+	async function consumeRelayAgentStream(token: string, signal: AbortSignal) {
+		const response = await fetch(new URL(RELAY_AGENT_STREAM_PATH, relayUrl), {
+			method: "GET",
+			headers: {
+				authorization: `Bearer ${token}`,
+				accept: "text/event-stream",
+			},
+			signal,
+		});
+
+		if (!response.ok || !response.body) {
+			let message = `relay agent stream failed with status ${response.status}`;
+			try {
+				const body = await response.text();
+				if (body.trim()) {
+					message = body.trim();
+				}
+			} catch {
+				// Ignore malformed bodies and use the status fallback above.
+			}
+
+			throw new Error(message);
+		}
+
+		relayTransportConnected = true;
+		const reader = response.body.getReader();
+		const decoder = new TextDecoder();
+		let buffer = "";
+
+		try {
+			while (true) {
+				const result = await reader.read();
+				if (result.done) {
+					break;
+				}
+
+				buffer += decoder.decode(result.value, { stream: true });
+				let boundaryIndex = buffer.search(/\r?\n\r?\n/);
+				while (boundaryIndex !== -1) {
+					const rawEvent = buffer.slice(0, boundaryIndex);
+					const separatorLength = buffer[boundaryIndex] === "\r" ? 4 : 2;
+					buffer = buffer.slice(boundaryIndex + separatorLength);
+
+					const data = rawEvent
+						.split(/\r?\n/)
+						.filter((line) => line.startsWith("data:"))
+						.map((line) => line.slice(5).trimStart())
+						.join("\n");
+
+					if (data) {
+						const command = parseRelayAgentCommand(data);
+						if (command) {
+							await handleRelayAgentCommand(command);
+						} else {
+							logger.warn("ignored invalid relay agent command", { raw: data });
+						}
+					}
+
+					boundaryIndex = buffer.search(/\r?\n\r?\n/);
+				}
+			}
+		} finally {
+			reader.releaseLock();
+		}
+	}
+
+	async function runRelayTransportLoop(generation: number) {
+		while (generation === relayTransportGeneration) {
+			const currentAuth = relayAgentAuth;
+			if (!currentAuth?.token) {
+				setRelayTransportDisconnected("relay_transport_unavailable");
+				return;
+			}
+
+			const abortController = new AbortController();
+			relayTransportAbortController = abortController;
+
+			try {
+				await consumeRelayAgentStream(currentAuth.token, abortController.signal);
+				if (abortController.signal.aborted || generation !== relayTransportGeneration) {
+					return;
+				}
+
+				logger.warn("relay agent stream ended; reconnecting", {
+					relayUrl,
+					agentId: currentAuth.agentId,
+				});
+			} catch (error) {
+				if (abortController.signal.aborted || generation !== relayTransportGeneration) {
+					return;
+				}
+
+				logger.warn("relay agent stream disconnected", {
+					relayUrl,
+					agentId: currentAuth.agentId,
+					error: getErrorMessage(error),
+				});
+			} finally {
+				if (relayTransportAbortController === abortController) {
+					relayTransportAbortController = null;
+				}
+				setRelayTransportDisconnected("relay_transport_disconnected");
+			}
+
+			if (generation !== relayTransportGeneration) {
+				return;
+			}
+
+			await delay(RELAY_STREAM_RETRY_MS);
+		}
+	}
+
+	function restartRelayTransport() {
+		relayTransportGeneration += 1;
+		relayTransportAbortController?.abort();
+		setRelayTransportDisconnected("relay_transport_restarting");
+
+		if (!relayAgentAuth?.token) {
+			return;
+		}
+
+		void runRelayTransportLoop(relayTransportGeneration);
+	}
+
 	async function handleReauthenticationInput(rawValue: string) {
 		if (reauthRunning) {
 			logger.warn("relay reauthentication already in progress");
@@ -269,6 +539,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 			relayAgentAuth = await reauthenticateRelayAgent(logger, rawValue, relayUrl);
 			relayStartupError = null;
 			resetClientConnections("relay_reauthenticated");
+			restartRelayTransport();
 			logger.info("relay reauthentication completed", {
 				agentId: relayAgentAuth.agentId,
 				targetId: relayAgentAuth.targetId,
@@ -312,6 +583,10 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 			console.log("Enter the browser authentication code:");
 		}
 	});
+
+	if (relayAgentAuth?.token) {
+		restartRelayTransport();
+	}
 
 	function createSseChunk(payload: ServerMessage): Uint8Array {
 		return SSE_ENCODER.encode(`data: ${JSON.stringify(payload)}\n\n`);
@@ -1312,10 +1587,11 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 					return json({
 						service: "web-server",
 						status: "ok",
-						transport: "http-sse",
+						transport: "http-sse+relay",
 						clients: clients.size,
 						sessions: sessions.size,
 						relayReady: Boolean(relayAgentAuth),
+						relayTransportConnected,
 						agentId: relayAgentAuth?.agentId ?? null,
 						relayUrl,
 						relayStartupError,
@@ -1338,10 +1614,11 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		cwd,
 		port: server.port,
 		logLevel: process.env.LOG_LEVEL ?? "info",
-		transport: "http-sse",
+		transport: "http-sse+relay",
 		agentId: relayAgentAuth?.agentId ?? null,
 		relayUrl,
 		relayReady: Boolean(relayAgentAuth),
+		relayTransportConnected,
 	});
 	console.log(`Pi web server ready in ${cwd}`);
 	console.log("Frontend UI: http://localhost:5173");
@@ -1351,6 +1628,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	if (relayStartupError) {
 		console.log(`Relay registration status: ${relayStartupError}`);
 	}
+	console.log(`Relay transport: ${relayTransportConnected ? "connected" : "connecting"}`);
 	console.log("Browser chat sessions are shared across tabs while the server is running.");
 	console.log("Type 'reauthenticate' to pair this server with a newly generated browser code.");
 

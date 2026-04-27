@@ -14,6 +14,7 @@ import { getWebTransportConfig } from "./transport-config";
 
 const ACTIVE_SESSION_STORAGE_KEY = "pi-browser-active-session";
 const STREAM_DISCONNECTED_MESSAGE = "Disconnected from the server stream. Reconnecting...";
+const STREAM_REQUIRED_MESSAGE = "Client event stream is not connected.";
 const AUTH_REFRESH_INTERVAL_MS = 3_000;
 const RELAY_HEARTBEAT_INTERVAL_MS = 500;
 const transportConfig = getWebTransportConfig();
@@ -179,10 +180,16 @@ export function App() {
 	const [serverReady, setServerReady] = useState(false);
 	const [transportReady, setTransportReady] = useState(false);
 	const [connectionError, setConnectionError] = useState<string | null>(null);
+	const [streamRequested, setStreamRequested] = useState(false);
 	const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
 	const transcriptRef = useRef<HTMLDivElement | null>(null);
 	const sessionCacheRef = useRef(sessionCache);
 	const activeSessionIdRef = useRef(activeSessionId);
+	const pendingConnectionResolversRef = useRef(new Set<() => void>());
+	const resolvePendingConnectionsRef = useRef<() => void>(() => {});
+	const requestSessionSnapshotRef = useRef<(sessionId: string | null) => void>(() => {});
+	const activateSessionRef = useRef<(sessionId: string | null, options?: { load?: boolean }) => void>(() => {});
+	const upsertSessionSnapshotRef = useRef<(session: SessionSummary, transcript: TranscriptMessage[]) => void>(() => {});
 
 	useEffect(() => {
 		sessionCacheRef.current = sessionCache;
@@ -196,7 +203,7 @@ export function App() {
 	const activeTranscript = activeSessionId ? sessionCache.get(activeSessionId)?.transcript ?? [] : [];
 	const authReady = Boolean(relayAuth?.target?.id);
 	const authCode = !authReady ? relayAuth?.pairingCode ?? null : null;
-	const canOpenRelayTransport = authReady && serverReady && transportReady;
+	const canOpenRelayTransport = authReady;
 	const isBusy = pendingDraft || Boolean(activeSession?.busy);
 
 	const focusPrompt = useCallback(() => {
@@ -205,12 +212,56 @@ export function App() {
 		});
 	}, []);
 
+	const resolvePendingConnections = useCallback(() => {
+		for (const resolve of pendingConnectionResolversRef.current) {
+			resolve();
+		}
+		pendingConnectionResolversRef.current.clear();
+	}, []);
+
+	useEffect(() => {
+		resolvePendingConnectionsRef.current = resolvePendingConnections;
+	}, [resolvePendingConnections]);
+
+	const waitForConnectionAttempt = useCallback((timeoutMs = 1200) => {
+		if (connected) {
+			return Promise.resolve();
+		}
+
+		return new Promise<void>((resolve) => {
+			let timeoutId = 0;
+			const finish = () => {
+				window.clearTimeout(timeoutId);
+				pendingConnectionResolversRef.current.delete(finish);
+				resolve();
+			};
+
+			timeoutId = window.setTimeout(finish, timeoutMs);
+			pendingConnectionResolversRef.current.add(finish);
+		});
+	}, [connected]);
+
+	const ensureClientTransport = useCallback(async () => {
+		if (!relayAuth?.token) {
+			throw new Error("Browser authentication is not ready yet.");
+		}
+
+		if (connected) {
+			return;
+		}
+
+		setStreamRequested(true);
+		await waitForConnectionAttempt();
+	}, [connected, relayAuth?.token, waitForConnectionAttempt]);
+
 	const sendClientMessage = useCallback(async (message: ClientMessage) => {
 		if (!relayAuth?.token) {
 			throw new Error("Browser authentication is not ready yet.");
 		}
 
-		const response = await fetch(transportConfig.messageUrl, {
+		await ensureClientTransport();
+
+		const performRequest = () => fetch(transportConfig.messageUrl, {
 			method: "POST",
 			headers: {
 				authorization: `Bearer ${relayAuth.token}`,
@@ -218,6 +269,21 @@ export function App() {
 			},
 			body: JSON.stringify(message),
 		});
+
+		let response = await performRequest();
+		if (response.status === 409) {
+			let payload: unknown = null;
+			try {
+				payload = await response.json();
+			} catch {
+				// Ignore malformed error bodies.
+			}
+
+			if (isObjectRecord(payload) && payload.message === STREAM_REQUIRED_MESSAGE) {
+				await waitForConnectionAttempt();
+				response = await performRequest();
+			}
+		}
 
 		if (response.ok) {
 			return;
@@ -234,7 +300,7 @@ export function App() {
 		}
 
 		throw new Error(errorMessage);
-	}, [relayAuth?.token]);
+	}, [ensureClientTransport, relayAuth?.token, waitForConnectionAttempt]);
 
 	const requestSessionSnapshot = useCallback((sessionId: string | null) => {
 		if (!sessionId) {
@@ -245,6 +311,10 @@ export function App() {
 			setConnectionError(getErrorMessage(error));
 		});
 	}, [sendClientMessage]);
+
+	useEffect(() => {
+		requestSessionSnapshotRef.current = requestSessionSnapshot;
+	}, [requestSessionSnapshot]);
 
 	const activateSession = useCallback((sessionId: string | null, options: { load?: boolean } = {}) => {
 		const { load = true } = options;
@@ -258,6 +328,10 @@ export function App() {
 		focusPrompt();
 	}, [focusPrompt, requestSessionSnapshot]);
 
+	useEffect(() => {
+		activateSessionRef.current = activateSession;
+	}, [activateSession]);
+
 	const upsertSessionSnapshot = useCallback((session: SessionSummary, transcript: TranscriptMessage[]) => {
 		setSessionCache((previous) => {
 			const next = new Map(previous);
@@ -269,6 +343,10 @@ export function App() {
 		});
 		setSessions((previous) => upsertSessionInList(previous, session));
 	}, []);
+
+	useEffect(() => {
+		upsertSessionSnapshotRef.current = upsertSessionSnapshot;
+	}, [upsertSessionSnapshot]);
 
 	const handleStartNewChat = useCallback(() => {
 		activateSession(null, { load: false });
@@ -336,9 +414,6 @@ export function App() {
 				setRelayAuth(heartbeat.auth);
 				setServerReady(heartbeat.serverReady);
 				setTransportReady(heartbeat.transportReady);
-				if (!heartbeat.transportReady) {
-					setConnected(false);
-				}
 			} catch (error) {
 				if (cancelled) {
 					return;
@@ -366,7 +441,7 @@ export function App() {
 	}, [relayAuth?.clientId, relayAuth?.clientKey]);
 
 	useEffect(() => {
-		if (!relayAuth?.token || !canOpenRelayTransport) {
+		if (!relayAuth?.token || !canOpenRelayTransport || !streamRequested) {
 			setConnected(false);
 			return;
 		}
@@ -378,6 +453,7 @@ export function App() {
 		eventSource.onopen = () => {
 			setConnected(true);
 			setConnectionError(null);
+			resolvePendingConnectionsRef.current();
 		};
 
 		eventSource.onmessage = (event) => {
@@ -386,12 +462,13 @@ export function App() {
 				return;
 			}
 
-			switch (message.type) {
-				case "connected": {
-					setConnected(true);
-					setConnectionError(null);
-					break;
-				}
+				switch (message.type) {
+					case "connected": {
+						setConnected(true);
+						setConnectionError(null);
+						resolvePendingConnectionsRef.current();
+						break;
+					}
 				case "sessions_updated": {
 					setSessions(message.sessions);
 					setSessionCache((previous) => {
@@ -413,26 +490,26 @@ export function App() {
 
 					const nextActiveSession = message.sessions.find((session) => session.id === currentActiveSessionId) ?? null;
 					if (!nextActiveSession) {
-						activateSession(null, { load: false });
+						activateSessionRef.current(null, { load: false });
 						break;
 					}
 
 					const cached = sessionCacheRef.current.get(nextActiveSession.id);
 					if (!cached || cached.session.updatedAt < nextActiveSession.updatedAt) {
-						requestSessionSnapshot(nextActiveSession.id);
+						requestSessionSnapshotRef.current(nextActiveSession.id);
 					}
 					break;
 				}
 				case "session_created": {
 					setConnectionError(null);
-					upsertSessionSnapshot(message.session, message.transcript);
+					upsertSessionSnapshotRef.current(message.session, message.transcript);
 					setPendingDraft(false);
-					activateSession(message.session.id, { load: false });
+					activateSessionRef.current(message.session.id, { load: false });
 					break;
 				}
 				case "session_snapshot": {
 					setConnectionError(null);
-					upsertSessionSnapshot(message.session, message.transcript);
+					upsertSessionSnapshotRef.current(message.session, message.transcript);
 					break;
 				}
 				case "assistant_delta": {
@@ -523,10 +600,10 @@ export function App() {
 			eventSource.close();
 			setConnected(false);
 		};
-	}, [activateSession, canOpenRelayTransport, relayAuth?.token, requestSessionSnapshot, upsertSessionSnapshot]);
+	}, [canOpenRelayTransport, relayAuth?.token, streamRequested]);
 
 	const submitPrompt = useCallback((trimmedPrompt: string) => {
-		if (!trimmedPrompt || !connected || isBusy) {
+		if (!trimmedPrompt || isBusy || !relayAuth?.token) {
 			return false;
 		}
 
@@ -542,7 +619,7 @@ export function App() {
 		});
 		focusPrompt();
 		return true;
-	}, [activeSessionId, connected, focusPrompt, isBusy, sendClientMessage]);
+	}, [activeSessionId, focusPrompt, isBusy, relayAuth?.token, sendClientMessage]);
 
 	const handleAbort = useCallback(() => {
 		if (!activeSession?.busy) {
@@ -560,22 +637,20 @@ export function App() {
 				? "Preparing authentication..."
 				: !authReady
 					? "Authenticate this browser"
-					: !serverReady
-						? "Waiting for server token"
-						: !transportReady
-							? "Relay transport not ready"
-					: connected ? (pendingDraft ? "Creating session..." : "Ready when you are") : "Connecting...",
+					: connected
+						? (pendingDraft ? "Creating session..." : "Ready when you are")
+						: streamRequested ? "Connecting..." : "Ready when you are",
 			body: !relayAuth
 				? "Requesting a client identity from the relay."
 				: !authReady
 					? `Enter code ${authCode ?? "..."} on the server once to finish pairing.`
-					: !serverReady
-						? "The browser heartbeat is waiting for the server JWT to appear in the relay."
-						: !transportReady
-							? "The server token is stored in the relay, but relay-stream messaging is not ready yet."
 					: connected
 				? "Start with a coding task, file request, or bug report. The first prompt creates a reusable session that stays available in the left rail."
-				: "Opening the server event stream.",
+				: !streamRequested
+					? "Send a message to open the relay stream to the paired server."
+					: serverReady
+					? "Opening the server event stream through the relay."
+					: "Waiting for the paired server to accept relay traffic.",
 		}
 		: activeTranscript.length === 0
 			? {
@@ -592,6 +667,7 @@ export function App() {
 				authReady={authReady}
 				authCode={authCode}
 				serverReady={serverReady}
+				streamRequested={streamRequested}
 				pendingDraft={pendingDraft}
 				sessions={sessions}
 				activeSessionId={activeSessionId}
@@ -612,6 +688,7 @@ export function App() {
 					<Composer
 						connected={connected}
 						authReady={authReady}
+						streamRequested={streamRequested}
 						connectionLabel={transportConfig.label}
 						activeSession={activeSession}
 						activeSessionId={activeSessionId}

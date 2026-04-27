@@ -7,6 +7,7 @@ type SidebarProps = {
 	authReady: boolean;
 	authCode: string | null;
 	serverReady: boolean;
+	streamRequested: boolean;
 	pendingDraft: boolean;
 	sessions: SessionSummary[];
 	activeSessionId: string | null;
@@ -20,6 +21,7 @@ export const Sidebar = memo(function Sidebar({
 	authReady,
 	authCode,
 	serverReady,
+	streamRequested,
 	pendingDraft,
 	sessions,
 	activeSessionId,
@@ -104,7 +106,7 @@ export const Sidebar = memo(function Sidebar({
 					<span>{serverReady ? "Server token detected" : "Waiting for server token"}</span>
 				</div>
 				<p id="sidebar-status" className="mt-2 text-base font-medium">
-					{authReady ? (connected ? "Connected" : "Disconnected - reconnecting...") : "Waiting for server auth"} · {sessionState}
+					{authReady ? (connected ? "Connected" : streamRequested ? "Disconnected - reconnecting..." : "Ready to connect") : "Waiting for server auth"} · {sessionState}
 				</p>
 			</div>
 		</aside>

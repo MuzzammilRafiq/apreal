@@ -5,16 +5,19 @@ Only authenticated HTTP endpoints remain active here.
 */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { Readable } from "node:stream";
 import {
 	CLIENT_EVENT_STREAM_PATH,
 	CLIENT_MESSAGE_PATH,
 	RELAY_AGENT_AUTH_PATH,
+	RELAY_AGENT_MESSAGE_PATH,
+	RELAY_AGENT_STREAM_PATH,
 	RELAY_CLIENT_AUTH_PATH,
 	RELAY_CLIENT_HEARTBEAT_PATH,
 	RELAY_CONNECTION_PATH,
+	type RelayAgentCommand,
 	type RelayAgentAuthRequest,
 	type RelayAgentAuthResponse,
+	type RelayAgentMessage,
 	type RelayClientAuthRequest,
 	type RelayClientAuthResponse,
 	type RelayClientHeartbeatResponse,
@@ -35,9 +38,25 @@ import { RelayTokenStore, type StoredRelayToken } from "./token-store.ts";
 config();
 
 const DEFAULT_PORT = 3001;
+const RELAY_SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 const TOKEN_REFRESH_WINDOW_MS = 60 * 60 * 1000;
 
 type LogLevel = "info" | "warn" | "error";
+
+type RelayBrowserClientConnection = {
+	clientId: string;
+	agentId: string;
+	closed: boolean;
+	send(payload: unknown): boolean;
+	close(reason: string): void;
+};
+
+type RelayAgentConnection = {
+	agentId: string;
+	closed: boolean;
+	send(command: RelayAgentCommand): boolean;
+	close(reason: string): void;
+};
 
 function parsePort(rawPort: string | undefined): number {
 	const candidate = Number.parseInt(rawPort ?? `${DEFAULT_PORT}`, 10);
@@ -109,7 +128,7 @@ function createCorsHeaders(): Record<string, string> {
 	};
 }
 
-function buildHealthPayload(corsHeaders: Record<string, string>) {
+function buildHealthPayload(corsHeaders: Record<string, string>, tokenStore: RelayTokenStore) {
 	return {
 		ok: true,
 		service: "relay-server",
@@ -119,6 +138,11 @@ function buildHealthPayload(corsHeaders: Record<string, string>) {
 			jwtSecretConfigured: Boolean(process.env.JWT_SECRET?.trim()),
 			corsAllowOrigin: corsHeaders["access-control-allow-origin"],
 		},
+		storage: {
+			tokenStorePath: tokenStore.getFilePath(),
+			tokenCount: tokenStore.countTokens({ allowExpired: true }),
+			activeTokenCount: tokenStore.countTokens({ allowExpired: false }),
+		},
 		endpoints: {
 			base: "/",
 			health: "/health",
@@ -127,6 +151,8 @@ function buildHealthPayload(corsHeaders: Record<string, string>) {
 			clientMessage: CLIENT_MESSAGE_PATH,
 			clientAuth: RELAY_CLIENT_AUTH_PATH,
 			agentAuth: RELAY_AGENT_AUTH_PATH,
+			agentStream: RELAY_AGENT_STREAM_PATH,
+			agentMessage: RELAY_AGENT_MESSAGE_PATH,
 			connection: RELAY_CONNECTION_PATH,
 		},
 	};
@@ -342,7 +368,36 @@ function shouldRefreshToken(entry: StoredRelayToken): boolean {
 	return entry.payload.exp * 1000 - Date.now() <= TOKEN_REFRESH_WINDOW_MS;
 }
 
-function resolveClientProxyTarget(request: IncomingMessage, tokenStore: RelayTokenStore) {
+function resolveRequestOrigin(request: IncomingMessage): string | null {
+	const host = request.headers.host?.trim();
+	if (!host) {
+		return null;
+	}
+
+	const forwardedProto = request.headers["x-forwarded-proto"];
+	const protocol = typeof forwardedProto === "string" && forwardedProto.trim()
+		? forwardedProto.split(",")[0]?.trim() ?? "http"
+		: "http";
+
+	return `${protocol}://${host}`;
+}
+
+function validateAgentServerUrl(request: IncomingMessage, serverUrl?: string) {
+	if (!serverUrl) {
+		return;
+	}
+
+	const requestOrigin = resolveRequestOrigin(request);
+	if (!requestOrigin) {
+		return;
+	}
+
+	if (new URL(serverUrl).origin === new URL(requestOrigin).origin) {
+		throw new Error("serverUrl must not point to the relay origin");
+	}
+}
+
+function resolveClientRelayTarget(request: IncomingMessage, tokenStore: RelayTokenStore) {
 	const clientToken = readClientTokenFromProxyRequest(request);
 	if (!tokenStore.findActiveToken(clientToken)) {
 		throw new AuthError("unknown token");
@@ -361,22 +416,19 @@ function resolveClientProxyTarget(request: IncomingMessage, tokenStore: RelayTok
 		throw new AuthError("client token is not paired");
 	}
 
-	const serverUrl = tokenStore.findAgentServerUrl(principal.targetId);
-	if (!serverUrl) {
-		throw new AuthError("paired agent route unavailable");
-	}
-
 	return {
 		clientToken,
 		clientId: principal.id,
 		agentId: principal.targetId,
-		serverUrl,
 	};
 }
 
 function mapRelayProxyErrorStatus(error: unknown): number {
 	const message = getErrorMessage(error);
-	if (message === "paired agent route unavailable") {
+	if (
+		message === "paired agent transport unavailable" ||
+		message === "browser client stream is not connected"
+	) {
 		return 503;
 	}
 
@@ -391,122 +443,29 @@ function mapRelayProxyErrorStatus(error: unknown): number {
 	return 401;
 }
 
-async function forwardBufferedResponse(
-	upstreamResponse: Response,
-	response: ServerResponse,
-	corsHeaders: Record<string, string>,
-) {
-	const body = Buffer.from(await upstreamResponse.arrayBuffer());
-	response.statusCode = upstreamResponse.status;
-	setHeaders(response, {
-		...corsHeaders,
-		...(upstreamResponse.headers.get("content-type")
-			? { "content-type": upstreamResponse.headers.get("content-type") ?? "application/octet-stream" }
-			: {}),
-		...(upstreamResponse.headers.get("cache-control")
-			? { "cache-control": upstreamResponse.headers.get("cache-control") ?? "no-store" }
-			: {}),
-	});
-	response.end(body);
+function createSseChunk(payload: unknown): string {
+	return `data: ${JSON.stringify(payload)}\n\n`;
 }
 
-async function proxyClientMessageRequest(
-	request: IncomingMessage,
-	response: ServerResponse,
-	corsHeaders: Record<string, string>,
-	tokenStore: RelayTokenStore,
-) {
-	const target = resolveClientProxyTarget(request, tokenStore);
-	const upstreamUrl = new URL(CLIENT_MESSAGE_PATH, target.serverUrl);
-	const body = await readRequestBody(request);
-
-	let upstreamResponse: Response;
-	try {
-		upstreamResponse = await fetch(upstreamUrl, {
-			method: "POST",
-			headers: {
-				authorization: `Bearer ${target.clientToken}`,
-				"content-type": request.headers["content-type"]?.toString() || "application/json",
-			},
-			body,
-		});
-	} catch (error) {
-		log("warn", "relay message proxy failed", {
-			clientId: target.clientId,
-			agentId: target.agentId,
-			serverUrl: target.serverUrl,
-			error: getErrorMessage(error),
-		});
-		sendJson(response, 502, { message: "relay could not reach the paired server" }, corsHeaders);
-		return;
-	}
-
-	await forwardBufferedResponse(upstreamResponse, response, corsHeaders);
+function createSseComment(comment: string): string {
+	return `: ${comment}\n\n`;
 }
 
-async function proxyClientStreamRequest(
-	request: IncomingMessage,
-	response: ServerResponse,
-	corsHeaders: Record<string, string>,
-	tokenStore: RelayTokenStore,
-) {
-	const target = resolveClientProxyTarget(request, tokenStore);
-	const upstreamUrl = new URL(CLIENT_EVENT_STREAM_PATH, target.serverUrl);
-	upstreamUrl.searchParams.set("token", target.clientToken);
-
-	const abortController = new AbortController();
-	request.on("close", () => {
-		abortController.abort();
-	});
-
-	let upstreamResponse: Response;
-	try {
-		upstreamResponse = await fetch(upstreamUrl, {
-			method: "GET",
-			headers: {
-				accept: "text/event-stream",
-			},
-			signal: abortController.signal,
-		});
-	} catch (error) {
-		log("warn", "relay stream proxy failed", {
-			clientId: target.clientId,
-			agentId: target.agentId,
-			serverUrl: target.serverUrl,
-			error: getErrorMessage(error),
-		});
-		sendJson(response, 502, { message: "relay could not reach the paired server" }, corsHeaders);
-		return;
+function parseRelayAgentMessage(value: unknown): RelayAgentMessage | null {
+	if (!isObjectRecord(value) || value.type !== "server_message") {
+		return null;
 	}
 
-	const upstreamContentType = upstreamResponse.headers.get("content-type") ?? "";
-	if (!upstreamContentType.toLowerCase().includes("text/event-stream") || !upstreamResponse.body) {
-		await forwardBufferedResponse(upstreamResponse, response, corsHeaders);
-		return;
+	const clientId = readStringField(value.clientId, "clientId");
+	if (!clientId) {
+		return null;
 	}
 
-	response.statusCode = upstreamResponse.status;
-	setHeaders(response, {
-		...corsHeaders,
-		"content-type": upstreamContentType,
-		"cache-control": upstreamResponse.headers.get("cache-control") ?? "no-store",
-		connection: upstreamResponse.headers.get("connection") ?? "keep-alive",
-		"x-accel-buffering": upstreamResponse.headers.get("x-accel-buffering") ?? "no",
-	});
-
-	const upstreamStream = Readable.fromWeb(upstreamResponse.body as globalThis.ReadableStream<Uint8Array>);
-	upstreamStream.on("error", (error) => {
-		log("warn", "relay sse stream pipeline failed", {
-			clientId: target.clientId,
-			agentId: target.agentId,
-			serverUrl: target.serverUrl,
-			error: getErrorMessage(error),
-		});
-		if (!response.writableEnded) {
-			response.destroy(error instanceof Error ? error : undefined);
-		}
-	});
-	upstreamStream.pipe(response);
+	return {
+		type: "server_message",
+		clientId,
+		message: value.message,
+	};
 }
 
 function buildClientAuthResponse(entry: StoredRelayToken): RelayClientAuthResponse {
@@ -529,12 +488,13 @@ function buildClientAuthResponse(entry: StoredRelayToken): RelayClientAuthRespon
 function buildClientHeartbeatResponse(
 	entry: StoredRelayToken,
 	tokenStore: RelayTokenStore,
+	agentConnections: Map<string, RelayAgentConnection>,
 ): RelayClientHeartbeatResponse {
 	const targetId = entry.payload.targetId ?? null;
 	const serverReady = Boolean(
 		targetId && tokenStore.findLatestByPrincipalId("agent", targetId, { allowExpired: false }),
 	);
-	const transportReady = Boolean(targetId && tokenStore.findAgentServerUrl(targetId));
+	const transportReady = Boolean(targetId && agentConnections.get(targetId) && !agentConnections.get(targetId)?.closed);
 
 	return {
 		...buildClientAuthResponse(entry),
@@ -560,12 +520,289 @@ function buildAgentAuthResponse(entry: StoredRelayToken): RelayAgentAuthResponse
 export function runRelayServer(options?: { port?: number }) {
 	const port = options?.port ?? parsePort(process.env.PORT);
 	const tokenStore = new RelayTokenStore();
+	const browserClients = new Map<string, RelayBrowserClientConnection>();
+	const agentConnections = new Map<string, RelayAgentConnection>();
+
+	function listBrowserClientsForAgent(agentId: string): RelayBrowserClientConnection[] {
+		return Array.from(browserClients.values()).filter((client) => client.agentId === agentId && !client.closed);
+	}
+
+	function sendAgentCommand(agentId: string, command: RelayAgentCommand): boolean {
+		const connection = agentConnections.get(agentId);
+		if (!connection || connection.closed) {
+			return false;
+		}
+
+		return connection.send(command);
+	}
+
+	function closeBrowserClient(clientId: string, reason: string) {
+		const existing = browserClients.get(clientId);
+		if (!existing) {
+			return;
+		}
+
+		existing.close(reason);
+	}
+
+	function closeAgentConnection(agentId: string, reason: string) {
+		const existing = agentConnections.get(agentId);
+		if (!existing) {
+			return;
+		}
+
+		existing.close(reason);
+	}
+
+	function notifyAgentOfConnectedClients(agentId: string) {
+		for (const client of listBrowserClientsForAgent(agentId)) {
+			sendAgentCommand(agentId, { type: "client_connect", clientId: client.clientId });
+		}
+	}
+
+	function registerBrowserClientStream(
+		request: IncomingMessage,
+		response: ServerResponse,
+		corsHeaders: Record<string, string>,
+	) {
+		const target = resolveClientRelayTarget(request, tokenStore);
+		response.statusCode = 200;
+		setHeaders(response, {
+			...corsHeaders,
+			"cache-control": "no-store",
+			connection: "keep-alive",
+			"content-type": "text/event-stream; charset=utf-8",
+			"x-accel-buffering": "no",
+		});
+
+		let closed = false;
+		let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+		const close = (reason: string) => {
+			if (closed) {
+				return;
+			}
+
+			closed = true;
+			if (heartbeatTimer) {
+				clearInterval(heartbeatTimer);
+				heartbeatTimer = null;
+			}
+
+			const existing = browserClients.get(target.clientId);
+			if (existing?.close === close) {
+				browserClients.delete(target.clientId);
+			}
+
+			sendAgentCommand(target.agentId, {
+				type: "client_disconnect",
+				clientId: target.clientId,
+				reason,
+			});
+
+			if (!response.writableEnded) {
+				response.end();
+			}
+		};
+
+		const connection: RelayBrowserClientConnection = {
+			clientId: target.clientId,
+			agentId: target.agentId,
+			closed: false,
+			send(payload) {
+				if (closed || response.writableEnded) {
+					return false;
+				}
+
+				try {
+					response.write(createSseChunk(payload));
+					return true;
+				} catch {
+					close("browser_stream_write_failed");
+					return false;
+				}
+			},
+			close,
+		};
+
+		const existing = browserClients.get(target.clientId);
+		if (existing) {
+			existing.close("browser_stream_replaced");
+		}
+
+		browserClients.set(target.clientId, connection);
+		response.write(createSseComment("connected"));
+		heartbeatTimer = setInterval(() => {
+			if (!closed) {
+				response.write(createSseComment("ping"));
+			}
+		}, RELAY_SSE_HEARTBEAT_INTERVAL_MS);
+
+		request.on("close", () => {
+			close("browser_stream_closed");
+		});
+
+		sendAgentCommand(target.agentId, { type: "client_connect", clientId: target.clientId });
+		log("info", "relay browser stream connected", {
+			clientId: target.clientId,
+			agentId: target.agentId,
+			browserClients: browserClients.size,
+		});
+	}
+
+	async function handleClientMessageRequest(
+		request: IncomingMessage,
+		response: ServerResponse,
+		corsHeaders: Record<string, string>,
+	) {
+		const target = resolveClientRelayTarget(request, tokenStore);
+		const browserClient = browserClients.get(target.clientId);
+		if (!browserClient || browserClient.closed) {
+			throw new AuthError("browser client stream is not connected");
+		}
+
+		if (!sendAgentCommand(target.agentId, {
+			type: "client_message",
+			clientId: target.clientId,
+			message: JSON.parse(await readRequestBody(request)),
+		})) {
+			throw new AuthError("paired agent transport unavailable");
+		}
+
+		sendJson(response, 202, { ok: true }, corsHeaders);
+	}
+
+	function handleAgentStreamRequest(
+		request: IncomingMessage,
+		response: ServerResponse,
+		corsHeaders: Record<string, string>,
+	) {
+		const token = readBearerTokenFromRequest(request);
+		if (!tokenStore.findActiveToken(token)) {
+			throw new AuthError("unknown token");
+		}
+
+		const principal = readRelayToken(token);
+		if (principal.type !== "agent") {
+			throw new AuthError("only agent tokens may open relay agent transport");
+		}
+
+		response.statusCode = 200;
+		setHeaders(response, {
+			...corsHeaders,
+			"cache-control": "no-store",
+			connection: "keep-alive",
+			"content-type": "text/event-stream; charset=utf-8",
+			"x-accel-buffering": "no",
+		});
+
+		let closed = false;
+		let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+		const close = (reason: string) => {
+			if (closed) {
+				return;
+			}
+
+			closed = true;
+			if (heartbeatTimer) {
+				clearInterval(heartbeatTimer);
+				heartbeatTimer = null;
+			}
+
+			const existing = agentConnections.get(principal.id);
+			if (existing?.close === close) {
+				agentConnections.delete(principal.id);
+			}
+
+			for (const client of listBrowserClientsForAgent(principal.id)) {
+				client.close(reason);
+			}
+
+			if (!response.writableEnded) {
+				response.end();
+			}
+		};
+
+		const connection: RelayAgentConnection = {
+			agentId: principal.id,
+			closed: false,
+			send(command) {
+				if (closed || response.writableEnded) {
+					return false;
+				}
+
+				try {
+					response.write(createSseChunk(command));
+					return true;
+				} catch {
+					close("agent_stream_write_failed");
+					return false;
+				}
+			},
+			close,
+		};
+
+		const existing = agentConnections.get(principal.id);
+		if (existing) {
+			existing.close("agent_stream_replaced");
+		}
+
+		agentConnections.set(principal.id, connection);
+		response.write(createSseComment("connected"));
+		heartbeatTimer = setInterval(() => {
+			if (!closed) {
+				response.write(createSseComment("ping"));
+			}
+		}, RELAY_SSE_HEARTBEAT_INTERVAL_MS);
+
+		request.on("close", () => {
+			close("agent_stream_closed");
+		});
+
+		notifyAgentOfConnectedClients(principal.id);
+		log("info", "relay agent stream connected", {
+			agentId: principal.id,
+			agentConnections: agentConnections.size,
+		});
+	}
+
+	async function handleAgentMessageRequest(
+		request: IncomingMessage,
+		response: ServerResponse,
+		corsHeaders: Record<string, string>,
+	) {
+		const token = readBearerTokenFromRequest(request);
+		if (!tokenStore.findActiveToken(token)) {
+			throw new AuthError("unknown token");
+		}
+
+		const principal = readRelayToken(token);
+		if (principal.type !== "agent") {
+			throw new AuthError("only agent tokens may post relay agent messages");
+		}
+
+		const payload = parseRelayAgentMessage(JSON.parse(await readRequestBody(request)));
+		if (!payload) {
+			sendJson(response, 400, { message: "Invalid relay agent message payload." }, corsHeaders);
+			return;
+		}
+
+		const client = browserClients.get(payload.clientId);
+		if (!client || client.closed || client.agentId !== principal.id) {
+			sendJson(response, 409, { message: "Browser client stream is not connected." }, corsHeaders);
+			return;
+		}
+
+		client.send(payload.message);
+		sendJson(response, 202, { ok: true }, corsHeaders);
+	}
 	const server = createServer(async (request, response) => {
 		const pathname = new URL(request.url ?? "/", "http://relay.local").pathname;
 		const corsHeaders = createCorsHeaders();
 
 		if (pathname === "/" || pathname === "/health") {
-			sendJson(response, 200, buildHealthPayload(corsHeaders), corsHeaders);
+			sendJson(response, 200, buildHealthPayload(corsHeaders, tokenStore), corsHeaders);
 			return;
 		}
 
@@ -672,7 +909,7 @@ export function runRelayServer(options?: { port?: number }) {
 					});
 				}
 
-				sendJson(response, 200, buildClientHeartbeatResponse(issuedToken, tokenStore), corsHeaders);
+				sendJson(response, 200, buildClientHeartbeatResponse(issuedToken, tokenStore, agentConnections), corsHeaders);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "relay heartbeat failed";
 				log("warn", "relay heartbeat failed", { error: message });
@@ -737,14 +974,9 @@ export function runRelayServer(options?: { port?: number }) {
 						targetId: pairedClient.payload.id,
 						targetType: "client",
 						pairingCode: pairedClient.payload.pairingCode,
-						serverUrl: agentAuthRequest.serverUrl ?? issuedToken?.payload.serverUrl,
 					});
 				}
-				if (
-					issuedToken &&
-					!agentAuthRequest.pairingCode &&
-					(shouldRefreshToken(issuedToken) || issuedToken.payload.serverUrl !== agentAuthRequest.serverUrl)
-				) {
+				if (issuedToken && !agentAuthRequest.pairingCode && shouldRefreshToken(issuedToken)) {
 					issuedToken = tokenStore.issueToken({
 						type: "agent",
 						id: issuedToken.payload.id,
@@ -752,7 +984,6 @@ export function runRelayServer(options?: { port?: number }) {
 						pairingCode: issuedToken.payload.pairingCode,
 						targetId: issuedToken.payload.targetId,
 						targetType: issuedToken.payload.targetType,
-						serverUrl: agentAuthRequest.serverUrl ?? issuedToken.payload.serverUrl,
 					});
 				}
 
@@ -784,20 +1015,67 @@ export function runRelayServer(options?: { port?: number }) {
 						targetId: pairedClient.payload.id,
 						targetType: "client",
 						pairingCode: pairedClient.payload.pairingCode,
-						serverUrl: agentAuthRequest.serverUrl,
 					});
 				}
 
 				log("info", "issued agent auth token", {
 					agentId: issuedToken.payload.id,
 					targetId: issuedToken.payload.targetId,
-					serverUrl: issuedToken.payload.serverUrl,
+					connected: Boolean(agentConnections.get(issuedToken.payload.id)),
 				});
 				sendJson(response, 200, buildAgentAuthResponse(issuedToken), corsHeaders);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "agent auth failed";
 				log("warn", "agent auth failed", { error: message });
 				sendJson(response, 500, { message }, corsHeaders);
+			}
+			return;
+		}
+
+		if (pathname === RELAY_AGENT_STREAM_PATH) {
+			if (request.method === "OPTIONS") {
+				response.statusCode = 204;
+				setHeaders(response, corsHeaders);
+				response.end();
+				return;
+			}
+
+			if (request.method !== "GET") {
+				sendText(response, 405, "Method Not Allowed", corsHeaders);
+				return;
+			}
+
+			try {
+				handleAgentStreamRequest(request, response, corsHeaders);
+			} catch (error) {
+				const message = getErrorMessage(error);
+				const statusCode = message === "only agent tokens may open relay agent transport" ? 403 : 401;
+				log("warn", "relay agent stream rejected", { error: message });
+				sendJson(response, statusCode, { message }, corsHeaders);
+			}
+			return;
+		}
+
+		if (pathname === RELAY_AGENT_MESSAGE_PATH) {
+			if (request.method === "OPTIONS") {
+				response.statusCode = 204;
+				setHeaders(response, corsHeaders);
+				response.end();
+				return;
+			}
+
+			if (request.method !== "POST") {
+				sendText(response, 405, "Method Not Allowed", corsHeaders);
+				return;
+			}
+
+			try {
+				await handleAgentMessageRequest(request, response, corsHeaders);
+			} catch (error) {
+				const message = getErrorMessage(error);
+				const statusCode = message === "only agent tokens may post relay agent messages" ? 403 : 401;
+				log("warn", "relay agent message rejected", { error: message });
+				sendJson(response, statusCode, { message }, corsHeaders);
 			}
 			return;
 		}
@@ -816,7 +1094,7 @@ export function runRelayServer(options?: { port?: number }) {
 			}
 
 			try {
-				await proxyClientStreamRequest(request, response, corsHeaders, tokenStore);
+				registerBrowserClientStream(request, response, corsHeaders);
 			} catch (error) {
 				const statusCode = mapRelayProxyErrorStatus(error);
 				const message = getErrorMessage(error);
@@ -840,7 +1118,7 @@ export function runRelayServer(options?: { port?: number }) {
 			}
 
 			try {
-				await proxyClientMessageRequest(request, response, corsHeaders, tokenStore);
+				await handleClientMessageRequest(request, response, corsHeaders);
 			} catch (error) {
 				const statusCode = mapRelayProxyErrorStatus(error);
 				const message = getErrorMessage(error);
@@ -904,6 +1182,8 @@ export function runRelayServer(options?: { port?: number }) {
 	log("info", "relay server listening", {
 		port,
 		transport: "http",
+		tokenStorePath: tokenStore.getFilePath(),
+		tokenCount: tokenStore.countTokens({ allowExpired: true }),
 	});
 
 	return server;
