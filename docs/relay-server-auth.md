@@ -1,10 +1,50 @@
 # Relay Server Auth
 
-The relay in `apps/relay-server` now exposes authenticated HTTP endpoints only.
+The relay in `apps/relay-server` exposes authenticated HTTP endpoints for auth, authorization, and browser chat proxying.
 
-The browser chat path does not currently use the relay. The active browser transport is direct `POST /api/client/message` plus `GET /api/client/stream` against `apps/server`.
+The browser chat path now goes through the relay. After an agent authenticates, it registers its reachable `PI_SERVER_URL` with the relay, and the relay proxies paired browser traffic to that server.
 
-## Active Endpoint
+## Health Endpoints
+
+`GET /`
+
+`GET /health`
+
+Both endpoints return a structured relay status payload so the relay base URL is directly useful as a health check.
+
+Example response:
+
+```json
+{
+  "ok": true,
+  "service": "relay-server",
+  "transport": "http",
+  "timestamp": "2026-04-26T17:30:00.000Z",
+  "auth": {
+    "jwtSecretConfigured": true,
+    "corsAllowOrigin": "*"
+  },
+  "endpoints": {
+    "base": "/",
+    "health": "/health",
+    "clientStream": "/api/client/stream",
+    "clientMessage": "/api/client/message",
+    "clientAuth": "/api/relay/auth/client",
+    "agentAuth": "/api/relay/auth/agent",
+    "connection": "/api/relay/connection"
+  }
+}
+```
+
+## Browser Proxy Endpoints
+
+`GET /api/client/stream`
+
+`POST /api/client/message`
+
+These browser-facing endpoints live on the relay host. The relay validates the client token, resolves the paired `agentId`, loads the registered server URL from the paired agent token, and forwards the request to the target server.
+
+## Authorization Endpoint
 
 `POST /api/relay/connection`
 
@@ -66,6 +106,14 @@ Optional scope claims:
 }
 ```
 
+Optional registered route claim for paired agent tokens:
+
+```json
+{
+  "serverUrl": "https://server.example.com"
+}
+```
+
 Optional pairing claim for local token generation:
 
 ```json
@@ -94,6 +142,7 @@ const clientToken = generateToken({
 ## Runtime Notes
 
 - Local default relay port is `3001`.
-- `GET /health` returns relay health plus `transport: "http"`.
+- `GET /` and `GET /health` both return relay health plus endpoint and auth-configuration summary.
+- `PI_SERVER_URL` must be set on `apps/server` so the relay can proxy browser traffic to the paired server.
 - `JWT_SECRET` must be set for token verification.
 - Requests with missing, invalid, or mismatched target scope are rejected with `401` or `403`.

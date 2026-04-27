@@ -10,8 +10,8 @@ import jwt, { type JwtPayload } from "jsonwebtoken";
 // Keeping the role set explicit prevents accidental support for extra values
 // that might slip in through a malformed or malicious token.
 export const USER_TYPES = ["agent", "client"] as const;
-export const RELAY_JWT_EXPIRES_IN = "24h" as const;
-export const RELAY_JWT_TTL_MS = 24 * 60 * 60 * 1000;
+export const RELAY_JWT_EXPIRES_IN = "180d" as const;
+export const RELAY_JWT_TTL_MS = 180 * 24 * 60 * 60 * 1000;
 
 export type UserType = RelayPrincipalType;
 
@@ -21,9 +21,11 @@ export type UserType = RelayPrincipalType;
 export type AuthTokenPayload = {
 	type: UserType;
 	id: string;
+	key: string;
 	pairingCode?: string;
 	targetId?: string;
 	targetType?: UserType;
+	serverUrl?: string;
 	iat: number;
 	exp: number;
 };
@@ -31,9 +33,11 @@ export type AuthTokenPayload = {
 type GenerateTokenInput = {
 	type: UserType;
 	id: string;
+	key: string;
 	pairingCode?: string;
 	targetId?: string;
 	targetType?: UserType;
+	serverUrl?: string;
 };
 
 // Relay auth failures are treated as controlled protocol failures, not as
@@ -93,6 +97,26 @@ function ensurePairingCode(value: unknown, field: string): string {
 	}
 }
 
+function ensureServerUrl(value: unknown, field: string): string {
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw new AuthError(`invalid token field: ${field}`);
+	}
+
+	let url: URL;
+	try {
+		url = new URL(value.trim());
+	} catch {
+		throw new AuthError(`invalid token field: ${field}`);
+	}
+
+	if (url.protocol !== "http:" && url.protocol !== "https:") {
+		throw new AuthError(`invalid token field: ${field}`);
+	}
+
+	url.hash = "";
+	return url.toString();
+}
+
 // Verification proves the signature is valid, but it does not automatically
 // guarantee that the payload matches the relay's expected contract. This
 // function performs the final structural validation before the connection is
@@ -109,6 +133,7 @@ function validateTokenPayload(payload: string | JwtPayload): AuthTokenPayload {
 	return {
 		type: payload.type,
 		id: ensureString(payload.id, "id"),
+		key: ensureString(payload.key, "key"),
 		pairingCode: payload.pairingCode === undefined ? undefined : ensurePairingCode(payload.pairingCode, "pairingCode"),
 		targetId: payload.targetId === undefined ? undefined : ensureString(payload.targetId, "targetId"),
 		targetType:
@@ -119,6 +144,7 @@ function validateTokenPayload(payload: string | JwtPayload): AuthTokenPayload {
 					: (() => {
 						throw new AuthError("invalid token field: targetType");
 					})(),
+		serverUrl: payload.serverUrl === undefined ? undefined : ensureServerUrl(payload.serverUrl, "serverUrl"),
 		iat: ensureNumber(payload.iat, "iat"),
 		exp: ensureNumber(payload.exp, "exp"),
 	};
@@ -142,11 +168,12 @@ function extractBearerToken(headerValue: string | string[] | undefined): string 
 	return match[1];
 }
 
-function verifyRelayToken(token: string): AuthTokenPayload {
+export function readRelayToken(token: string, options?: { ignoreExpiration?: boolean }): AuthTokenPayload {
 	let decoded: string | JwtPayload;
 	try {
 		decoded = jwt.verify(token, getJwtSecret(), {
 			algorithms: ["HS256"],
+			ignoreExpiration: options?.ignoreExpiration ?? false,
 		});
 	} catch (error) {
 		if (error instanceof AuthError) {
@@ -159,18 +186,23 @@ function verifyRelayToken(token: string): AuthTokenPayload {
 	return validateTokenPayload(decoded);
 }
 
+export function readBearerTokenFromRequest(request: IncomingMessage): string {
+	return extractBearerToken(request.headers.authorization);
+}
+
 export function authenticateHttpRequest(request: IncomingMessage): AuthTokenPayload {
-	return verifyRelayToken(extractBearerToken(request.headers.authorization));
+	return readRelayToken(readBearerTokenFromRequest(request));
 }
 
 // Helper used for provisioning and local testing. Keeping the helper here
 // ensures token creation and token validation share one contract.
-export function generateToken({ type, id, pairingCode, targetId, targetType }: GenerateTokenInput): string {
+export function generateToken({ type, id, key, pairingCode, targetId, targetType, serverUrl }: GenerateTokenInput): string {
 	if (!isUserType(type)) {
 		throw new AuthError("invalid token role");
 	}
 
 	ensureString(id, "id");
+	ensureString(key, "key");
 	if (pairingCode !== undefined) {
 		ensurePairingCode(pairingCode, "pairingCode");
 	}
@@ -180,8 +212,11 @@ export function generateToken({ type, id, pairingCode, targetId, targetType }: G
 	if (targetType !== undefined && !isUserType(targetType)) {
 		throw new AuthError("invalid token field: targetType");
 	}
+	if (serverUrl !== undefined) {
+		ensureServerUrl(serverUrl, "serverUrl");
+	}
 
-	return jwt.sign({ type, id, pairingCode, targetId, targetType }, getJwtSecret(), {
+	return jwt.sign({ type, id, key, pairingCode, targetId, targetType, serverUrl }, getJwtSecret(), {
 		algorithm: "HS256",
 		expiresIn: RELAY_JWT_EXPIRES_IN,
 	});

@@ -4,10 +4,18 @@ import { Sidebar } from "./components/Sidebar";
 import { TranscriptPanel } from "./components/TranscriptPanel";
 import type { SessionCacheEntry, SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "./chatTypes";
 import { formatSessionState } from "./chatView";
+import {
+	ensureRelayClientAuth,
+	readRelayClientHeartbeat,
+	readStoredRelayClientAuth,
+	type StoredRelayClientAuth,
+} from "./relay-auth";
 import { getWebTransportConfig } from "./transport-config";
 
 const ACTIVE_SESSION_STORAGE_KEY = "pi-browser-active-session";
 const STREAM_DISCONNECTED_MESSAGE = "Disconnected from the server stream. Reconnecting...";
+const AUTH_REFRESH_INTERVAL_MS = 3_000;
+const RELAY_HEARTBEAT_INTERVAL_MS = 500;
 const transportConfig = getWebTransportConfig();
 
 type ClientMessage =
@@ -167,6 +175,9 @@ export function App() {
 	const [sessions, setSessions] = useState<SessionSummary[]>([]);
 	const [sessionCache, setSessionCache] = useState<Map<string, SessionCacheEntry>>(() => new Map());
 	const [activeSessionId, setActiveSessionId] = useState<string | null>(() => readStoredSessionId());
+	const [relayAuth, setRelayAuth] = useState<StoredRelayClientAuth | null>(() => readStoredRelayClientAuth(transportConfig.relayUrl));
+	const [serverReady, setServerReady] = useState(false);
+	const [transportReady, setTransportReady] = useState(false);
 	const [connectionError, setConnectionError] = useState<string | null>(null);
 	const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
 	const transcriptRef = useRef<HTMLDivElement | null>(null);
@@ -183,6 +194,9 @@ export function App() {
 
 	const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
 	const activeTranscript = activeSessionId ? sessionCache.get(activeSessionId)?.transcript ?? [] : [];
+	const authReady = Boolean(relayAuth?.target?.id);
+	const authCode = !authReady ? relayAuth?.pairingCode ?? null : null;
+	const canOpenRelayTransport = authReady && serverReady && transportReady;
 	const isBusy = pendingDraft || Boolean(activeSession?.busy);
 
 	const focusPrompt = useCallback(() => {
@@ -192,9 +206,14 @@ export function App() {
 	}, []);
 
 	const sendClientMessage = useCallback(async (message: ClientMessage) => {
+		if (!relayAuth?.token) {
+			throw new Error("Browser authentication is not ready yet.");
+		}
+
 		const response = await fetch(transportConfig.messageUrl, {
 			method: "POST",
 			headers: {
+				authorization: `Bearer ${relayAuth.token}`,
 				"content-type": "application/json",
 			},
 			body: JSON.stringify(message),
@@ -215,7 +234,7 @@ export function App() {
 		}
 
 		throw new Error(errorMessage);
-	}, []);
+	}, [relayAuth?.token]);
 
 	const requestSessionSnapshot = useCallback((sessionId: string | null) => {
 		if (!sessionId) {
@@ -256,7 +275,105 @@ export function App() {
 	}, [activateSession]);
 
 	useEffect(() => {
-		const eventSource = new EventSource(transportConfig.streamUrl);
+		let cancelled = false;
+		let refreshTimer: number | null = null;
+
+		const refreshRelayAuth = async () => {
+			try {
+				const nextAuth = await ensureRelayClientAuth(transportConfig.relayUrl);
+				if (cancelled) {
+					return;
+				}
+
+				setRelayAuth(nextAuth);
+				if (!nextAuth.target) {
+					setServerReady(false);
+					setTransportReady(false);
+				}
+				if (!nextAuth.target) {
+					setConnected(false);
+					setConnectionError(null);
+					refreshTimer = window.setTimeout(refreshRelayAuth, AUTH_REFRESH_INTERVAL_MS);
+				}
+			} catch (error) {
+				if (cancelled) {
+					return;
+				}
+
+				setConnected(false);
+				setConnectionError(getErrorMessage(error));
+				refreshTimer = window.setTimeout(refreshRelayAuth, AUTH_REFRESH_INTERVAL_MS);
+			}
+		};
+
+		void refreshRelayAuth();
+
+		return () => {
+			cancelled = true;
+			if (refreshTimer !== null) {
+				window.clearTimeout(refreshTimer);
+			}
+		};
+	}, []);
+
+	useEffect(() => {
+		if (!relayAuth) {
+			setServerReady(false);
+			setTransportReady(false);
+			return;
+		}
+
+		let cancelled = false;
+		let heartbeatTimer: number | null = null;
+
+		const pollHeartbeat = async () => {
+			try {
+				const heartbeat = await readRelayClientHeartbeat(transportConfig.relayUrl);
+				if (cancelled) {
+					return;
+				}
+
+				setRelayAuth(heartbeat.auth);
+				setServerReady(heartbeat.serverReady);
+				setTransportReady(heartbeat.transportReady);
+				if (!heartbeat.transportReady) {
+					setConnected(false);
+				}
+			} catch (error) {
+				if (cancelled) {
+					return;
+				}
+
+				setServerReady(false);
+				setTransportReady(false);
+				setConnected(false);
+				setConnectionError((current) => current ?? getErrorMessage(error));
+			} finally {
+				if (!cancelled) {
+					heartbeatTimer = window.setTimeout(pollHeartbeat, RELAY_HEARTBEAT_INTERVAL_MS);
+				}
+			}
+		};
+
+		void pollHeartbeat();
+
+		return () => {
+			cancelled = true;
+			if (heartbeatTimer !== null) {
+				window.clearTimeout(heartbeatTimer);
+			}
+		};
+	}, [relayAuth?.clientId, relayAuth?.clientKey]);
+
+	useEffect(() => {
+		if (!relayAuth?.token || !canOpenRelayTransport) {
+			setConnected(false);
+			return;
+		}
+
+		const streamUrl = new URL(transportConfig.streamUrl);
+		streamUrl.searchParams.set("token", relayAuth.token);
+		const eventSource = new EventSource(streamUrl.toString());
 
 		eventSource.onopen = () => {
 			setConnected(true);
@@ -406,7 +523,7 @@ export function App() {
 			eventSource.close();
 			setConnected(false);
 		};
-	}, [activateSession, requestSessionSnapshot, upsertSessionSnapshot]);
+	}, [activateSession, canOpenRelayTransport, relayAuth?.token, requestSessionSnapshot, upsertSessionSnapshot]);
 
 	const submitPrompt = useCallback((trimmedPrompt: string) => {
 		if (!trimmedPrompt || !connected || isBusy) {
@@ -439,8 +556,24 @@ export function App() {
 
 	const emptyState = !activeSession
 		? {
-			title: connected ? (pendingDraft ? "Creating session..." : "Ready when you are") : "Connecting...",
-			body: connected
+			title: !relayAuth
+				? "Preparing authentication..."
+				: !authReady
+					? "Authenticate this browser"
+					: !serverReady
+						? "Waiting for server token"
+						: !transportReady
+							? "Relay transport not ready"
+					: connected ? (pendingDraft ? "Creating session..." : "Ready when you are") : "Connecting...",
+			body: !relayAuth
+				? "Requesting a client identity from the relay."
+				: !authReady
+					? `Enter code ${authCode ?? "..."} on the server once to finish pairing.`
+					: !serverReady
+						? "The browser heartbeat is waiting for the server JWT to appear in the relay."
+						: !transportReady
+							? "The server token is stored in the relay, but relay-stream messaging is not ready yet."
+					: connected
 				? "Start with a coding task, file request, or bug report. The first prompt creates a reusable session that stays available in the left rail."
 				: "Opening the server event stream.",
 		}
@@ -456,6 +589,9 @@ export function App() {
 		<main className="grid h-svh w-full overflow-hidden grid-cols-1 font-ui text-ink min-[721px]:grid-cols-[270px_minmax(0,1fr)] min-[1221px]:grid-cols-[320px_minmax(0,1fr)]">
 			<Sidebar
 				connected={connected}
+				authReady={authReady}
+				authCode={authCode}
+				serverReady={serverReady}
 				pendingDraft={pendingDraft}
 				sessions={sessions}
 				activeSessionId={activeSessionId}
@@ -475,6 +611,7 @@ export function App() {
 				<div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-4 max-[860px]:px-3">
 					<Composer
 						connected={connected}
+						authReady={authReady}
 						connectionLabel={transportConfig.label}
 						activeSession={activeSession}
 						activeSessionId={activeSessionId}

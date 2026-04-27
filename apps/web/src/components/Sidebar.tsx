@@ -4,6 +4,9 @@ import { formatRelativeTime, getSessionCardClassName } from "../chatView";
 
 type SidebarProps = {
 	connected: boolean;
+	authReady: boolean;
+	authCode: string | null;
+	serverReady: boolean;
 	pendingDraft: boolean;
 	sessions: SessionSummary[];
 	activeSessionId: string | null;
@@ -14,6 +17,9 @@ type SidebarProps = {
 
 export const Sidebar = memo(function Sidebar({
 	connected,
+	authReady,
+	authCode,
+	serverReady,
 	pendingDraft,
 	sessions,
 	activeSessionId,
@@ -24,11 +30,24 @@ export const Sidebar = memo(function Sidebar({
 	return (
 		<aside className="flex h-full min-h-0 flex-col border-b border-white/10 bg-sidebar-bg text-sidebar-ink min-[721px]:border-r min-[721px]:border-b-0">
 			<div className="border-b border-white/10 px-6 pt-7 pb-6 max-[860px]:px-5">
+				{authCode && !authReady ? (
+					<div className="border border-white/10 bg-sidebar-panel px-4 py-4 text-sm leading-6 text-sidebar-muted">
+						<p className="font-mono text-[0.72rem] font-medium uppercase tracking-[0.12em] text-sidebar-muted">
+							Authentication Code
+						</p>
+						<p className="mt-2 font-mono text-lg font-semibold tracking-[0.2em] text-sidebar-ink">
+							{authCode}
+						</p>
+						<p className="mt-2 text-[0.82rem] leading-[1.6]">
+							Enter this code on the server once. After that, both sides reuse their stored tokens.
+						</p>
+					</div>
+				) : null}
 				<button
 					type="button"
 					id="new-chat-button"
 					className={[
-						"mt-6 w-full border border-white/15 bg-sidebar-surface px-4 py-3.5 text-left text-[0.92rem] font-medium text-sidebar-ink transition duration-150 hover:border-white/25 hover:bg-white/8 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring enabled:active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40",
+						`${authCode && !authReady ? "mt-4" : "mt-6"} w-full border border-white/15 bg-sidebar-surface px-4 py-3.5 text-left text-[0.92rem] font-medium text-sidebar-ink transition duration-150 hover:border-white/25 hover:bg-white/8 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring enabled:active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40`,
 						!activeSessionId && !pendingDraft ? "border-white/25 bg-white/8" : "",
 					].join(" ")}
 					onClick={onStartNewChat}
@@ -80,8 +99,12 @@ export const Sidebar = memo(function Sidebar({
 				<p className="font-mono text-[0.72rem] font-medium uppercase tracking-[0.12em] text-sidebar-muted">
 					State
 				</p>
+				<div className="mt-2 flex items-center gap-2 text-[0.82rem] text-sidebar-muted">
+					<span className={`h-2.5 w-2.5 rounded-full ${serverReady ? "bg-[#56c271]" : "bg-[#d15a4f]"}`} />
+					<span>{serverReady ? "Server token detected" : "Waiting for server token"}</span>
+				</div>
 				<p id="sidebar-status" className="mt-2 text-base font-medium">
-					{connected ? "Connected" : "Disconnected - reconnecting..."} · {sessionState}
+					{authReady ? (connected ? "Connected" : "Disconnected - reconnecting...") : "Waiting for server auth"} · {sessionState}
 				</p>
 			</div>
 		</aside>

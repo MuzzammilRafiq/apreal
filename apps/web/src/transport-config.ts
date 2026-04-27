@@ -1,28 +1,30 @@
+import { CLIENT_EVENT_STREAM_PATH, CLIENT_MESSAGE_PATH } from "@apreal/shared";
+
 export type WebTransportConfig = {
 	label: string;
 	messageUrl: string;
 	streamUrl: string;
+	relayUrl: string;
 };
 
-function resolveServerBaseUrl(): URL {
-	const configuredUrl = import.meta.env.VITE_PI_SERVER_URL?.trim();
-	if (!configuredUrl) {
-		if (import.meta.env.DEV) {
-			return new URL("http://localhost:3000");
-		}
+const DEFAULT_API_BASE_URL = "https://api.malikmuzzammilrafiq.store";
 
-		return new URL(window.location.href);
+function resolveRelayBaseUrl(): URL {
+	const configuredUrl = import.meta.env.VITE_PI_RELAY_URL?.trim();
+	if (!configuredUrl) {
+		return new URL(DEFAULT_API_BASE_URL);
 	}
 
 	return new URL(configuredUrl, window.location.href);
 }
 
 export function getWebTransportConfig(): WebTransportConfig {
-	const serverBaseUrl = resolveServerBaseUrl();
+	const relayBaseUrl = resolveRelayBaseUrl();
 
 	return {
-		label: "http-stream",
-		messageUrl: new URL("/api/client/message", serverBaseUrl).toString(),
-		streamUrl: new URL("/api/client/stream", serverBaseUrl).toString(),
+		label: "relay-http",
+		messageUrl: new URL(CLIENT_MESSAGE_PATH, relayBaseUrl).toString(),
+		streamUrl: new URL(CLIENT_EVENT_STREAM_PATH, relayBaseUrl).toString(),
+		relayUrl: relayBaseUrl.toString(),
 	};
 }

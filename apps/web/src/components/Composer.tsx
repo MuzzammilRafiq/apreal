@@ -3,6 +3,7 @@ import type { SessionSummary } from "../chatTypes";
 
 type ComposerProps = {
   connected: boolean;
+  authReady: boolean;
   connectionLabel: string;
   activeSession: SessionSummary | null;
   activeSessionId: string | null;
@@ -13,6 +14,7 @@ type ComposerProps = {
 
 export const Composer = memo(function Composer({
   connected,
+  authReady,
   connectionLabel,
   activeSession,
   activeSessionId,
@@ -21,7 +23,7 @@ export const Composer = memo(function Composer({
   onAbort,
 }: ComposerProps) {
   const [prompt, setPrompt] = useState("");
-	const canSend = connected && !activeSession?.busy && prompt.trim().length > 0;
+  const canSend = connected && authReady && !activeSession?.busy && prompt.trim().length > 0;
 
   function resizePromptInput() {
     const node = promptInputRef.current;
@@ -84,7 +86,9 @@ export const Composer = memo(function Composer({
         disabled={!connected}
         onInput={resizePromptInput}
         placeholder={
-          !connected
+          !authReady
+				? "Enter the browser authentication code on the server to finish pairing"
+				: !connected
             ? `Reconnecting to the ${connectionLabel}...`
 				: activeSessionId
               ? "Continue this session with the next task, follow-up, or code request"
@@ -96,7 +100,7 @@ export const Composer = memo(function Composer({
         type="button"
         id={activeSession?.busy ? "abort-button" : "send-button"}
         className="flex h-13 w-13 shrink-0 items-center justify-center  border border-transparent bg-ink text-sidebar-ink shadow-[0_10px_24px_rgba(23,21,18,0.18)] transition duration-150 hover:bg-ink-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-[0.34]"
-    		disabled={!connected || (!canSend && !activeSession?.busy)}
+	    	disabled={!connected || !authReady || (!canSend && !activeSession?.busy)}
         aria-label={activeSession?.busy ? "Stop run" : "Send prompt"}
         onClick={() => {
           if (activeSession?.busy) {

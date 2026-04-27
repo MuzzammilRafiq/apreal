@@ -1,5 +1,8 @@
+
+import { createInterface } from "node:readline";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CLIENT_EVENT_STREAM_PATH, CLIENT_MESSAGE_PATH } from "@apreal/shared";
 import { getConfiguredToolsLabel } from "./agent-tools.ts";
 import {
 	parseClientAppMessage,
@@ -14,14 +17,18 @@ import {
 	type AgentController,
 	type AgentStreamEvent,
 } from "./session.ts";
+import {
+	ensureRelayAgentAuth,
+	getRelayServerUrl,
+	readClientTokenFromRequest,
+	reauthenticateRelayAgent,
+	verifyRelayClientAccess,
+} from "./relay-auth.ts";
 import { createLogger, summarizePrompt } from "./logger.ts";
 
 const DEFAULT_PORT = 3000;
 const SERVER_SRC_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_WORKSPACE_ROOT = join(SERVER_SRC_DIR, "..", "..", "..");
-const CLIENT_EVENT_STREAM_PATH = "/api/client/stream";
-const CLIENT_MESSAGE_PATH = "/api/client/message";
-const DEFAULT_HTTP_CLIENT_ID = "default-client";
 const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 const SSE_ENCODER = new TextEncoder();
 
@@ -170,7 +177,7 @@ function createCorsHeaders(): Record<string, string> {
 	return {
 		"access-control-allow-origin": "*",
 		"access-control-allow-methods": "GET, POST, OPTIONS",
-		"access-control-allow-headers": "content-type",
+		"access-control-allow-headers": "authorization, content-type",
 	};
 }
 
@@ -204,12 +211,107 @@ function cloneTranscript(transcript: TranscriptMessage[]): TranscriptMessage[] {
 	}));
 }
 
-export function runWebServer(options?: { cwd?: string; port?: number }) {
+export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	const cwd = options?.cwd ?? process.env.PI_WORKSPACE_ROOT ?? DEFAULT_WORKSPACE_ROOT;
 	const port = options?.port ?? parsePort(process.env.PORT);
+	const logger = createLogger("web-server");
+	const relayUrl = getRelayServerUrl();
+	let relayAgentAuth: Awaited<ReturnType<typeof ensureRelayAgentAuth>> | null = null;
+	let relayStartupError: string | null = null;
+
+	try {
+		relayAgentAuth = await ensureRelayAgentAuth(logger, relayUrl);
+	} catch (error) {
+		relayStartupError = getErrorMessage(error);
+		logger.warn("relay registration unavailable during startup", {
+			relayUrl,
+			error: relayStartupError,
+		});
+	}
+
+	function getClientAuthErrorStatus(error: unknown): number {
+		const message = getErrorMessage(error);
+		return message === relayStartupError ? 503 : 401;
+	}
+
+	async function authenticateClientRequest(request: Request): Promise<{ clientId: string }> {
+		if (!relayAgentAuth) {
+			throw new Error(relayStartupError ?? "Relay registration is not ready.");
+		}
+
+		const clientToken = readClientTokenFromRequest(request);
+		if (!clientToken) {
+			throw new Error("Missing client auth token.");
+		}
+
+		return verifyRelayClientAccess(relayUrl, clientToken, relayAgentAuth.agentId);
+	}
+
 	const clients = new Map<string, ClientConnection>();
 	const sessions = new Map<string, SharedSessionState>();
-	const logger = createLogger("web-server");
+	let reauthPending = false;
+	let reauthRunning = false;
+
+	function resetClientConnections(reason: string) {
+		for (const clientId of Array.from(clients.keys())) {
+			removeClientConnection(clientId, reason);
+		}
+	}
+
+	async function handleReauthenticationInput(rawValue: string) {
+		if (reauthRunning) {
+			logger.warn("relay reauthentication already in progress");
+			return;
+		}
+
+		reauthRunning = true;
+		try {
+			relayAgentAuth = await reauthenticateRelayAgent(logger, rawValue, relayUrl);
+			relayStartupError = null;
+			resetClientConnections("relay_reauthenticated");
+			logger.info("relay reauthentication completed", {
+				agentId: relayAgentAuth.agentId,
+				targetId: relayAgentAuth.targetId,
+			});
+			console.log("Relay reauthentication completed.");
+		} catch (error) {
+			const message = getErrorMessage(error);
+			logger.warn("relay reauthentication failed", { error: message });
+			console.error(`Relay reauthentication failed: ${message}`);
+		} finally {
+			reauthPending = false;
+			reauthRunning = false;
+		}
+	}
+
+	const commandInput = createInterface({
+		input: process.stdin,
+		output: process.stdout,
+		terminal: true,
+	});
+
+	commandInput.on("line", (line) => {
+		const trimmed = line.trim();
+		if (!trimmed) {
+			return;
+		}
+
+		if (reauthPending) {
+			void handleReauthenticationInput(trimmed);
+			return;
+		}
+
+		const directReauthMatch = /^reauthenticate\s+(.+)$/i.exec(trimmed);
+		if (directReauthMatch?.[1]) {
+			void handleReauthenticationInput(directReauthMatch[1]);
+			return;
+		}
+
+		if (/^reauthenticate$/i.test(trimmed)) {
+			reauthPending = true;
+			console.log("Enter the browser authentication code:");
+		}
+	});
 
 	function createSseChunk(payload: ServerMessage): Uint8Array {
 		return SSE_ENCODER.encode(`data: ${JSON.stringify(payload)}\n\n`);
@@ -219,8 +321,7 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 		return SSE_ENCODER.encode(`: ${comment}\n\n`);
 	}
 
-	function createSseStreamResponse(request: Request): Response {
-		const clientId = DEFAULT_HTTP_CLIENT_ID;
+	function createSseStreamResponse(request: Request, clientId: string): Response {
 		const stream = new TransformStream<Uint8Array, Uint8Array>();
 		const writer = stream.writable.getWriter();
 		let closed = false;
@@ -296,7 +397,7 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 		});
 	}
 
-	async function handleHttpClientMessage(request: Request): Promise<Response> {
+	async function handleHttpClientMessage(request: Request, clientId: string): Promise<Response> {
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
@@ -311,7 +412,7 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 			});
 		}
 
-		const client = clients.get(DEFAULT_HTTP_CLIENT_ID);
+		const client = clients.get(clientId);
 		if (!client || client.closed) {
 			return json(
 				{ message: "Client event stream is not connected." },
@@ -337,7 +438,7 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 			);
 		}
 
-		await handleClientMessage(DEFAULT_HTTP_CLIENT_ID, message);
+		await handleClientMessage(clientId, message);
 		return json({ ok: true }, { status: 202, headers: createCorsHeaders() });
 	}
 
@@ -1184,19 +1285,40 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 						});
 					}
 
-					return createSseStreamResponse(request);
+					try {
+						const auth = await authenticateClientRequest(request);
+						return createSseStreamResponse(request, auth.clientId);
+					} catch (error) {
+						return json(
+							{ message: getErrorMessage(error) },
+							{ status: getClientAuthErrorStatus(error), headers: createCorsHeaders() },
+						);
+					}
 				}
 
 				if (url.pathname === CLIENT_MESSAGE_PATH) {
-					return handleHttpClientMessage(request);
+					try {
+						const auth = await authenticateClientRequest(request);
+						return handleHttpClientMessage(request, auth.clientId);
+					} catch (error) {
+						return json(
+							{ message: getErrorMessage(error) },
+							{ status: getClientAuthErrorStatus(error), headers: createCorsHeaders() },
+						);
+					}
 				}
 
 				if (url.pathname === "/health") {
 					return json({
+						service: "web-server",
 						status: "ok",
 						transport: "http-sse",
 						clients: clients.size,
 						sessions: sessions.size,
+						relayReady: Boolean(relayAgentAuth),
+						agentId: relayAgentAuth?.agentId ?? null,
+						relayUrl,
+						relayStartupError,
 						cwd,
 					});
 				}
@@ -1217,15 +1339,24 @@ export function runWebServer(options?: { cwd?: string; port?: number }) {
 		port: server.port,
 		logLevel: process.env.LOG_LEVEL ?? "info",
 		transport: "http-sse",
+		agentId: relayAgentAuth?.agentId ?? null,
+		relayUrl,
+		relayReady: Boolean(relayAgentAuth),
 	});
 	console.log(`Pi web server ready in ${cwd}`);
 	console.log("Frontend UI: http://localhost:5173");
 	console.log(`Health check: http://localhost:${server.port}/health`);
+	console.log(`Relay auth: ${relayUrl}`);
+	console.log(`Agent id: ${relayAgentAuth?.agentId ?? "not registered"}`);
+	if (relayStartupError) {
+		console.log(`Relay registration status: ${relayStartupError}`);
+	}
 	console.log("Browser chat sessions are shared across tabs while the server is running.");
+	console.log("Type 'reauthenticate' to pair this server with a newly generated browser code.");
 
 	return server;
 }
 
 if (import.meta.main) {
-	runWebServer();
+	void runWebServer();
 }
