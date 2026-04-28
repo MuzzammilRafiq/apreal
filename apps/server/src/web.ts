@@ -1,4 +1,5 @@
 
+import { homedir } from "node:os";
 import { createInterface } from "node:readline";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -31,6 +32,7 @@ import {
 	reauthenticateRelayAgent,
 	verifyRelayClientAccess,
 } from "./relay-auth.ts";
+import { createChatStore } from "./chat-store.ts";
 import { createLogger, summarizePrompt } from "./logger.ts";
 
 const DEFAULT_PORT = 3000;
@@ -52,7 +54,7 @@ type ClientConnection = {
 	send(payload: ServerMessage): boolean | void;
 };
 
-type TranscriptMessage = {
+export type TranscriptMessage = {
 	id: string;
 	role: "user" | "assistant" | "system" | "error";
 	body: string;
@@ -63,7 +65,7 @@ type TranscriptMessage = {
 	createdAt: number;
 };
 
-type TranscriptToolCall = {
+export type TranscriptToolCall = {
 	id: string;
 	name: string;
 	summary: string;
@@ -72,7 +74,7 @@ type TranscriptToolCall = {
 	updatedAt: number;
 };
 
-type TranscriptThinkingSegment = {
+export type TranscriptThinkingSegment = {
 	id: string;
 	type: "thinking";
 	content: string;
@@ -81,7 +83,7 @@ type TranscriptThinkingSegment = {
 	updatedAt: number;
 };
 
-type TranscriptTextSegment = {
+export type TranscriptTextSegment = {
 	id: string;
 	type: "text";
 	content: string;
@@ -90,14 +92,17 @@ type TranscriptTextSegment = {
 	updatedAt: number;
 };
 
-type TranscriptToolCallSegment = TranscriptToolCall & {
+export type TranscriptToolCallSegment = TranscriptToolCall & {
 	type: "tool_call";
 	contentIndex?: number;
 };
 
-type TranscriptMessageSegment = TranscriptTextSegment | TranscriptThinkingSegment | TranscriptToolCallSegment;
+export type TranscriptMessageSegment =
+	| TranscriptTextSegment
+	| TranscriptThinkingSegment
+	| TranscriptToolCallSegment;
 
-type SharedSessionState = {
+export type SharedSessionState = {
 	id: string;
 	title: string;
 	createdAt: number;
@@ -298,6 +303,10 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 
 	const clients = new Map<string, ClientConnection>();
 	const sessions = new Map<string, SharedSessionState>();
+	const chatStore = createChatStore(join(homedir(), ".pi", "agent", "sessions.db"));
+	for (const [sessionId, session] of chatStore.loadSessions()) {
+		sessions.set(sessionId, session);
+	}
 	let reauthPending = false;
 	let reauthRunning = false;
 
@@ -1227,6 +1236,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	}
 
 	function handleControllerEvent(session: SharedSessionState, event: AgentStreamEvent) {
+		let shouldPersist = false;
 		switch (event.type) {
 			case "assistant_message_start": {
 				if (!getPendingAssistantMessage(session)) {
@@ -1239,6 +1249,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 				applyAssistantMessageSnapshot(session, event);
 				finalizeAssistantMessage(session);
 				broadcastSessionSnapshot(session);
+				shouldPersist = true;
 				break;
 			}
 			case "text_delta": {
@@ -1272,22 +1283,26 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 					contentIndex: event.contentIndex,
 				});
 				broadcastSessionSnapshot(session);
+				shouldPersist = true;
 				break;
 			}
 			case "tool_execution_start": {
 				updateAssistantToolCallStatus(session, event.tool.id, event.tool.status);
 				broadcastSessionSnapshot(session);
+				shouldPersist = true;
 				break;
 			}
 			case "tool_execution_end": {
 				updateAssistantToolCallStatus(session, event.toolId, event.status);
 				broadcastSessionSnapshot(session);
+				shouldPersist = true;
 				break;
 			}
 			case "done": {
 				settleSession(session);
 				broadcastSessionSnapshot(session);
 				sendSessionsUpdated();
+				shouldPersist = true;
 				break;
 			}
 			case "error": {
@@ -1308,8 +1323,13 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 
 				broadcastSessionSnapshot(session);
 				sendSessionsUpdated();
+				shouldPersist = true;
 				break;
 			}
+		}
+
+		if (shouldPersist) {
+			chatStore.saveSession(session);
 		}
 	}
 
@@ -1390,6 +1410,9 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 			pending: false,
 		});
 		createPendingAssistantMessage(session);
+		if (createdSession) {
+			chatStore.saveSession(session);
+		}
 
 		if (createdSession) {
 			sendClientPayload(clientId, {
@@ -1415,6 +1438,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 				broadcastSessionSnapshot(session);
 				sendSessionsUpdated();
 			}
+			chatStore.saveSession(session);
 		} catch (error) {
 			logger.error("browser prompt failed", {
 				sessionId: session.id,
@@ -1432,6 +1456,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 			});
 			broadcastSessionSnapshot(session);
 			sendSessionsUpdated();
+			chatStore.saveSession(session);
 			sendError(clientId, getErrorMessage(error), session.id);
 		}
 	}
@@ -1475,6 +1500,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 			});
 			broadcastSessionSnapshot(session);
 			sendSessionsUpdated();
+			chatStore.saveSession(session);
 		}
 	}
 
