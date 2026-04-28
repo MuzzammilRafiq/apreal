@@ -7,7 +7,7 @@ import type {
 	TranscriptMessage,
 	TranscriptMessageSegment,
 	TranscriptToolCall,
-} from "./web.ts";
+} from "./web-session-state.ts";
 
 const logger = createLogger("chat-store");
 const require = createRequire(import.meta.url);
