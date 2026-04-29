@@ -49,6 +49,7 @@ export type SessionSummary = {
 	preview: string;
 	createdAt: number;
 	updatedAt: number;
+	revision: number;
 	busy: boolean;
 	model: string | null;
 	messageCount: number;
@@ -62,4 +63,5 @@ export type SessionSummary = {
 export type SessionCacheEntry = {
 	session: SessionSummary;
 	transcript: TranscriptMessage[];
+	transcriptLoaded: boolean;
 };

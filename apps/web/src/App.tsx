@@ -10,9 +10,17 @@ import {
 	readStoredRelayClientAuth,
 	type StoredRelayClientAuth,
 } from "./relay-auth";
+import {
+	readCachedSessionSnapshot,
+	readCachedSessionSummaries,
+	writeSessionSnapshot,
+	writeSessionSummaries,
+	writeSessionSummary,
+} from "./session-cache";
 import { getWebTransportConfig } from "./transport-config";
 
 const ACTIVE_SESSION_STORAGE_KEY = "pi-browser-active-session";
+const SESSION_PAGE_SIZE = 50;
 const STREAM_DISCONNECTED_MESSAGE = "Disconnected from the server stream. Reconnecting...";
 const STREAM_REQUIRED_MESSAGE = "Client event stream is not connected.";
 const AUTH_REFRESH_INTERVAL_MS = 3_000;
@@ -23,11 +31,13 @@ type ClientMessage =
 	| { type: "prompt"; prompt: string; sessionId?: string | null }
 	| { type: "abort"; sessionId: string }
 	| { type: "load_session"; sessionId: string }
+	| { type: "load_sessions_page"; offset?: number; limit?: number }
 	| { type: "ping" };
 
 type ServerMessage =
 	| { type: "connected"; clientId: string; message: string; tools?: string }
-	| { type: "sessions_updated"; sessions: SessionSummary[] }
+	| { type: "sessions_page"; sessions: SessionSummary[]; offset: number; limit: number; total: number }
+	| { type: "session_summary_updated"; session: SessionSummary }
 	| { type: "session_created"; session: SessionSummary; transcript: TranscriptMessage[] }
 	| { type: "session_snapshot"; session: SessionSummary; transcript: TranscriptMessage[] }
 	| { type: "assistant_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
@@ -98,6 +108,14 @@ function upsertSessionInList(sessions: SessionSummary[], session: SessionSummary
 	next.push(session);
 	next.sort((left, right) => right.updatedAt - left.updatedAt);
 	return next;
+}
+
+function createSummaryOnlyCacheEntry(session: SessionSummary): SessionCacheEntry {
+	return {
+		session,
+		transcript: [],
+		transcriptLoaded: false,
+	};
 }
 
 function getSegmentSortValue(segment: TranscriptMessageSegment): number {
@@ -175,6 +193,10 @@ export function App() {
 	const [pendingDraft, setPendingDraft] = useState(false);
 	const [sessions, setSessions] = useState<SessionSummary[]>([]);
 	const [sessionCache, setSessionCache] = useState<Map<string, SessionCacheEntry>>(() => new Map());
+	const [visibleSessionLimit, setVisibleSessionLimit] = useState(SESSION_PAGE_SIZE);
+	const [serverLoadedSessionCount, setServerLoadedSessionCount] = useState(0);
+	const [totalSessionCount, setTotalSessionCount] = useState<number | null>(null);
+	const [loadingMoreSessions, setLoadingMoreSessions] = useState(false);
 	const [activeSessionId, setActiveSessionId] = useState<string | null>(() => readStoredSessionId());
 	const [relayAuth, setRelayAuth] = useState<StoredRelayClientAuth | null>(() => readStoredRelayClientAuth(transportConfig.relayUrl));
 	const [serverReady, setServerReady] = useState(false);
@@ -183,13 +205,20 @@ export function App() {
 	const [streamRequested, setStreamRequested] = useState(false);
 	const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
 	const transcriptRef = useRef<HTMLDivElement | null>(null);
+	const sessionsRef = useRef(sessions);
 	const sessionCacheRef = useRef(sessionCache);
 	const activeSessionIdRef = useRef(activeSessionId);
+	const visibleSessionLimitRef = useRef(visibleSessionLimit);
 	const pendingConnectionResolversRef = useRef(new Set<() => void>());
 	const resolvePendingConnectionsRef = useRef<() => void>(() => {});
-	const requestSessionSnapshotRef = useRef<(sessionId: string | null) => void>(() => {});
+	const ensureSessionLoadedRef = useRef<(sessionId: string | null) => void>(() => {});
+	const requestSessionPageRef = useRef<(offset?: number, limit?: number) => void>(() => {});
 	const activateSessionRef = useRef<(sessionId: string | null, options?: { load?: boolean }) => void>(() => {});
 	const upsertSessionSnapshotRef = useRef<(session: SessionSummary, transcript: TranscriptMessage[]) => void>(() => {});
+
+	useEffect(() => {
+		sessionsRef.current = sessions;
+	}, [sessions]);
 
 	useEffect(() => {
 		sessionCacheRef.current = sessionCache;
@@ -199,8 +228,17 @@ export function App() {
 		activeSessionIdRef.current = activeSessionId;
 	}, [activeSessionId]);
 
-	const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
-	const activeTranscript = activeSessionId ? sessionCache.get(activeSessionId)?.transcript ?? [] : [];
+	useEffect(() => {
+		visibleSessionLimitRef.current = visibleSessionLimit;
+	}, [visibleSessionLimit]);
+
+	const visibleSessions = sessions.slice(0, visibleSessionLimit);
+	const activeSession =
+		sessions.find((session) => session.id === activeSessionId) ??
+		(activeSessionId ? sessionCache.get(activeSessionId)?.session ?? null : null);
+	const activeSessionCacheEntry = activeSessionId ? sessionCache.get(activeSessionId) ?? null : null;
+	const activeTranscript = activeSessionCacheEntry?.transcriptLoaded ? activeSessionCacheEntry.transcript : [];
+	const activeTranscriptLoaded = activeSessionCacheEntry?.transcriptLoaded ?? false;
 	const authReady = Boolean(relayAuth?.target?.id);
 	const authCode = !authReady ? relayAuth?.pairingCode ?? null : null;
 	const canOpenRelayTransport = authReady;
@@ -302,19 +340,98 @@ export function App() {
 		throw new Error(errorMessage);
 	}, [ensureClientTransport, relayAuth?.token, waitForConnectionAttempt]);
 
-	const requestSessionSnapshot = useCallback((sessionId: string | null) => {
-		if (!sessionId) {
-			return;
-		}
-
-		void sendClientMessage({ type: "load_session", sessionId }).catch((error) => {
+	const requestSessionPage = useCallback((offset = 0, limit = SESSION_PAGE_SIZE) => {
+		void sendClientMessage({ type: "load_sessions_page", offset, limit }).catch((error) => {
+			setLoadingMoreSessions(false);
 			setConnectionError(getErrorMessage(error));
 		});
 	}, [sendClientMessage]);
 
 	useEffect(() => {
-		requestSessionSnapshotRef.current = requestSessionSnapshot;
-	}, [requestSessionSnapshot]);
+		requestSessionPageRef.current = requestSessionPage;
+	}, [requestSessionPage]);
+
+	const ensureSessionLoaded = useCallback((sessionId: string | null) => {
+		if (!sessionId) {
+			return;
+		}
+
+		const summary =
+			sessionsRef.current.find((session) => session.id === sessionId) ??
+			sessionCacheRef.current.get(sessionId)?.session ??
+			null;
+		const inMemory = sessionCacheRef.current.get(sessionId);
+		if (inMemory?.transcriptLoaded && (!summary || inMemory.session.revision >= summary.revision)) {
+			return;
+		}
+
+		void (async () => {
+			const cachedSnapshot = await readCachedSessionSnapshot(sessionId);
+			if (cachedSnapshot) {
+				upsertSessionSnapshotRef.current(cachedSnapshot.session, cachedSnapshot.transcript);
+				if (!summary || cachedSnapshot.session.revision >= summary.revision) {
+					return;
+				}
+			}
+
+			try {
+				await sendClientMessage({ type: "load_session", sessionId });
+			} catch (error) {
+				setConnectionError(getErrorMessage(error));
+			}
+		})();
+	}, [sendClientMessage]);
+
+	useEffect(() => {
+		ensureSessionLoadedRef.current = ensureSessionLoaded;
+	}, [ensureSessionLoaded]);
+
+	useEffect(() => {
+		let cancelled = false;
+
+		void (async () => {
+			try {
+				const cachedSessions = await readCachedSessionSummaries();
+				if (cancelled) {
+					return;
+				}
+
+				setSessions(cachedSessions);
+				setTotalSessionCount((current) => current ?? cachedSessions.length);
+				setSessionCache((previous) => {
+					const next = new Map(previous);
+					for (const session of cachedSessions) {
+						const cached = next.get(session.id);
+						next.set(session.id, cached
+							? {
+								...cached,
+								session,
+							}
+							: createSummaryOnlyCacheEntry(session));
+					}
+					return next;
+				});
+
+				const currentActiveSessionId = activeSessionIdRef.current;
+				if (!currentActiveSessionId) {
+					return;
+				}
+
+				const cachedSnapshot = await readCachedSessionSnapshot(currentActiveSessionId);
+				if (cancelled || !cachedSnapshot) {
+					return;
+				}
+
+				upsertSessionSnapshotRef.current(cachedSnapshot.session, cachedSnapshot.transcript);
+			} catch {
+				// Ignore browser cache hydration failures.
+			}
+		})();
+
+		return () => {
+			cancelled = true;
+		};
+	}, []);
 
 	const activateSession = useCallback((sessionId: string | null, options: { load?: boolean } = {}) => {
 		const { load = true } = options;
@@ -323,10 +440,10 @@ export function App() {
 		setPendingDraft(false);
 		storeActiveSessionId(sessionId);
 		if (load && sessionId) {
-			requestSessionSnapshot(sessionId);
+			ensureSessionLoaded(sessionId);
 		}
 		focusPrompt();
-	}, [focusPrompt, requestSessionSnapshot]);
+	}, [ensureSessionLoaded, focusPrompt]);
 
 	useEffect(() => {
 		activateSessionRef.current = activateSession;
@@ -338,10 +455,12 @@ export function App() {
 			next.set(session.id, {
 				session,
 				transcript: cloneTranscript(transcript),
+				transcriptLoaded: true,
 			});
 			return next;
 		});
 		setSessions((previous) => upsertSessionInList(previous, session));
+		void writeSessionSnapshot(session, transcript);
 	}, []);
 
 	useEffect(() => {
@@ -441,6 +560,12 @@ export function App() {
 	}, [relayAuth?.clientId, relayAuth?.clientKey]);
 
 	useEffect(() => {
+		if (relayAuth?.token && canOpenRelayTransport) {
+			setStreamRequested(true);
+		}
+	}, [canOpenRelayTransport, relayAuth?.token]);
+
+	useEffect(() => {
 		if (!relayAuth?.token || !canOpenRelayTransport || !streamRequested) {
 			setConnected(false);
 			return;
@@ -462,47 +587,84 @@ export function App() {
 				return;
 			}
 
-				switch (message.type) {
-					case "connected": {
-						setConnected(true);
-						setConnectionError(null);
-						resolvePendingConnectionsRef.current();
-						break;
-					}
-				case "sessions_updated": {
-					setSessions(message.sessions);
+			switch (message.type) {
+				case "connected": {
+					setConnected(true);
+					setConnectionError(null);
+					resolvePendingConnectionsRef.current();
+					requestSessionPageRef.current(0, Math.max(visibleSessionLimitRef.current, SESSION_PAGE_SIZE));
+					ensureSessionLoadedRef.current(activeSessionIdRef.current);
+					break;
+				}
+				case "sessions_page": {
+					setLoadingMoreSessions(false);
+					setServerLoadedSessionCount((previous) => Math.max(previous, message.offset + message.sessions.length));
+					setTotalSessionCount(message.total);
+					setSessions((previous) => {
+						let next = previous;
+						for (const session of message.sessions) {
+							next = upsertSessionInList(next, session);
+						}
+						return next;
+					});
 					setSessionCache((previous) => {
 						const next = new Map(previous);
 						for (const session of message.sessions) {
 							const cached = next.get(session.id);
-							next.set(session.id, {
-								session,
-								transcript: cached?.transcript ?? [],
-							});
+							next.set(session.id, cached
+								? {
+									...cached,
+									session,
+								}
+								: createSummaryOnlyCacheEntry(session));
 						}
 						return next;
 					});
+					void writeSessionSummaries(message.sessions);
 
 					const currentActiveSessionId = activeSessionIdRef.current;
-					if (!currentActiveSessionId) {
-						break;
+					if (currentActiveSessionId) {
+						ensureSessionLoadedRef.current(currentActiveSessionId);
 					}
+					break;
+				}
+				case "session_summary_updated": {
+					setSessions((previous) => upsertSessionInList(previous, message.session));
+					setSessionCache((previous) => {
+						const next = new Map(previous);
+						const cached = next.get(message.session.id);
+						next.set(message.session.id, cached
+							? {
+								...cached,
+								session: message.session,
+							}
+							: createSummaryOnlyCacheEntry(message.session));
+						return next;
+					});
+					setTotalSessionCount((previous) => {
+						if (previous === null) {
+							return Math.max(sessionsRef.current.length, 1);
+						}
+						const exists = sessionsRef.current.some((session) => session.id === message.session.id);
+						return exists ? previous : previous + 1;
+					});
+					void writeSessionSummary(message.session);
 
-					const nextActiveSession = message.sessions.find((session) => session.id === currentActiveSessionId) ?? null;
-					if (!nextActiveSession) {
-						activateSessionRef.current(null, { load: false });
-						break;
-					}
-
-					const cached = sessionCacheRef.current.get(nextActiveSession.id);
-					if (!cached || cached.session.updatedAt < nextActiveSession.updatedAt) {
-						requestSessionSnapshotRef.current(nextActiveSession.id);
+					if (activeSessionIdRef.current === message.session.id) {
+						ensureSessionLoadedRef.current(message.session.id);
 					}
 					break;
 				}
 				case "session_created": {
 					setConnectionError(null);
 					upsertSessionSnapshotRef.current(message.session, message.transcript);
+					setTotalSessionCount((previous) => {
+						if (previous === null) {
+							return Math.max(sessionsRef.current.length, 1);
+						}
+						const exists = sessionsRef.current.some((session) => session.id === message.session.id);
+						return exists ? previous : previous + 1;
+					});
 					setPendingDraft(false);
 					activateSessionRef.current(message.session.id, { load: false });
 					break;
@@ -602,6 +764,25 @@ export function App() {
 		};
 	}, [canOpenRelayTransport, relayAuth?.token, streamRequested]);
 
+	const handleLoadMoreSessions = useCallback(() => {
+		const nextVisibleLimit = visibleSessionLimitRef.current + SESSION_PAGE_SIZE;
+		setVisibleSessionLimit(nextVisibleLimit);
+		if (sessionsRef.current.length >= nextVisibleLimit) {
+			return;
+		}
+
+		const knownTotal = totalSessionCount ?? sessionsRef.current.length;
+		const needsServerPage =
+			serverLoadedSessionCount < nextVisibleLimit &&
+			serverLoadedSessionCount < knownTotal;
+		if (!needsServerPage) {
+			return;
+		}
+
+		setLoadingMoreSessions(true);
+		requestSessionPage(serverLoadedSessionCount, SESSION_PAGE_SIZE);
+	}, [requestSessionPage, serverLoadedSessionCount, totalSessionCount]);
+
 	const submitPrompt = useCallback((trimmedPrompt: string) => {
 		if (!trimmedPrompt || isBusy || !relayAuth?.token) {
 			return false;
@@ -652,13 +833,14 @@ export function App() {
 					? "Opening the server event stream through the relay."
 					: "Waiting for the paired server to accept relay traffic.",
 		}
-		: activeTranscript.length === 0
+		: !activeTranscriptLoaded
 			? {
 				title: "Loading session...",
 				body: `Fetching the latest transcript from the ${transportConfig.label}.`,
 			}
 			: null;
 	const sessionState = formatSessionState(activeSession, pendingDraft);
+	const canLoadMoreSessions = visibleSessionLimit < Math.max(totalSessionCount ?? 0, sessions.length);
 
 	return (
 		<main className="grid h-svh w-full overflow-hidden grid-cols-1 font-ui text-ink min-[721px]:grid-cols-[270px_minmax(0,1fr)] min-[1221px]:grid-cols-[320px_minmax(0,1fr)]">
@@ -669,11 +851,15 @@ export function App() {
 				serverReady={serverReady}
 				streamRequested={streamRequested}
 				pendingDraft={pendingDraft}
-				sessions={sessions}
+				sessions={visibleSessions}
+				totalSessions={totalSessionCount ?? sessions.length}
+				loadingMoreSessions={loadingMoreSessions}
+				canLoadMoreSessions={canLoadMoreSessions}
 				activeSessionId={activeSessionId}
 				sessionState={sessionState}
 				onStartNewChat={handleStartNewChat}
 				onActivateSession={(sessionId) => activateSession(sessionId)}
+				onLoadMoreSessions={handleLoadMoreSessions}
 			/>
 
 			<section className="relative flex h-svh min-w-0 flex-col overflow-hidden">

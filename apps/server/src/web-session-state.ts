@@ -54,6 +54,7 @@ export type SharedSessionState = {
 	title: string;
 	createdAt: number;
 	updatedAt: number;
+	revision: number;
 	busy: boolean;
 	abortRequested: boolean;
 	model: string | null;
@@ -71,6 +72,7 @@ export type SessionSummary = {
 	preview: string;
 	createdAt: number;
 	updatedAt: number;
+	revision: number;
 	busy: boolean;
 	model: string | null;
 	messageCount: number;
@@ -116,6 +118,7 @@ export function buildSessionSummary(session: SharedSessionState): SessionSummary
 		preview: createSessionPreview(session.transcript),
 		createdAt: session.createdAt,
 		updatedAt: session.updatedAt,
+		revision: session.revision,
 		busy: session.busy,
 		model: session.model,
 		messageCount: session.transcript.filter((entry) => entry.role === "user" || entry.role === "assistant").length,
@@ -132,6 +135,7 @@ export function buildSessionPayload(session: SharedSessionState) {
 
 export function touchSession(session: SharedSessionState) {
 	session.updatedAt = Date.now();
+	session.revision += 1;
 }
 
 export function appendTranscriptMessage(
@@ -208,6 +212,7 @@ export function createSharedSession(initialPrompt: string): SharedSessionState {
 		title: createSessionTitle(initialPrompt),
 		createdAt: now,
 		updatedAt: now,
+		revision: 0,
 		busy: false,
 		abortRequested: false,
 		model: null,

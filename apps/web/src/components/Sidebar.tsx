@@ -10,10 +10,14 @@ type SidebarProps = {
 	streamRequested: boolean;
 	pendingDraft: boolean;
 	sessions: SessionSummary[];
+	totalSessions: number;
+	loadingMoreSessions: boolean;
+	canLoadMoreSessions: boolean;
 	activeSessionId: string | null;
 	sessionState: string;
 	onStartNewChat: () => void;
 	onActivateSession: (sessionId: string) => void;
+	onLoadMoreSessions: () => void;
 };
 
 export const Sidebar = memo(function Sidebar({
@@ -24,10 +28,14 @@ export const Sidebar = memo(function Sidebar({
 	streamRequested,
 	pendingDraft,
 	sessions,
+	totalSessions,
+	loadingMoreSessions,
+	canLoadMoreSessions,
 	activeSessionId,
 	sessionState,
 	onStartNewChat,
 	onActivateSession,
+	onLoadMoreSessions,
 }: SidebarProps) {
 	return (
 		<aside className="flex h-full min-h-0 flex-col border-b border-white/10 bg-sidebar-bg text-sidebar-ink min-[721px]:border-r min-[721px]:border-b-0">
@@ -63,7 +71,7 @@ export const Sidebar = memo(function Sidebar({
 						Sessions
 					</p>
 					<p id="session-count" className="text-[0.82rem] text-sidebar-muted">
-						{sessions.length}
+						{sessions.length} / {totalSessions}
 					</p>
 				</div>
 				<div id="session-list" className="flex flex-col" aria-label="Chat sessions">
@@ -95,6 +103,16 @@ export const Sidebar = memo(function Sidebar({
 							</button>
 						))
 					)}
+					{canLoadMoreSessions ? (
+						<button
+							type="button"
+							className="mt-4 border border-white/12 bg-sidebar-panel px-3 py-3 text-left text-[0.82rem] text-sidebar-muted transition duration-150 hover:border-white/20 hover:bg-white/6 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50"
+							onClick={onLoadMoreSessions}
+							disabled={loadingMoreSessions}
+						>
+							{loadingMoreSessions ? "Loading more sessions..." : "Load 50 more sessions"}
+						</button>
+					) : null}
 				</div>
 			</div>
 			<div className="border-t border-white/10 bg-sidebar-panel px-6 pt-4.5 pb-5.5 max-[860px]:px-5">

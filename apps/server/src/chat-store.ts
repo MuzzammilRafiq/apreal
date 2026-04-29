@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 	title TEXT NOT NULL,
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL,
+	revision INTEGER NOT NULL DEFAULT 0,
 	busy INTEGER NOT NULL DEFAULT 0,
 	model TEXT
 );
@@ -42,6 +43,7 @@ type SessionRow = {
 	title: string;
 	created_at: number;
 	updated_at: number;
+	revision: number;
 	busy: number;
 	model: string | null;
 };
@@ -98,6 +100,20 @@ function isJsonRecord(value: unknown): value is JsonRecord {
 
 function normalizeTimestamp(value: unknown): number {
 	return typeof value === "number" && Number.isFinite(value) ? value : Date.now();
+}
+
+function normalizeRevision(value: unknown): number {
+	return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
+function ensureChatStoreSchema(database: import("node:sqlite").DatabaseSync) {
+	database.exec(SCHEMA_SQL);
+
+	const sessionColumns = database.prepare("PRAGMA table_info(sessions)").all() as Array<{ name?: unknown }>;
+	const hasRevisionColumn = sessionColumns.some((column) => column.name === "revision");
+	if (!hasRevisionColumn) {
+		database.exec("ALTER TABLE sessions ADD COLUMN revision INTEGER NOT NULL DEFAULT 0;");
+	}
 }
 
 function parseJsonArray(raw: string, context: Record<string, string>): unknown[] {
@@ -247,7 +263,7 @@ export function createChatStore(dbPath: string): ChatStore {
 			timeout: 1_000,
 		});
 		database.exec("PRAGMA foreign_keys = ON;");
-		database.exec(SCHEMA_SQL);
+		ensureChatStoreSchema(database);
 	} catch (error) {
 		logger.error("failed to initialize chat-store database; persistence disabled", {
 			dbPath,
@@ -257,7 +273,7 @@ export function createChatStore(dbPath: string): ChatStore {
 	}
 
 	const loadSessionsStatement = database.prepare(`
-		SELECT id, title, created_at, updated_at, busy, model
+		SELECT id, title, created_at, updated_at, revision, busy, model
 		FROM sessions
 		ORDER BY updated_at DESC, created_at DESC
 	`);
@@ -268,12 +284,13 @@ export function createChatStore(dbPath: string): ChatStore {
 		ORDER BY created_at ASC, id ASC
 	`);
 	const upsertSessionStatement = database.prepare(`
-		INSERT INTO sessions (id, title, created_at, updated_at, busy, model)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO sessions (id, title, created_at, updated_at, revision, busy, model)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title = excluded.title,
 			created_at = excluded.created_at,
 			updated_at = excluded.updated_at,
+			revision = excluded.revision,
 			busy = excluded.busy,
 			model = excluded.model
 	`);
@@ -329,6 +346,7 @@ export function createChatStore(dbPath: string): ChatStore {
 						title: sessionRow.title,
 						createdAt: normalizeTimestamp(sessionRow.created_at),
 						updatedAt: normalizeTimestamp(sessionRow.updated_at),
+						revision: normalizeRevision(sessionRow.revision),
 						busy: false,
 						abortRequested: false,
 						model: sessionRow.model ?? null,
@@ -358,6 +376,7 @@ export function createChatStore(dbPath: string): ChatStore {
 						session.title,
 						session.createdAt,
 						session.updatedAt,
+						session.revision,
 						session.busy ? 1 : 0,
 						session.model,
 					);

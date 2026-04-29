@@ -70,6 +70,8 @@ export type {
 } from "./web-session-state.ts";
 
 const DEFAULT_PORT = 3000;
+const DEFAULT_SESSION_PAGE_LIMIT = 50;
+const MAX_SESSION_PAGE_LIMIT = 200;
 const SERVER_SRC_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_WORKSPACE_ROOT = join(SERVER_SRC_DIR, "..", "..", "..");
 const RELAY_STREAM_RETRY_MS = 1_000;
@@ -428,7 +430,6 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		client.ready = true;
 		if (!wasReady) {
 			sendConnected(clientId);
-			sendSessionsUpdated(clientId);
 		}
 		return client;
 	}
@@ -698,7 +699,6 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		const client = registerClientConnection(clientId, "http", sendPayload);
 		client.ready = true;
 		sendConnected(clientId);
-		sendSessionsUpdated(clientId);
 
 		heartbeatTimer = setInterval(() => {
 			if (closed) {
@@ -845,10 +845,30 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		sendClientPayload(clientId, { type: "error", message, sessionId }, { requireReady: false });
 	}
 
+	function normalizeSessionPageLimit(limit?: number): number {
+		if (!limit || !Number.isInteger(limit)) {
+			return DEFAULT_SESSION_PAGE_LIMIT;
+		}
+
+		return Math.max(1, Math.min(MAX_SESSION_PAGE_LIMIT, limit));
+	}
+
 	function listSessions(): SessionSummary[] {
 		return Array.from(sessions.values())
 			.sort((left, right) => right.updatedAt - left.updatedAt)
 			.map(buildSessionSummary);
+	}
+
+	function buildSessionPage(offset = 0, limit?: number) {
+		const normalizedOffset = Math.max(0, offset);
+		const normalizedLimit = normalizeSessionPageLimit(limit);
+		const allSessions = listSessions();
+		return {
+			sessions: allSessions.slice(normalizedOffset, normalizedOffset + normalizedLimit),
+			offset: normalizedOffset,
+			limit: normalizedLimit,
+			total: allSessions.length,
+		};
 	}
 
 	function broadcast(payload: ServerMessage) {
@@ -861,18 +881,18 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		}
 	}
 
-	function sendSessionsUpdated(targetClientId?: string) {
-		const payload = {
-			type: "sessions_updated",
-			sessions: listSessions(),
-		} satisfies ServerMessage;
+	function sendSessionPage(clientId: string, offset = 0, limit?: number) {
+		sendClientPayload(clientId, {
+			type: "sessions_page",
+			...buildSessionPage(offset, limit),
+		}, { requireReady: false });
+	}
 
-		if (targetClientId) {
-			sendClientPayload(targetClientId, payload, { requireReady: false });
-			return;
-		}
-
-		broadcast(payload);
+	function broadcastSessionSummaryUpdated(session: SharedSessionState) {
+		broadcast({
+			type: "session_summary_updated",
+			session: buildSessionSummary(session),
+		});
 	}
 
 	function sendSessionSnapshot(targetClientId: string, session: SharedSessionState) {
@@ -937,25 +957,28 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 					contentIndex: event.contentIndex,
 				});
 				broadcastSessionSnapshot(session);
+				broadcastSessionSummaryUpdated(session);
 				shouldPersist = true;
 				break;
 			}
 			case "tool_execution_start": {
 				updateAssistantToolCallStatus(session, event.tool.id, event.tool.status);
 				broadcastSessionSnapshot(session);
+				broadcastSessionSummaryUpdated(session);
 				shouldPersist = true;
 				break;
 			}
 			case "tool_execution_end": {
 				updateAssistantToolCallStatus(session, event.toolId, event.status);
 				broadcastSessionSnapshot(session);
+				broadcastSessionSummaryUpdated(session);
 				shouldPersist = true;
 				break;
 			}
 			case "done": {
 				settleSession(session);
 				broadcastSessionSnapshot(session);
-				sendSessionsUpdated();
+				broadcastSessionSummaryUpdated(session);
 				shouldPersist = true;
 				break;
 			}
@@ -976,7 +999,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 				}
 
 				broadcastSessionSnapshot(session);
-				sendSessionsUpdated();
+				broadcastSessionSummaryUpdated(session);
 				shouldPersist = true;
 				break;
 			}
@@ -1009,7 +1032,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 				handleControllerEvent(session, event);
 			});
 			touchSession(session);
-			sendSessionsUpdated();
+			broadcastSessionSummaryUpdated(session);
 			return controller;
 		})();
 
@@ -1076,7 +1099,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		} else {
 			broadcastSessionSnapshot(session);
 		}
-		sendSessionsUpdated();
+		broadcastSessionSummaryUpdated(session);
 
 		try {
 			const controller = await ensureController(session);
@@ -1090,7 +1113,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 			if (session.busy && !controller.isStreaming()) {
 				settleSession(session);
 				broadcastSessionSnapshot(session);
-				sendSessionsUpdated();
+				broadcastSessionSummaryUpdated(session);
 			}
 			chatStore.saveSession(session);
 		} catch (error) {
@@ -1109,7 +1132,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 				pending: false,
 			});
 			broadcastSessionSnapshot(session);
-			sendSessionsUpdated();
+			broadcastSessionSummaryUpdated(session);
 			chatStore.saveSession(session);
 			sendError(clientId, getErrorMessage(error), session.id);
 		}
@@ -1153,7 +1176,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 				pending: false,
 			});
 			broadcastSessionSnapshot(session);
-			sendSessionsUpdated();
+			broadcastSessionSummaryUpdated(session);
 			chatStore.saveSession(session);
 		}
 	}
@@ -1184,6 +1207,10 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		}
 
 		switch (message.type) {
+			case "load_sessions_page": {
+				sendSessionPage(clientId, message.offset, message.limit);
+				break;
+			}
 			case "prompt": {
 				await handlePrompt(clientId, message.prompt, message.sessionId);
 				break;

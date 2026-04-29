@@ -2,11 +2,13 @@ export type ClientAppMessage =
 	| { type: "prompt"; prompt: string; sessionId?: string | null }
 	| { type: "abort"; sessionId: string }
 	| { type: "load_session"; sessionId: string }
+	| { type: "load_sessions_page"; offset?: number; limit?: number }
 	| { type: "ping" };
 
 export type ServerAppMessage<SessionSummary, TranscriptMessage> =
 	| { type: "connected"; clientId: string; message: string; tools?: string }
-	| { type: "sessions_updated"; sessions: SessionSummary[] }
+	| { type: "sessions_page"; sessions: SessionSummary[]; offset: number; limit: number; total: number }
+	| { type: "session_summary_updated"; session: SessionSummary }
 	| { type: "session_created"; session: SessionSummary; transcript: TranscriptMessage[] }
 	| { type: "session_snapshot"; session: SessionSummary; transcript: TranscriptMessage[] }
 	| { type: "assistant_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
@@ -56,6 +58,14 @@ export function parseClientAppMessage(rawMessage: string | Buffer | unknown): Cl
 
 	if (value.type === "load_session" && typeof value.sessionId === "string") {
 		return { type: "load_session", sessionId: value.sessionId };
+	}
+
+	if (value.type === "load_sessions_page") {
+		return {
+			type: "load_sessions_page",
+			offset: typeof value.offset === "number" && Number.isInteger(value.offset) && value.offset >= 0 ? value.offset : 0,
+			limit: typeof value.limit === "number" && Number.isInteger(value.limit) && value.limit > 0 ? value.limit : undefined,
+		};
 	}
 
 	if (value.type === "ping") {
