@@ -48,6 +48,7 @@ export default function ChatDetailScreen() {
     activeSession,
     activeSessionId,
     activeTranscript,
+    activeTranscriptLoaded,
     clearError,
     connectionLabel,
     connected,
@@ -148,11 +149,16 @@ export default function ChatDetailScreen() {
           ? "The server is opening a shared session from your first prompt."
           : "Start with a coding task, file request, or bug report. Your first prompt creates a reusable session.",
       }
-    : activeTranscript.length === 0
+    : !activeTranscriptLoaded
       ? {
           title: "Loading session...",
           body: `Fetching the latest transcript from the ${connectionLabel}.`,
         }
+      : activeTranscript.length === 0
+        ? {
+            title: "No messages yet",
+            body: "This session is saved, but there is no transcript to show yet.",
+          }
       : null;
 
   function handleSend() {

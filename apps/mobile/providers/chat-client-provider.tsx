@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import EventSource from "react-native-sse";
 import {
   createContext,
   useContext,
@@ -9,23 +10,23 @@ import {
 } from "react";
 
 import {
-  createRelayProtocols,
-  fetchRelayBootstrap,
-  normalizeRelayPrincipalId,
+  ensureRelayClientAuth,
+  readRelayClientHeartbeat,
+  readStoredRelayClientAuth,
   type RelayPairingStateMessage,
-} from "@/lib/relay";
+  type StoredRelayClientAuth,
+} from "@/lib/relay-auth";
 import {
-  createWirePayload,
   DEFAULT_TRANSPORT_SETTINGS,
   getRelayTransportConfig,
   normalizeStoredTransportSettings,
-  parseIncomingServerMessage,
   type StoredTransportSettings,
 } from "@/lib/transport-config";
 import type {
   ClientMessage,
   SessionCacheEntry,
   SessionSummary,
+  ServerMessage,
   TranscriptMessage,
   TranscriptMessageSegment,
 } from "@/types/chat";
@@ -33,8 +34,12 @@ import type {
 const ACTIVE_SESSION_STORAGE_KEY = "pi-mobile-active-session";
 const TRANSPORT_SETTINGS_STORAGE_KEY = "pi-mobile-transport-settings";
 const SERVER_URL_STORAGE_KEY = "pi-mobile-server-url";
-const RELAY_CLIENT_ID_STORAGE_KEY = "pi-mobile-relay-client-id";
-const RECONNECT_DELAY_MS = 1500;
+const SESSION_PAGE_SIZE = 50;
+const STREAM_DISCONNECTED_MESSAGE =
+  "Disconnected from the server stream. Reconnecting...";
+const STREAM_REQUIRED_MESSAGE = "Client event stream is not connected.";
+const AUTH_REFRESH_INTERVAL_MS = 3_000;
+const RELAY_HEARTBEAT_INTERVAL_MS = 500;
 
 type ActivateSessionOptions = {
   load?: boolean;
@@ -49,17 +54,22 @@ type ChatClientContextValue = {
   pairingState: RelayPairingStateMessage | null;
   pairingReady: boolean;
   sessions: SessionSummary[];
+  totalSessionCount: number | null;
   activeSessionId: string | null;
   pendingDraft: boolean;
   activeSession: SessionSummary | null;
   activeTranscript: TranscriptMessage[];
+  activeTranscriptLoaded: boolean;
   lastError: string | null;
+  loadingMoreSessions: boolean;
+  canLoadMoreSessions: boolean;
   activateSession: (
     sessionId: string | null,
     options?: ActivateSessionOptions,
   ) => void;
   updateTransportSettings: (settings: StoredTransportSettings) => void;
   requestSessionSnapshot: (sessionId: string | null) => void;
+  loadMoreSessions: () => void;
   sendPrompt: (prompt: string, sessionId?: string | null) => boolean;
   abortSession: (sessionId: string) => void;
   clearError: () => void;
@@ -95,6 +105,14 @@ function upsertSessionInList(
   return nextSessions;
 }
 
+function createSummaryOnlyCacheEntry(session: SessionSummary): SessionCacheEntry {
+  return {
+    session,
+    transcript: [],
+    transcriptLoaded: false,
+  };
+}
+
 function getSegmentSortValue(segment: TranscriptMessageSegment) {
   return segment.contentIndex ?? Number.MAX_SAFE_INTEGER;
 }
@@ -121,6 +139,94 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unable to connect right now.";
 }
 
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseServerMessage(rawData: string): ServerMessage | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(rawData);
+  } catch {
+    return null;
+  }
+
+  if (!isObjectRecord(value) || typeof value.type !== "string") {
+    return null;
+  }
+
+  return value as ServerMessage;
+}
+
+function appendAssistantDeltaToMessage(
+  message: TranscriptMessage,
+  delta: string,
+  field: "body" | "thinking",
+  contentIndex: number,
+): TranscriptMessage {
+  const now = Date.now();
+  const segmentType = field === "thinking" ? "thinking" : "text";
+  const existingSegmentIndex = message.segments.findIndex(
+    (segment) =>
+      segment.type === segmentType && segment.contentIndex === contentIndex,
+  );
+
+  let segments = message.segments;
+  if (existingSegmentIndex >= 0) {
+    segments = [...message.segments];
+    const existingSegment = segments[existingSegmentIndex];
+    if (existingSegment?.type === segmentType) {
+      segments[existingSegmentIndex] = {
+        ...existingSegment,
+        content: `${existingSegment.content}${delta}`,
+        updatedAt: now,
+      };
+    }
+  } else {
+    segments = insertSegmentInOrder(message.segments, {
+      id: createLocalId(segmentType),
+      type: segmentType,
+      content: delta,
+      contentIndex,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  if (field === "thinking") {
+    return {
+      ...message,
+      pending: true,
+      thinking: `${message.thinking}${delta}`,
+      segments,
+    };
+  }
+
+  return {
+    ...message,
+    pending: true,
+    body: `${message.body}${delta}`,
+    segments,
+  };
+}
+
+function buildPairingState(
+  auth: StoredRelayClientAuth | null,
+): RelayPairingStateMessage | null {
+  if (!auth) {
+    return null;
+  }
+
+  return {
+    type: "pairing_state",
+    status: auth.target ? "paired" : "pending",
+    clientId: auth.clientId,
+    pairingCode: auth.pairingCode,
+    agentId: auth.target?.id ?? null,
+    expiresAt: auth.expiresAt || null,
+  };
+}
+
 export function ChatClientProvider({ children }: PropsWithChildren) {
   const [isHydrated, setIsHydrated] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -134,18 +240,33 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [pendingDraft, setPendingDraft] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
-  const [pairingState, setPairingState] =
-    useState<RelayPairingStateMessage | null>(null);
+  const [relayAuth, setRelayAuth] = useState<StoredRelayClientAuth | null>(null);
+  const [streamRequested, setStreamRequested] = useState(false);
+  const [loadingMoreSessions, setLoadingMoreSessions] = useState(false);
+  const [serverLoadedSessionCount, setServerLoadedSessionCount] = useState(0);
+  const [totalSessionCount, setTotalSessionCount] = useState<number | null>(null);
 
-  const socketRef = useRef<WebSocket | null>(null);
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
   const activeSessionIdRef = useRef<string | null>(activeSessionId);
   const pendingDraftRef = useRef(pendingDraft);
   const sessionsRef = useRef(sessions);
   const sessionCacheRef = useRef(sessionCache);
   const transportSettingsRef = useRef(transportSettings);
-  const pairingStateRef = useRef(pairingState);
-  const relayClientIdRef = useRef<string | null>(null);
+  const pendingConnectionResolversRef = useRef(new Set<() => void>());
+  const resolvePendingConnectionsRef = useRef<() => void>(() => {});
+  const ensureSessionLoadedRef = useRef<(sessionId: string | null) => void>(
+    () => {},
+  );
+  const requestSessionPageRef = useRef<
+    (offset?: number, limit?: number) => void
+  >(() => {});
+  const activateSessionRef = useRef<
+    (sessionId: string | null, options?: ActivateSessionOptions) => void
+  >(() => {});
+  const upsertSessionSnapshotRef = useRef<
+    (session: SessionSummary, transcript: TranscriptMessage[]) => void
+  >(() => {});
+  const transportConfig = getRelayTransportConfig(transportSettings);
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
@@ -168,25 +289,16 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
   }, [transportSettings]);
 
   useEffect(() => {
-    pairingStateRef.current = pairingState;
-  }, [pairingState]);
-
-  useEffect(() => {
     let cancelled = false;
 
     async function hydrate() {
       try {
-        const [
-          storedTransportSettings,
-          storedLegacyServerUrl,
-          storedActiveSessionId,
-          storedRelayClientId,
-        ] = await Promise.all([
-          AsyncStorage.getItem(TRANSPORT_SETTINGS_STORAGE_KEY),
-          AsyncStorage.getItem(SERVER_URL_STORAGE_KEY),
-          AsyncStorage.getItem(ACTIVE_SESSION_STORAGE_KEY),
-          AsyncStorage.getItem(RELAY_CLIENT_ID_STORAGE_KEY),
-        ]);
+        const [storedTransportSettings, storedLegacyServerUrl, storedActiveSessionId] =
+          await Promise.all([
+            AsyncStorage.getItem(TRANSPORT_SETTINGS_STORAGE_KEY),
+            AsyncStorage.getItem(SERVER_URL_STORAGE_KEY),
+            AsyncStorage.getItem(ACTIVE_SESSION_STORAGE_KEY),
+          ]);
 
         if (cancelled) {
           return;
@@ -201,6 +313,8 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
               typeof parsed?.localServerUrl === "string"
                 ? parsed.localServerUrl
                 : undefined;
+            const relayUrl =
+              typeof parsed?.relayUrl === "string" ? parsed.relayUrl : undefined;
             const relayWebSocketUrl =
               typeof parsed?.relayWebSocketUrl === "string"
                 ? parsed.relayWebSocketUrl
@@ -212,9 +326,12 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
 
             setTransportSettings(
               normalizeStoredTransportSettings({
-                relayWebSocketUrl:
-                  relayWebSocketUrl ?? storedLegacyServerUrl ?? legacyLocalServerUrl,
-                relayBootstrapUrl,
+                relayUrl:
+                  relayUrl ??
+                  relayBootstrapUrl ??
+                  relayWebSocketUrl ??
+                  storedLegacyServerUrl ??
+                  legacyLocalServerUrl,
               }),
             );
           } catch {
@@ -223,7 +340,7 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
         } else if (storedLegacyServerUrl?.trim()) {
           setTransportSettings(
             normalizeStoredTransportSettings({
-              relayWebSocketUrl: storedLegacyServerUrl.trim(),
+              relayUrl: storedLegacyServerUrl.trim(),
             }),
           );
         }
@@ -231,13 +348,6 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
         if (storedActiveSessionId?.trim()) {
           setActiveSessionId(storedActiveSessionId);
           activeSessionIdRef.current = storedActiveSessionId;
-        }
-
-        const normalizedRelayClientId = normalizeRelayPrincipalId(
-          storedRelayClientId,
-        );
-        if (normalizedRelayClientId) {
-          relayClientIdRef.current = normalizedRelayClientId;
         }
       } finally {
         if (!cancelled) {
@@ -263,7 +373,7 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
         TRANSPORT_SETTINGS_STORAGE_KEY,
         JSON.stringify(transportSettingsRef.current),
       ],
-      [SERVER_URL_STORAGE_KEY, transportSettingsRef.current.relayWebSocketUrl],
+      [SERVER_URL_STORAGE_KEY, transportSettingsRef.current.relayUrl],
     ]);
   }, [isHydrated, transportSettings]);
 
@@ -280,38 +390,156 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
     void AsyncStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
   }, [activeSessionId, isHydrated]);
 
-  function storeRelayClientId(clientId: string) {
-    relayClientIdRef.current = clientId;
-    if (!isHydrated) {
-      return;
-    }
-
-    void AsyncStorage.setItem(RELAY_CLIENT_ID_STORAGE_KEY, clientId);
-  }
-
   function resetRuntimeState() {
+    eventSourceRef.current?.removeAllEventListeners();
+    eventSourceRef.current?.close();
+    eventSourceRef.current = null;
     setConnected(false);
     setPendingDraft(false);
     setSessions([]);
     setSessionCache(new Map());
+    setServerLoadedSessionCount(0);
+    setTotalSessionCount(null);
+    setLoadingMoreSessions(false);
+    setRelayAuth(null);
+    setStreamRequested(false);
     activeSessionIdRef.current = null;
     setActiveSessionId(null);
-    setPairingState(null);
     setLastError(null);
   }
 
-  function sendClientMessage(socket: WebSocket, message: ClientMessage) {
-    socket.send(createWirePayload(message));
+  function clearError() {
+    setLastError(null);
   }
 
-  function requestSessionSnapshot(sessionId: string | null) {
-    const socket = socketRef.current;
-    if (!sessionId || !socket || socket.readyState !== WebSocket.OPEN) {
+  function resolvePendingConnections() {
+    for (const resolve of pendingConnectionResolversRef.current) {
+      resolve();
+    }
+    pendingConnectionResolversRef.current.clear();
+  }
+
+  useEffect(() => {
+    resolvePendingConnectionsRef.current = resolvePendingConnections;
+  }, [connected]);
+
+  function waitForConnectionAttempt(timeoutMs = 1200) {
+    if (connected) {
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      const finish = () => {
+        clearTimeout(timeoutId);
+        pendingConnectionResolversRef.current.delete(finish);
+        resolve();
+      };
+
+      const timeoutId = setTimeout(finish, timeoutMs);
+      pendingConnectionResolversRef.current.add(finish);
+    });
+  }
+
+  async function ensureClientTransport() {
+    if (!relayAuth?.token) {
+      throw new Error("Mobile authentication is not ready yet.");
+    }
+
+    if (connected) {
       return;
     }
 
-    sendClientMessage(socket, { type: "load_session", sessionId });
+    setStreamRequested(true);
+    await waitForConnectionAttempt();
   }
+
+  async function sendClientMessage(message: ClientMessage) {
+    if (!relayAuth?.token) {
+      throw new Error("Mobile authentication is not ready yet.");
+    }
+
+    await ensureClientTransport();
+
+    const performRequest = () =>
+      fetch(transportConfig.messageUrl, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${relayAuth.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(message),
+      });
+
+    let response = await performRequest();
+    if (response.status === 409) {
+      let payload: unknown = null;
+      try {
+        payload = await response.json();
+      } catch {
+        // Ignore malformed error bodies.
+      }
+
+      if (isObjectRecord(payload) && payload.message === STREAM_REQUIRED_MESSAGE) {
+        await waitForConnectionAttempt();
+        response = await performRequest();
+      }
+    }
+
+    if (response.ok) {
+      return;
+    }
+
+    let errorMessage = `request failed with status ${response.status}`;
+    try {
+      const payload: unknown = await response.json();
+      if (isObjectRecord(payload) && typeof payload.message === "string") {
+        errorMessage = payload.message;
+      }
+    } catch {
+      // Ignore malformed error bodies.
+    }
+
+    throw new Error(errorMessage);
+  }
+
+  function requestSessionPage(offset = 0, limit = SESSION_PAGE_SIZE) {
+    void sendClientMessage({ type: "load_sessions_page", offset, limit }).catch(
+      (error) => {
+        setLoadingMoreSessions(false);
+        setLastError(getErrorMessage(error));
+      },
+    );
+  }
+
+  useEffect(() => {
+    requestSessionPageRef.current = requestSessionPage;
+  }, [relayAuth?.token, connected, transportConfig.messageUrl]);
+
+  function ensureSessionLoaded(sessionId: string | null) {
+    if (!sessionId) {
+      return;
+    }
+
+    const summary =
+      sessionsRef.current.find((session) => session.id === sessionId) ??
+      sessionCacheRef.current.get(sessionId)?.session ??
+      null;
+    const cached = sessionCacheRef.current.get(sessionId);
+    if (
+      cached?.transcriptLoaded &&
+      (!summary || cached.session.revision >= summary.revision)
+    ) {
+      return;
+    }
+
+    void sendClientMessage({ type: "load_session", sessionId }).catch((error) => {
+      setLastError(getErrorMessage(error));
+    });
+  }
+
+  useEffect(() => {
+    ensureSessionLoadedRef.current = ensureSessionLoaded;
+  }, [relayAuth?.token, connected, transportConfig.messageUrl]);
 
   function activateSession(
     sessionId: string | null,
@@ -323,9 +551,13 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
     setPendingDraft(false);
 
     if (load && sessionId) {
-      requestSessionSnapshot(sessionId);
+      ensureSessionLoaded(sessionId);
     }
   }
+
+  useEffect(() => {
+    activateSessionRef.current = activateSession;
+  }, [relayAuth?.token, connected, transportConfig.messageUrl]);
 
   function upsertSessionSnapshot(
     session: SessionSummary,
@@ -336,10 +568,19 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
       nextCache.set(session.id, {
         session,
         transcript: cloneTranscript(transcript),
+        transcriptLoaded: true,
       });
       return nextCache;
     });
     setSessions((previous) => upsertSessionInList(previous, session));
+  }
+
+  useEffect(() => {
+    upsertSessionSnapshotRef.current = upsertSessionSnapshot;
+  }, []);
+
+  function requestSessionSnapshot(sessionId: string | null) {
+    ensureSessionLoaded(sessionId);
   }
 
   function applyAssistantDelta(
@@ -355,84 +596,25 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
         return previous;
       }
 
-      const transcript = cached.transcript.map((entry) => {
-        if (entry.id !== messageId) {
-          return entry;
-        }
+      const messageIndex = cached.transcript.findIndex(
+        (entry) => entry.id === messageId,
+      );
+      if (messageIndex === -1) {
+        return previous;
+      }
 
-        if (field === "thinking") {
-          const existingSegmentIndex = entry.segments.findIndex(
-            (segment) =>
-              segment.type === "thinking" &&
-              segment.contentIndex === contentIndex,
-          );
-          const now = Date.now();
-          let segments = entry.segments;
+      const transcript = [...cached.transcript];
+      const existingMessage = transcript[messageIndex];
+      if (!existingMessage) {
+        return previous;
+      }
 
-          if (existingSegmentIndex >= 0) {
-            segments = [...entry.segments];
-            const existingSegment = segments[existingSegmentIndex];
-            if (existingSegment?.type === "thinking") {
-              segments[existingSegmentIndex] = {
-                ...existingSegment,
-                content: `${existingSegment.content}${delta}`,
-                updatedAt: now,
-              };
-            }
-          } else {
-            segments = insertSegmentInOrder(entry.segments, {
-              id: createLocalId("thinking"),
-              type: "thinking",
-              content: delta,
-              contentIndex,
-              createdAt: now,
-              updatedAt: now,
-            });
-          }
-
-          return {
-            ...entry,
-            pending: true,
-            thinking: `${entry.thinking}${delta}`,
-            segments,
-          };
-        }
-
-        const existingSegmentIndex = entry.segments.findIndex(
-          (segment) =>
-            segment.type === "text" && segment.contentIndex === contentIndex,
-        );
-        const now = Date.now();
-        let segments = entry.segments;
-
-        if (existingSegmentIndex >= 0) {
-          segments = [...entry.segments];
-          const existingSegment = segments[existingSegmentIndex];
-          if (existingSegment?.type === "text") {
-            segments[existingSegmentIndex] = {
-              ...existingSegment,
-              content: `${existingSegment.content}${delta}`,
-              updatedAt: now,
-            };
-          }
-        } else {
-          segments = insertSegmentInOrder(entry.segments, {
-            id: createLocalId("text"),
-            type: "text",
-            content: delta,
-            contentIndex,
-            createdAt: now,
-            updatedAt: now,
-          });
-        }
-
-        return {
-          ...entry,
-          pending: true,
-          body: `${entry.body}${delta}`,
-          segments,
-        };
-      });
+      transcript[messageIndex] = appendAssistantDeltaToMessage(
+        existingMessage,
+        delta,
+        field,
+        contentIndex,
+      );
 
       const nextCache = new Map(previous);
       nextCache.set(sessionId, {
@@ -446,10 +628,6 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
   function updateTransportSettings(nextSettings: StoredTransportSettings) {
     resetRuntimeState();
     setTransportSettings(normalizeStoredTransportSettings(nextSettings));
-  }
-
-  function clearError() {
-    setLastError(null);
   }
 
   function markSessionBusy(sessionId: string) {
@@ -486,7 +664,6 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
 
   function sendPrompt(prompt: string, sessionId = activeSessionIdRef.current) {
     const trimmedPrompt = prompt.trim();
-    const socket = socketRef.current;
     const activeSession = sessionId
       ? (sessionsRef.current.find((session) => session.id === sessionId) ??
         null)
@@ -494,36 +671,53 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
 
     if (
       !trimmedPrompt ||
-      !socket ||
-      socket.readyState !== WebSocket.OPEN ||
       pendingDraftRef.current ||
       Boolean(activeSession?.busy) ||
-      pairingStateRef.current?.status !== "paired"
+      !relayAuth?.target?.id
     ) {
       return false;
     }
 
+    setLastError(null);
     setPendingDraft(!sessionId);
     if (sessionId) {
       markSessionBusy(sessionId);
     }
 
-    sendClientMessage(socket, {
+    void sendClientMessage({
       type: "prompt",
       prompt: trimmedPrompt,
       sessionId,
+    }).catch((error) => {
+      setPendingDraft(false);
+      setLastError(getErrorMessage(error));
     });
 
     return true;
   }
 
   function abortSession(sessionId: string) {
-    const socket = socketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
+    if (!relayAuth?.target?.id) {
       return;
     }
 
-    sendClientMessage(socket, { type: "abort", sessionId });
+    void sendClientMessage({ type: "abort", sessionId }).catch((error) => {
+      setLastError(getErrorMessage(error));
+    });
+  }
+
+  function loadMoreSessions() {
+    if (loadingMoreSessions) {
+      return;
+    }
+
+    const knownTotal = totalSessionCount ?? sessionsRef.current.length;
+    if (serverLoadedSessionCount >= knownTotal) {
+      return;
+    }
+
+    setLoadingMoreSessions(true);
+    requestSessionPage(serverLoadedSessionCount, SESSION_PAGE_SIZE);
   }
 
   useEffect(() => {
@@ -531,215 +725,296 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    let disposed = false;
+    let cancelled = false;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const scheduleReconnect = () => {
-      if (!disposed) {
-        reconnectTimerRef.current = setTimeout(() => {
-          void connect();
-        }, RECONNECT_DELAY_MS);
-      }
-    };
+    setConnected(false);
+    setRelayAuth(null);
+    setStreamRequested(false);
+    setServerLoadedSessionCount(0);
+    setTotalSessionCount(null);
 
-    const notifyDisconnect = () => {
-      const socket = socketRef.current;
-      if (!socket || socket.readyState !== WebSocket.OPEN) {
-        return;
-      }
-
-      sendClientMessage(socket, { type: "disconnect" });
-    };
-
-    const connect = async () => {
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
-      }
-
+    const refreshRelayAuth = async () => {
       try {
-        const transportConfig = getRelayTransportConfig(transportSettingsRef.current);
-        const clientId = relayClientIdRef.current ?? createLocalId("relay-client");
-        const bootstrap = await fetchRelayBootstrap(
-          transportConfig.bootstrapUrl,
-          clientId,
-        );
-
-        if (disposed) {
+        const nextAuth = await ensureRelayClientAuth(transportConfig.relayUrl);
+        if (cancelled) {
           return;
         }
 
-        storeRelayClientId(bootstrap.clientId);
-        setPairingState(bootstrap.pairing);
-
-        const socket = new WebSocket(
-          bootstrap.websocketUrl,
-          createRelayProtocols(bootstrap.token),
-        );
-        socketRef.current = socket;
-
-        socket.onopen = () => {
-          if (disposed) {
-            socket.close();
-            return;
-          }
-
-          setConnected(true);
+        setRelayAuth(nextAuth);
+        if (!nextAuth.target) {
+          setConnected(false);
           setLastError(null);
-          sendClientMessage(socket, { type: "hello" });
-        };
-
-        socket.onmessage = (event) => {
-          const message = parseIncomingServerMessage(event.data);
-          if (!message) {
-            setLastError("Received an invalid server message.");
-            return;
-          }
-
-          switch (message.type) {
-            case "connected": {
-              const normalizedClientId = normalizeRelayPrincipalId(
-                message.clientId,
-              );
-              if (normalizedClientId) {
-                storeRelayClientId(normalizedClientId);
-              }
-              setLastError(null);
-              break;
-            }
-            case "pairing_state": {
-              const shouldSendHello =
-                message.status === "paired" &&
-                pairingStateRef.current?.status !== "paired";
-              setPairingState(message);
-              if (shouldSendHello && socket.readyState === WebSocket.OPEN) {
-                sendClientMessage(socket, { type: "hello" });
-              }
-              break;
-            }
-            case "sessions_updated": {
-              setSessions(message.sessions);
-              setSessionCache((previous) => {
-                const nextCache = new Map(previous);
-                for (const session of message.sessions) {
-                  const cached = nextCache.get(session.id);
-                  nextCache.set(session.id, {
-                    session,
-                    transcript: cached?.transcript ?? [],
-                  });
-                }
-                return nextCache;
-              });
-
-              const currentActiveSessionId = activeSessionIdRef.current;
-              if (!currentActiveSessionId) {
-                break;
-              }
-
-              const nextActiveSession =
-                message.sessions.find(
-                  (session) => session.id === currentActiveSessionId,
-                ) ?? null;
-
-              if (!nextActiveSession) {
-                activateSession(null, { load: false });
-                break;
-              }
-
-              const cached = sessionCacheRef.current.get(nextActiveSession.id);
-              if (
-                !cached ||
-                cached.session.updatedAt < nextActiveSession.updatedAt
-              ) {
-                requestSessionSnapshot(nextActiveSession.id);
-              }
-              break;
-            }
-            case "session_created": {
-              upsertSessionSnapshot(message.session, message.transcript);
-              setPendingDraft(false);
-              activateSession(message.session.id, { load: false });
-              break;
-            }
-            case "session_snapshot": {
-              upsertSessionSnapshot(message.session, message.transcript);
-              break;
-            }
-            case "assistant_delta": {
-              applyAssistantDelta(
-                message.sessionId,
-                message.messageId,
-                message.delta,
-                "body",
-                message.contentIndex,
-              );
-              break;
-            }
-            case "assistant_thinking_delta": {
-              applyAssistantDelta(
-                message.sessionId,
-                message.messageId,
-                message.delta,
-                "thinking",
-                message.contentIndex,
-              );
-              break;
-            }
-            case "error": {
-              setLastError(message.message);
-              break;
-            }
-            case "pong": {
-              break;
-            }
-          }
-        };
-
-        socket.onerror = () => {
-          setConnected(false);
-        };
-
-        socket.onclose = () => {
-          if (socketRef.current === socket) {
-            socketRef.current = null;
-          }
-
-          setConnected(false);
-          setPendingDraft(false);
-          setPairingState(null);
-          scheduleReconnect();
-        };
+          refreshTimer = setTimeout(refreshRelayAuth, AUTH_REFRESH_INTERVAL_MS);
+        }
       } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
         setConnected(false);
         setLastError(getErrorMessage(error));
-        scheduleReconnect();
+        refreshTimer = setTimeout(refreshRelayAuth, AUTH_REFRESH_INTERVAL_MS);
       }
     };
 
-    void connect();
+    void (async () => {
+      const storedAuth = await readStoredRelayClientAuth(transportConfig.relayUrl);
+      if (cancelled) {
+        return;
+      }
+
+      if (storedAuth) {
+        setRelayAuth(storedAuth);
+      }
+
+      await refreshRelayAuth();
+    })();
 
     return () => {
-      disposed = true;
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
+      cancelled = true;
+      if (refreshTimer !== null) {
+        clearTimeout(refreshTimer);
       }
-      notifyDisconnect();
-      socketRef.current?.close();
-      socketRef.current = null;
     };
-  }, [
-    isHydrated,
-    transportSettings.relayBootstrapUrl,
-    transportSettings.relayWebSocketUrl,
-  ]);
+  }, [isHydrated, transportConfig.relayUrl]);
 
-  const transportConfig = getRelayTransportConfig(transportSettings);
-  const pairingReady = pairingState?.status === "paired";
+  useEffect(() => {
+    if (!relayAuth) {
+      return;
+    }
+
+    let cancelled = false;
+    let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const pollHeartbeat = async () => {
+      try {
+        const heartbeat = await readRelayClientHeartbeat(transportConfig.relayUrl);
+        if (cancelled) {
+          return;
+        }
+
+        setRelayAuth(heartbeat.auth);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setConnected(false);
+        setLastError((current) => current ?? getErrorMessage(error));
+      } finally {
+        if (!cancelled) {
+          heartbeatTimer = setTimeout(
+            pollHeartbeat,
+            RELAY_HEARTBEAT_INTERVAL_MS,
+          );
+        }
+      }
+    };
+
+    void pollHeartbeat();
+
+    return () => {
+      cancelled = true;
+      if (heartbeatTimer !== null) {
+        clearTimeout(heartbeatTimer);
+      }
+    };
+  }, [relayAuth?.clientId, relayAuth?.clientKey, transportConfig.relayUrl]);
+
+  const pairingReady = Boolean(relayAuth?.target?.id);
+
+  useEffect(() => {
+    if (relayAuth?.token && pairingReady) {
+      setStreamRequested(true);
+    }
+  }, [pairingReady, relayAuth?.token]);
+
+  useEffect(() => {
+    if (!relayAuth?.token || !pairingReady || !streamRequested) {
+      setConnected(false);
+      return;
+    }
+
+    const streamUrl = new URL(transportConfig.streamUrl);
+    streamUrl.searchParams.set("token", relayAuth.token);
+
+    const eventSource = new EventSource(streamUrl.toString());
+    eventSourceRef.current = eventSource;
+
+    eventSource.addEventListener("open", () => {
+      setConnected(true);
+      setLastError(null);
+      resolvePendingConnectionsRef.current();
+    });
+
+    eventSource.addEventListener("message", (event) => {
+      if (typeof event.data !== "string") {
+        return;
+      }
+
+      const message = parseServerMessage(event.data);
+      if (!message) {
+        return;
+      }
+
+      switch (message.type) {
+        case "connected": {
+          setConnected(true);
+          setLastError(null);
+          resolvePendingConnectionsRef.current();
+          requestSessionPageRef.current(0, SESSION_PAGE_SIZE);
+          ensureSessionLoadedRef.current(activeSessionIdRef.current);
+          break;
+        }
+        case "sessions_page": {
+          setLoadingMoreSessions(false);
+          setServerLoadedSessionCount((previous) =>
+            Math.max(previous, message.offset + message.sessions.length),
+          );
+          setTotalSessionCount(message.total);
+          setSessions((previous) => {
+            let next = previous;
+            for (const session of message.sessions) {
+              next = upsertSessionInList(next, session);
+            }
+            return next;
+          });
+          setSessionCache((previous) => {
+            const nextCache = new Map(previous);
+            for (const session of message.sessions) {
+              const cached = nextCache.get(session.id);
+              nextCache.set(
+                session.id,
+                cached
+                  ? {
+                      ...cached,
+                      session,
+                    }
+                  : createSummaryOnlyCacheEntry(session),
+              );
+            }
+            return nextCache;
+          });
+
+          const currentActiveSessionId = activeSessionIdRef.current;
+          if (currentActiveSessionId) {
+            ensureSessionLoadedRef.current(currentActiveSessionId);
+          }
+          break;
+        }
+        case "session_summary_updated": {
+          setSessions((previous) => upsertSessionInList(previous, message.session));
+          setSessionCache((previous) => {
+            const nextCache = new Map(previous);
+            const cached = nextCache.get(message.session.id);
+            nextCache.set(
+              message.session.id,
+              cached
+                ? {
+                    ...cached,
+                    session: message.session,
+                  }
+                : createSummaryOnlyCacheEntry(message.session),
+            );
+            return nextCache;
+          });
+          setTotalSessionCount((previous) => {
+            if (previous === null) {
+              return Math.max(sessionsRef.current.length, 1);
+            }
+            const exists = sessionsRef.current.some(
+              (session) => session.id === message.session.id,
+            );
+            return exists ? previous : previous + 1;
+          });
+
+          if (activeSessionIdRef.current === message.session.id) {
+            ensureSessionLoadedRef.current(message.session.id);
+          }
+          break;
+        }
+        case "session_created": {
+          setLastError(null);
+          upsertSessionSnapshotRef.current(message.session, message.transcript);
+          setTotalSessionCount((previous) => {
+            if (previous === null) {
+              return Math.max(sessionsRef.current.length, 1);
+            }
+            const exists = sessionsRef.current.some(
+              (session) => session.id === message.session.id,
+            );
+            return exists ? previous : previous + 1;
+          });
+          setPendingDraft(false);
+          activateSessionRef.current(message.session.id, { load: false });
+          break;
+        }
+        case "session_snapshot": {
+          setLastError(null);
+          upsertSessionSnapshotRef.current(message.session, message.transcript);
+          break;
+        }
+        case "assistant_delta": {
+          applyAssistantDelta(
+            message.sessionId,
+            message.messageId,
+            message.delta,
+            "body",
+            message.contentIndex,
+          );
+          break;
+        }
+        case "assistant_thinking_delta": {
+          applyAssistantDelta(
+            message.sessionId,
+            message.messageId,
+            message.delta,
+            "thinking",
+            message.contentIndex,
+          );
+          break;
+        }
+        case "error": {
+          setPendingDraft(false);
+          setLastError(message.message);
+          break;
+        }
+        case "pong": {
+          break;
+        }
+      }
+    });
+
+    eventSource.addEventListener("error", () => {
+      setConnected(false);
+      setLastError((current) => current ?? STREAM_DISCONNECTED_MESSAGE);
+    });
+
+    return () => {
+      if (eventSourceRef.current === eventSource) {
+        eventSourceRef.current = null;
+      }
+      eventSource.removeAllEventListeners();
+      eventSource.close();
+      setConnected(false);
+    };
+  }, [pairingReady, relayAuth?.token, streamRequested, transportConfig.streamUrl]);
+
+  const pairingState = buildPairingState(relayAuth);
   const activeSession =
-    sessions.find((session) => session.id === activeSessionId) ?? null;
-  const activeTranscript = activeSessionId
-    ? (sessionCache.get(activeSessionId)?.transcript ?? [])
+    sessions.find((session) => session.id === activeSessionId) ??
+    (activeSessionId ? sessionCache.get(activeSessionId)?.session ?? null : null);
+  const activeSessionCacheEntry = activeSessionId
+    ? sessionCache.get(activeSessionId) ?? null
+    : null;
+  const activeTranscript = activeSessionCacheEntry?.transcriptLoaded
+    ? activeSessionCacheEntry.transcript
     : [];
+  const activeTranscriptLoaded =
+    activeSessionCacheEntry?.transcriptLoaded ?? false;
+  const canLoadMoreSessions =
+    totalSessionCount !== null && serverLoadedSessionCount < totalSessionCount;
 
   return (
     <ChatClientContext.Provider
@@ -748,18 +1023,23 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
         connected,
         transportSettings,
         connectionLabel: transportConfig.label,
-        serverUrl: transportSettings.relayBootstrapUrl,
+        serverUrl: transportConfig.relayUrl,
         pairingState,
         pairingReady,
         sessions,
+        totalSessionCount,
         activeSessionId,
         pendingDraft,
         activeSession,
         activeTranscript,
+        activeTranscriptLoaded,
         lastError,
+        loadingMoreSessions,
+        canLoadMoreSessions,
         activateSession,
         updateTransportSettings,
         requestSessionSnapshot,
+        loadMoreSessions,
         sendPrompt,
         abortSession,
         clearError,

@@ -1,11 +1,10 @@
-import type { RelayPairingStateMessage } from "@/lib/relay";
+import type { RelayPairingStateMessage } from "@/lib/relay-auth";
 
 export type ClientMessage =
-  | { type: "hello" }
-  | { type: "disconnect" }
   | { type: "prompt"; prompt: string; sessionId?: string | null }
   | { type: "abort"; sessionId: string }
   | { type: "load_session"; sessionId: string }
+  | { type: "load_sessions_page"; offset?: number; limit?: number }
   | { type: "ping" };
 
 export type TranscriptToolCall = {
@@ -62,20 +61,34 @@ export type SessionSummary = {
   preview: string;
   createdAt: number;
   updatedAt: number;
+  revision: number;
   busy: boolean;
   model: string | null;
   messageCount: number;
+  contextUsage: {
+    tokens: number | null;
+    contextWindow: number;
+    percent: number | null;
+  } | null;
 };
 
 export type SessionCacheEntry = {
   session: SessionSummary;
   transcript: TranscriptMessage[];
+  transcriptLoaded: boolean;
 };
 
 export type ServerMessage =
   | { type: "connected"; clientId: string; message: string; tools?: string }
   | RelayPairingStateMessage
-  | { type: "sessions_updated"; sessions: SessionSummary[] }
+  | {
+      type: "sessions_page";
+      sessions: SessionSummary[];
+      offset: number;
+      limit: number;
+      total: number;
+    }
+  | { type: "session_summary_updated"; session: SessionSummary }
   | {
       type: "session_created";
       session: SessionSummary;

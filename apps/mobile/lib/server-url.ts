@@ -1,4 +1,4 @@
 export {
-  DEFAULT_RELAY_WEBSOCKET_URL as DEFAULT_SERVER_URL,
-  normalizeWebSocketUrl as normalizeServerUrl,
+  DEFAULT_TRANSPORT_SETTINGS as DEFAULT_SERVER_SETTINGS,
+  normalizeRelayUrl as normalizeServerUrl,
 } from "@/lib/transport-config";

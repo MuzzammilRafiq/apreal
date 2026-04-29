@@ -27,16 +27,20 @@ export default function SessionsScreen() {
   const {
     activeSessionId,
     activateSession,
+    canLoadMoreSessions,
     clearError,
     connectionLabel,
     connected,
     isHydrated,
     lastError,
+    loadMoreSessions,
+    loadingMoreSessions,
     pendingDraft,
     pairingReady,
     pairingState,
     serverUrl,
     sessions,
+    totalSessionCount,
   } = useChatClient();
 
   useEffect(() => {
@@ -233,7 +237,9 @@ export default function SessionsScreen() {
         <View style={styles.sectionHeader}>
           <ThemedText type="defaultSemiBold">Sessions</ThemedText>
           <ThemedText style={{ color: palette.mutedText }}>
-            {sessions.length}
+            {totalSessionCount === null
+              ? sessions.length
+              : `${sessions.length}/${totalSessionCount}`}
           </ThemedText>
         </View>
 
@@ -263,74 +269,99 @@ export default function SessionsScreen() {
               </ThemedText>
             </View>
           ) : (
-            sessions.map((session) => {
-              const isActive = session.id === activeSessionId;
+            <>
+              {sessions.map((session) => {
+                const isActive = session.id === activeSessionId;
 
-              return (
+                return (
+                  <Pressable
+                    key={session.id}
+                    accessibilityRole="button"
+                    onPress={() => {
+                      activateSession(session.id);
+                      router.push(`/chat/${session.id}`);
+                    }}
+                    style={({ pressed }) => [
+                      styles.sessionCard,
+                      {
+                        backgroundColor:
+                          isActive || pressed
+                            ? palette.cardPressed
+                            : palette.cardBackground,
+                        borderColor: isActive ? palette.tint : palette.border,
+                      },
+                    ]}
+                  >
+                    <View style={styles.sessionRow}>
+                      <ThemedText
+                        type="defaultSemiBold"
+                        style={styles.sessionTitle}
+                        numberOfLines={1}
+                      >
+                        {session.title}
+                      </ThemedText>
+                      <ThemedText
+                        style={[styles.sessionMeta, { color: palette.mutedText }]}
+                      >
+                        {session.busy
+                          ? "Running"
+                          : formatRelativeTime(session.updatedAt)}
+                      </ThemedText>
+                    </View>
+                    <ThemedText
+                      style={[
+                        styles.sessionPreview,
+                        { color: palette.mutedText },
+                      ]}
+                      numberOfLines={2}
+                    >
+                      {session.preview}
+                    </ThemedText>
+                    <View style={styles.sessionFooter}>
+                      <ThemedText
+                        style={[styles.sessionMeta, { color: palette.mutedText }]}
+                      >
+                        {session.messageCount} messages
+                      </ThemedText>
+                      {session.busy ||
+                      (pendingDraft && !activeSessionId && isActive) ? (
+                        <ThemedText
+                          style={[
+                            styles.sessionMeta,
+                            { color: palette.statusPending },
+                          ]}
+                        >
+                          Busy
+                        </ThemedText>
+                      ) : null}
+                    </View>
+                  </Pressable>
+                );
+              })}
+
+              {canLoadMoreSessions ? (
                 <Pressable
-                  key={session.id}
                   accessibilityRole="button"
-                  onPress={() => {
-                    activateSession(session.id);
-                    router.push(`/chat/${session.id}`);
-                  }}
+                  accessibilityLabel="Load more sessions"
+                  disabled={loadingMoreSessions}
+                  onPress={loadMoreSessions}
                   style={({ pressed }) => [
-                    styles.sessionCard,
+                    styles.loadMoreButton,
                     {
-                      backgroundColor:
-                        isActive || pressed
-                          ? palette.cardPressed
-                          : palette.cardBackground,
-                      borderColor: isActive ? palette.tint : palette.border,
+                      backgroundColor: pressed
+                        ? palette.cardPressed
+                        : palette.cardBackground,
+                      borderColor: palette.border,
+                      opacity: loadingMoreSessions ? 0.65 : 1,
                     },
                   ]}
                 >
-                  <View style={styles.sessionRow}>
-                    <ThemedText
-                      type="defaultSemiBold"
-                      style={styles.sessionTitle}
-                      numberOfLines={1}
-                    >
-                      {session.title}
-                    </ThemedText>
-                    <ThemedText
-                      style={[styles.sessionMeta, { color: palette.mutedText }]}
-                    >
-                      {session.busy
-                        ? "Running"
-                        : formatRelativeTime(session.updatedAt)}
-                    </ThemedText>
-                  </View>
-                  <ThemedText
-                    style={[
-                      styles.sessionPreview,
-                      { color: palette.mutedText },
-                    ]}
-                    numberOfLines={2}
-                  >
-                    {session.preview}
+                  <ThemedText type="defaultSemiBold">
+                    {loadingMoreSessions ? "Loading..." : "Load more"}
                   </ThemedText>
-                  <View style={styles.sessionFooter}>
-                    <ThemedText
-                      style={[styles.sessionMeta, { color: palette.mutedText }]}
-                    >
-                      {session.messageCount} messages
-                    </ThemedText>
-                    {session.busy ||
-                    (pendingDraft && !activeSessionId && isActive) ? (
-                      <ThemedText
-                        style={[
-                          styles.sessionMeta,
-                          { color: palette.statusPending },
-                        ]}
-                      >
-                        Busy
-                      </ThemedText>
-                    ) : null}
-                  </View>
                 </Pressable>
-              );
-            })
+              ) : null}
+            </>
           )}
         </ScrollView>
       </View>
@@ -497,5 +528,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  loadMoreButton: {
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });
