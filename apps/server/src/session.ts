@@ -47,6 +47,12 @@ export type AgentToolCallSegment = ToolExecutionSummary & {
 
 export type AgentMessageSegment = AgentTextSegment | AgentThinkingSegment | AgentToolCallSegment;
 
+export type AgentContextUsage = {
+	tokens: number | null;
+	contextWindow: number;
+	percent: number | null;
+};
+
 export type AgentStreamEvent =
 	| { type: "assistant_message_start" }
 	| { type: "text_delta"; delta: string; contentIndex: number }
@@ -71,7 +77,9 @@ export interface AgentController {
 	readonly cwd: string;
 	readonly model: Model<"openai-completions">;
 	isStreaming(): boolean;
+	getContextUsage(): AgentContextUsage | undefined;
 	prompt(input: string): Promise<void>;
+	compact(customInstructions?: string): Promise<void>;
 	abort(): Promise<void>;
 	dispose(): void;
 	subscribe(listener: (event: AgentStreamEvent) => void): () => void;
@@ -537,6 +545,22 @@ export async function createAgentController(
 		cwd,
 		model,
 		isStreaming: () => !disposed && session.isStreaming,
+		getContextUsage: () => {
+			if (disposed) {
+				return undefined;
+			}
+
+			const usage = session.getContextUsage();
+			if (!usage) {
+				return undefined;
+			}
+
+			return {
+				tokens: usage.tokens ?? null,
+				contextWindow: usage.contextWindow,
+				percent: usage.percent ?? null,
+			};
+		},
 		prompt: async (input: string) => {
 			if (disposed) {
 				logger.warn("prompt rejected for disposed session");
@@ -552,6 +576,24 @@ export async function createAgentController(
 			await session.prompt(input);
 			logger.info("prompt finished", {
 				durationMs: Math.round(performance.now() - startedAt),
+			});
+		},
+		compact: async (customInstructions?: string) => {
+			if (disposed) {
+				logger.warn("compaction rejected for disposed session");
+				throw new Error("Agent session has already been disposed.");
+			}
+
+			const startedAt = performance.now();
+			logger.info("compaction started", {
+				customInstructions: Boolean(customInstructions),
+				contextUsage: session.getContextUsage()?.tokens ?? null,
+			});
+
+			await session.compact(customInstructions);
+			logger.info("compaction finished", {
+				durationMs: Math.round(performance.now() - startedAt),
+				contextUsage: session.getContextUsage()?.tokens ?? null,
 			});
 		},
 		abort: async () => {

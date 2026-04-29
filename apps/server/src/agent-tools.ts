@@ -26,7 +26,7 @@ export type AgentToolsConfig = {
 
 export const agentToolsConfig: AgentToolsConfig = {
 	// Pick any built-in Pi tools you want the agent to be able to call.
-	builtInTools: [...BUILT_IN_TOOL_PRESETS.coding],
+	builtInTools: [...BUILT_IN_TOOL_PRESETS.extendedCoding],
 	customTools,
 };
 

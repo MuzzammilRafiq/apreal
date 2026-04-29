@@ -52,6 +52,12 @@ export type SessionSummary = {
 	busy: boolean;
 	model: string | null;
 	messageCount: number;
+	contextUsage: {
+		tokens: number | null;
+		contextWindow: number;
+		percent: number | null;
+	} | null;
+	needsCompaction: boolean;
 };
 
 export type SessionCacheEntry = {

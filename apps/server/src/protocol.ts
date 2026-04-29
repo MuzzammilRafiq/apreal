@@ -1,5 +1,6 @@
 export type ClientAppMessage =
 	| { type: "prompt"; prompt: string; sessionId?: string | null }
+	| { type: "compact"; sessionId: string }
 	| { type: "abort"; sessionId: string }
 	| { type: "load_session"; sessionId: string }
 	| { type: "ping" };
@@ -52,6 +53,10 @@ export function parseClientAppMessage(rawMessage: string | Buffer | unknown): Cl
 
 	if (value.type === "abort" && typeof value.sessionId === "string") {
 		return { type: "abort", sessionId: value.sessionId };
+	}
+
+	if (value.type === "compact" && typeof value.sessionId === "string") {
+		return { type: "compact", sessionId: value.sessionId };
 	}
 
 	if (value.type === "load_session" && typeof value.sessionId === "string") {
