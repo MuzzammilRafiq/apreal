@@ -2,7 +2,7 @@
 	"extends": "../tsconfig.base.json",
 	"compilerOptions": {
 		"lib": ["ES2023"],
-		"types": ["node", "bun"]
+		"types": ["node"]
 	},
 	"include": ["./dev-runner.ts"]
 }

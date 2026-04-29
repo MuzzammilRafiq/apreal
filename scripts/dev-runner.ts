@@ -1,5 +1,7 @@
-import { mkdirSync, createWriteStream, type WriteStream } from "node:fs";
+import { spawn, type ChildProcess } from "node:child_process";
+import { createWriteStream, mkdirSync, type WriteStream } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 type ProcessName = "server" | "web";
 
@@ -23,19 +25,24 @@ const logDirectory = join(workspaceRoot, "dev", "logs");
 const processSpecs: ProcessSpec[] = [
 	{
 		name: "server",
-		command: ["bun", "run", "--cwd", "apps/server", "dev"],
+		command: ["pnpm", "--dir", "apps/server", "dev"],
 		color: ANSI_COLORS.server,
 		logFileName: "server.log",
 		stdio: process.stdout,
 	},
 	{
 		name: "web",
-		command: ["bun", "run", "--cwd", "apps/web", "dev"],
+		command: ["pnpm", "--dir", "apps/web", "dev"],
 		color: ANSI_COLORS.web,
 		logFileName: "web.log",
 		stdio: process.stdout,
 	},
 ];
+
+function isDirectExecution(moduleUrl: string) {
+	const entryPoint = process.argv[1];
+	return typeof entryPoint === "string" && fileURLToPath(moduleUrl) === entryPoint;
+}
 
 function prefixLine(spec: ProcessSpec, line: string) {
 	const suffix = line.length > 0 ? ` ${line}` : "";
@@ -58,7 +65,7 @@ function flushBufferedLines(spec: ProcessSpec, bufferedText: string, flushPartia
 }
 
 async function pipeStream(
-	stream: ReadableStream<Uint8Array> | null,
+	stream: NodeJS.ReadableStream | null,
 	spec: ProcessSpec,
 	logStream: WriteStream,
 ) {
@@ -66,36 +73,28 @@ async function pipeStream(
 		return;
 	}
 
-	const reader = stream.getReader();
-	const decoder = new TextDecoder();
 	let bufferedText = "";
 
-	try {
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) {
-				break;
-			}
-
-			if (!value) {
-				continue;
-			}
-
-			logStream.write(Buffer.from(value));
-			bufferedText += decoder.decode(value, { stream: true });
+	await new Promise<void>((resolve, reject) => {
+		stream.on("data", (chunk: Buffer | string) => {
+			logStream.write(chunk);
+			bufferedText += typeof chunk === "string" ? chunk : chunk.toString("utf8");
 			bufferedText = flushBufferedLines(spec, bufferedText);
-		}
-	} finally {
-		bufferedText += decoder.decode();
-		flushBufferedLines(spec, bufferedText, true);
-		reader.releaseLock();
-	}
+		});
+
+		stream.once("end", () => {
+			flushBufferedLines(spec, bufferedText, true);
+			resolve();
+		});
+
+		stream.once("error", reject);
+	});
 }
 
 async function main() {
 	mkdirSync(logDirectory, { recursive: true });
 
-	const activeChildren = new Map<ProcessName, Bun.Subprocess>();
+	const activeChildren = new Map<ProcessName, ChildProcess>();
 	const exitSignals: Array<Promise<{ name: ProcessName; exitCode: number }>> = [];
 	let shuttingDown = false;
 
@@ -112,12 +111,15 @@ async function main() {
 	for (const spec of processSpecs) {
 		const logPath = join(logDirectory, spec.logFileName);
 		const logStream = createWriteStream(logPath, { flags: "a" });
-		const child = Bun.spawn(spec.command, {
+		const [command, ...args] = spec.command;
+		if (!command) {
+			throw new Error(`Missing command for ${spec.name}`);
+		}
+
+		const child: ChildProcess = spawn(command, args, {
 			cwd: workspaceRoot,
 			env: process.env,
-			stdin: "inherit",
-			stdout: "pipe",
-			stderr: "pipe",
+			stdio: ["inherit", "pipe", "pipe"],
 		});
 
 		activeChildren.set(spec.name, child);
@@ -127,11 +129,13 @@ async function main() {
 		const stderrDone = pipeStream(child.stderr, spec, logStream);
 
 		exitSignals.push(
-			child.exited.then(async (exitCode) => {
+			new Promise<{ name: ProcessName; exitCode: number }>((resolve, reject) => {
+				child.once("error", reject);
+				child.once("close", async (exitCode: number | null) => {
 				activeChildren.delete(spec.name);
 				await Promise.allSettled([stdoutDone, stderrDone]);
 				await new Promise<void>((resolve, reject) => {
-					logStream.end((error:any) => {
+					logStream.end((error: Error | null | undefined) => {
 						if (error) {
 							reject(error);
 							return;
@@ -140,7 +144,8 @@ async function main() {
 						resolve();
 					});
 				});
-				return { name: spec.name, exitCode };
+					resolve({ name: spec.name, exitCode: exitCode ?? 1 });
+				});
 			}),
 		);
 	}
@@ -171,6 +176,6 @@ async function main() {
 	process.exit(failingExit?.exitCode ?? firstExit.exitCode);
 }
 
-if (import.meta.main) {
+if (isDirectExecution(import.meta.url)) {
 	void main();
 }

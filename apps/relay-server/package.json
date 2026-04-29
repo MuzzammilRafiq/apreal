@@ -3,9 +3,9 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "bun run src/index.ts",
+		"dev": "node --watch --conditions=development --import tsx src/index.ts",
 		"start": "node dist/index.js",
-		"build": "bun run --cwd ../shared build && tsc -p tsconfig.json && node scripts/prepare-dist.mjs",
+		"build": "pnpm --dir ../shared build && tsc -p tsconfig.json && node scripts/prepare-dist.mjs",
 		"typecheck": "tsc --noEmit -p tsconfig.json"
 	},
 	"devDependencies": {

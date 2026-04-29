@@ -3,8 +3,8 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "bun --watch run src/index.ts",
-		"start": "bun run src/index.ts",
+		"dev": "node --watch --conditions=development --import tsx src/index.ts",
+		"start": "node --conditions=development --import tsx src/index.ts",
 		"build": "tsc --noEmit",
 		"typecheck": "tsc --noEmit"
 	},
@@ -15,7 +15,6 @@
 		"dotenv": "^17.4.2"
 	},
 	"devDependencies": {
-		"@types/bun": "latest",
 		"typescript": "^5.9.3"
 	}
 }

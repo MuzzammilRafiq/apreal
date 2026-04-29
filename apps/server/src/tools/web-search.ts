@@ -1,6 +1,8 @@
+import { spawn } from "node:child_process";
 import { Type } from "@mariozechner/pi-ai";
 import { defineTool } from "@mariozechner/pi-coding-agent";
 import { dirname, resolve } from "node:path";
+import { text } from "node:stream/consumers";
 import { fileURLToPath } from "node:url";
 
 const PYTHON_SCRIPTS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../scripts/python");
@@ -14,17 +16,19 @@ export const webSearchTool = defineTool({
 		query: Type.String({ description: "Search query to run." }),
 	}),
 	async execute(_toolCallId, params) {
-		const child = Bun.spawn(["uv", "run", "main.py", params.query], {
+		const child = spawn("uv", ["run", "main.py", params.query], {
 			cwd: PYTHON_SCRIPTS_DIR,
 			env: process.env,
-			stdout: "pipe",
-			stderr: "pipe",
+			stdio: ["ignore", "pipe", "pipe"],
 		});
 
 		const [exitCode, stdout, stderr] = await Promise.all([
-			child.exited,
-			new Response(child.stdout).text(),
-			new Response(child.stderr).text(),
+			new Promise<number>((resolve, reject) => {
+				child.once("error", reject);
+				child.once("close", (code) => resolve(code ?? 1));
+			}),
+			child.stdout ? text(child.stdout) : Promise.resolve(""),
+			child.stderr ? text(child.stderr) : Promise.resolve(""),
 		]);
 
 		if (exitCode !== 0) {

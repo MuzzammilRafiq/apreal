@@ -5,49 +5,53 @@ This repo is now structured as a small monorepo so the desktop surface can grow 
 ## Layout
 
 - `apps/web`: React + Vite browser client.
-- `apps/server`: Bun server that owns the Pi SDK session runtime and the browser HTTP/SSE transport.
+- `apps/server`: Node.js server that owns the Pi SDK session runtime and the browser HTTP/SSE transport.
+- `apps/relay-server`: Node.js relay server for authenticated browser-to-agent traffic.
+- `apps/shared`: shared TypeScript package consumed by the server and web apps.
 - `docs`: markdown documentation and notes.
-- `mobile/react-native`: planned for later, not scaffolded yet.
+- `apps/mobile`: mobile app workspace, currently out of scope for the desktop flow.
 
 ## Install
 
 ```bash
-bun install
+pnpm install
 ```
+
+Use Node.js 20.6 or newer.
 
 ## Development
 
-Run the Bun server:
+Run the Node server:
 
 ```bash
-bun run dev:server
+pnpm dev:server
 ```
 
 Run the React web app:
 
 ```bash
-bun run dev:web
+pnpm dev:web
 ```
 
 Run both together:
 
 ```bash
-bun run dev
+pnpm dev
 ```
 
-`bun run dev` uses Turbo's TUI so the server and web tasks show up as separate selectable streams in the terminal.
+`pnpm dev` uses Turbo's TUI so the server and web tasks show up as separate selectable streams in the terminal.
 
 If you want plain prefixed terminal output instead of the TUI, use:
 
 ```bash
-bun run dev:plain
+pnpm dev:plain
 ```
 
 If you want separate log files on disk, use:
 
 
 ```bash
-bun run dev:logs
+pnpm dev:logs
 ```
 
 That runner writes to:
@@ -62,13 +66,13 @@ The server listens on `http://localhost:3000` by default and exposes:
 - `POST /api/client/message`
 - `POST /api/relay/connection`
 
-The browser UI is only served by the Vite app at `http://localhost:5173` in development. The Bun server no longer serves frontend assets. The browser should point `VITE_PI_RELAY_URL` at the relay host, and the Pi server opens an outbound authenticated stream to that relay for browser traffic.
+The browser UI is only served by the Vite app at `http://localhost:5173` in development. The Node server does not serve frontend assets. The browser should point `VITE_PI_RELAY_URL` at the relay host, and the Pi server opens an outbound authenticated stream to that relay for browser traffic.
 
 ## Build And Checks
 
 ```bash
-bun run build
-bun run typecheck
+pnpm build
+pnpm typecheck
 ```
 
 ## Runtime Notes

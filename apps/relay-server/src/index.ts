@@ -5,6 +5,7 @@ Only authenticated HTTP endpoints remain active here.
 */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { fileURLToPath } from "node:url";
 import {
 	CLIENT_EVENT_STREAM_PATH,
 	CLIENT_MESSAGE_PATH,
@@ -1189,6 +1190,6 @@ export function runRelayServer(options?: { port?: number }) {
 	return server;
 }
 
-if (import.meta.main) {
+if (typeof process.argv[1] === "string" && fileURLToPath(import.meta.url) === process.argv[1]) {
 	runRelayServer();
 }
