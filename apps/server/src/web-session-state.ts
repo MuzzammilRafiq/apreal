@@ -1,8 +1,6 @@
 import { summarizePrompt } from "./logger.ts";
 import type { AgentContextUsage, AgentController, AgentStreamEvent } from "./session.ts";
 
-const COMPACTION_THRESHOLD_TOKENS = 3_000;
-
 export type TranscriptMessage = {
 	id: string;
 	role: "user" | "assistant" | "system" | "error";
@@ -77,7 +75,6 @@ export type SessionSummary = {
 	model: string | null;
 	messageCount: number;
 	contextUsage: AgentContextUsage | null;
-	needsCompaction: boolean;
 };
 
 function createSessionTitle(prompt: string): string {
@@ -112,7 +109,6 @@ export function cloneTranscript(transcript: TranscriptMessage[]): TranscriptMess
 
 export function buildSessionSummary(session: SharedSessionState): SessionSummary {
 	const contextUsage = session.controller?.getContextUsage() ?? null;
-	const contextTokens = contextUsage?.tokens ?? null;
 
 	return {
 		id: session.id,
@@ -124,7 +120,6 @@ export function buildSessionSummary(session: SharedSessionState): SessionSummary
 		model: session.model,
 		messageCount: session.transcript.filter((entry) => entry.role === "user" || entry.role === "assistant").length,
 		contextUsage,
-		needsCompaction: contextTokens !== null && contextTokens >= COMPACTION_THRESHOLD_TOKENS,
 	};
 }
 

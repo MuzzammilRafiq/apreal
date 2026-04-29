@@ -57,7 +57,6 @@ export type SessionSummary = {
 		contextWindow: number;
 		percent: number | null;
 	} | null;
-	needsCompaction: boolean;
 };
 
 export type SessionCacheEntry = {

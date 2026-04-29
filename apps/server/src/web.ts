@@ -1158,76 +1158,6 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		}
 	}
 
-	async function handleCompact(clientId: string, sessionId: string) {
-		const session = sessions.get(sessionId);
-		if (!session) {
-			sendError(clientId, "The selected session could not be found.", sessionId);
-			return;
-		}
-
-		if (session.busy) {
-			sendError(
-				clientId,
-				"The selected session is still responding. Wait for it to finish or abort the current run.",
-				sessionId,
-			);
-			return;
-		}
-
-		try {
-			const controller = await ensureController(session);
-			const contextUsage = controller.getContextUsage();
-			if (!contextUsage || contextUsage.tokens === null || !Number.isFinite(contextUsage.tokens)) {
-				sendSessionSnapshot(clientId, session);
-				sendSessionsUpdated();
-				return;
-			}
-
-			session.abortRequested = false;
-			session.busy = true;
-			touchSession(session);
-			broadcastSessionSnapshot(session);
-			sendSessionsUpdated();
-
-			await controller.compact(
-				"Summarize this chat so we can continue efficiently. Preserve key requirements, concrete code changes, current state, open questions, and the most important next steps.",
-			);
-
-			settleSession(session);
-			appendTranscriptMessage(session, {
-				id: crypto.randomUUID(),
-				role: "system",
-				body: "Chat summarized to free context for the next prompt.",
-				thinking: "",
-				toolCalls: [],
-				segments: [],
-				pending: false,
-			});
-			broadcastSessionSnapshot(session);
-			sendSessionsUpdated();
-			chatStore.saveSession(session);
-		} catch (error) {
-			logger.error("browser compaction failed", {
-				sessionId,
-				error: getErrorMessage(error),
-			});
-			settleSession(session);
-			appendTranscriptMessage(session, {
-				id: crypto.randomUUID(),
-				role: "error",
-				body: `Error: ${getErrorMessage(error)}`,
-				thinking: "",
-				toolCalls: [],
-				segments: [],
-				pending: false,
-			});
-			broadcastSessionSnapshot(session);
-			sendSessionsUpdated();
-			chatStore.saveSession(session);
-			sendError(clientId, getErrorMessage(error), sessionId);
-		}
-	}
-
 	function sendConnected(clientId: string) {
 		sendClientPayload(
 			clientId,
@@ -1256,10 +1186,6 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		switch (message.type) {
 			case "prompt": {
 				await handlePrompt(clientId, message.prompt, message.sessionId);
-				break;
-			}
-			case "compact": {
-				await handleCompact(clientId, message.sessionId);
 				break;
 			}
 			case "abort": {

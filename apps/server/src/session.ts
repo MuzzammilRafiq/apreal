@@ -79,7 +79,6 @@ export interface AgentController {
 	isStreaming(): boolean;
 	getContextUsage(): AgentContextUsage | undefined;
 	prompt(input: string): Promise<void>;
-	compact(customInstructions?: string): Promise<void>;
 	abort(): Promise<void>;
 	dispose(): void;
 	subscribe(listener: (event: AgentStreamEvent) => void): () => void;
@@ -576,24 +575,6 @@ export async function createAgentController(
 			await session.prompt(input);
 			logger.info("prompt finished", {
 				durationMs: Math.round(performance.now() - startedAt),
-			});
-		},
-		compact: async (customInstructions?: string) => {
-			if (disposed) {
-				logger.warn("compaction rejected for disposed session");
-				throw new Error("Agent session has already been disposed.");
-			}
-
-			const startedAt = performance.now();
-			logger.info("compaction started", {
-				customInstructions: Boolean(customInstructions),
-				contextUsage: session.getContextUsage()?.tokens ?? null,
-			});
-
-			await session.compact(customInstructions);
-			logger.info("compaction finished", {
-				durationMs: Math.round(performance.now() - startedAt),
-				contextUsage: session.getContextUsage()?.tokens ?? null,
 			});
 		},
 		abort: async () => {

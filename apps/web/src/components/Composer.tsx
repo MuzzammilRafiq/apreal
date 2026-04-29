@@ -40,7 +40,6 @@ type ComposerProps = {
   activeSessionId: string | null;
   promptInputRef: RefObject<HTMLTextAreaElement | null>;
   onSend: (prompt: string) => boolean;
-  onCompact: () => boolean;
   onAbort: () => void;
 };
 
@@ -53,13 +52,10 @@ type ComposerProps = {
   activeSessionId,
   promptInputRef,
   onSend,
-  onCompact,
   onAbort,
 }: ComposerProps) {
 	const [prompt, setPrompt] = useState("");
 	const canSend = authReady && !activeSession?.busy && prompt.trim().length > 0;
-	const showCompactAction = Boolean(activeSession?.needsCompaction) && !activeSession?.busy;
-	const canAct = showCompactAction ? authReady && Boolean(activeSessionId) : canSend;
   const currentContextLabel = formatCurrentContext(activeSession);
 
   function resizePromptInput() {
@@ -144,18 +140,13 @@ type ComposerProps = {
         />
         <button
           type="button"
-          id={activeSession?.busy ? "abort-button" : showCompactAction ? "compact-button" : "send-button"}
-          className={`flex h-13 shrink-0 items-center justify-center border border-transparent bg-ink text-sidebar-ink shadow-[0_10px_24px_rgba(23,21,18,0.18)] transition duration-150 hover:bg-ink-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-[0.34] ${showCompactAction ? "min-w-13 px-4 text-[0.78rem] font-semibold" : "w-13"}`}
-          disabled={!authReady || (!canAct && !activeSession?.busy)}
-          aria-label={activeSession?.busy ? "Stop run" : showCompactAction ? "Summarize this chat" : "Send prompt"}
+			id={activeSession?.busy ? "abort-button" : "send-button"}
+			className="flex h-13 w-13 shrink-0 items-center justify-center border border-transparent bg-ink text-sidebar-ink shadow-[0_10px_24px_rgba(23,21,18,0.18)] transition duration-150 hover:bg-ink-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-[0.34]"
+			disabled={!authReady || (!canSend && !activeSession?.busy)}
+			aria-label={activeSession?.busy ? "Stop run" : "Send prompt"}
           onClick={() => {
             if (activeSession?.busy) {
               onAbort();
-              return;
-            }
-
-            if (showCompactAction) {
-              onCompact();
               return;
             }
 
@@ -167,8 +158,6 @@ type ComposerProps = {
               aria-hidden="true"
               className="h-4 w-4 rounded-sm border-2 border-current"
             />
-          ) : showCompactAction ? (
-            <span>Summarize this chat</span>
           ) : (
             <svg
               aria-hidden="true"

@@ -21,7 +21,6 @@ const transportConfig = getWebTransportConfig();
 
 type ClientMessage =
 	| { type: "prompt"; prompt: string; sessionId?: string | null }
-	| { type: "compact"; sessionId: string }
 	| { type: "abort"; sessionId: string }
 	| { type: "load_session"; sessionId: string }
 	| { type: "ping" };
@@ -632,19 +631,6 @@ export function App() {
 		});
 	}, [activeSession, sendClientMessage]);
 
-	const handleCompact = useCallback(() => {
-		if (!activeSession || activeSession.busy || !activeSession.needsCompaction) {
-			return false;
-		}
-
-		setConnectionError(null);
-		void sendClientMessage({ type: "compact", sessionId: activeSession.id }).catch((error) => {
-			setConnectionError(getErrorMessage(error));
-		});
-		focusPrompt();
-		return true;
-	}, [activeSession, focusPrompt, sendClientMessage]);
-
 	const emptyState = !activeSession
 		? {
 			title: !relayAuth
@@ -708,7 +694,6 @@ export function App() {
 						activeSessionId={activeSessionId}
 						promptInputRef={promptInputRef}
 						onSend={submitPrompt}
-						onCompact={handleCompact}
 						onAbort={handleAbort}
 					/>
 				</div>
