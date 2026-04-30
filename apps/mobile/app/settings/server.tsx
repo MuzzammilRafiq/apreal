@@ -20,6 +20,15 @@ export default function ServerSettingsScreen() {
     ? "This device is already paired. Future relay connections will keep using the stored client identity."
     : "Paste this code into the agent server. Chat stays locked until the relay marks this phone as paired.";
 
+  function handleBackNavigation() {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace("/");
+  }
+
   return (
     <SafeAreaView
       edges={["top", "bottom"]}
@@ -37,7 +46,7 @@ export default function ServerSettingsScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Back"
-          onPress={() => router.back()}
+          onPress={handleBackNavigation}
           style={styles.navButton}
         >
           <Ionicons name="chevron-back" size={20} color={palette.text} />

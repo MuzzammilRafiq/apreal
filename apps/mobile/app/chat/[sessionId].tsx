@@ -187,6 +187,16 @@ export default function ChatDetailScreen() {
     handleSend();
   }
 
+  function handleBackNavigation() {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    activateSession(null, { load: false });
+    router.replace("/");
+  }
+
   return (
     <SafeAreaView
       edges={["top", "bottom"]}
@@ -209,7 +219,7 @@ export default function ChatDetailScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Back"
-            onPress={() => router.back()}
+            onPress={handleBackNavigation}
             style={styles.navButton}
           >
             <Ionicons name="chevron-back" size={20} color={palette.text} />
@@ -359,7 +369,7 @@ const styles = StyleSheet.create({
   navButton: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -378,7 +388,7 @@ const styles = StyleSheet.create({
   },
   errorCard: {
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: 12,
     marginHorizontal: 16,
     marginTop: 12,
     paddingHorizontal: 14,
@@ -386,7 +396,7 @@ const styles = StyleSheet.create({
   },
   pairingCard: {
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: 12,
     marginHorizontal: 16,
     marginTop: 12,
     paddingHorizontal: 14,
@@ -422,11 +432,11 @@ const styles = StyleSheet.create({
   transcriptContent: {
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 16,
+    paddingBottom: 12,
     flexGrow: 1,
   },
   messageList: {
-    gap: 14,
+    gap: 12,
   },
   emptyState: {
     flex: 1,

@@ -41,11 +41,7 @@ export function ChatComposer({
     <View
       style={[
         styles.wrapper,
-        {
-          backgroundColor: palette.background,
-          borderTopColor: palette.border,
-          paddingBottom: 6,
-        },
+        { paddingBottom: 10 },
       ]}
     >
       <View
@@ -100,19 +96,23 @@ export function ChatComposer({
 
 const styles = StyleSheet.create({
   wrapper: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingTop: 10,
   },
   shell: {
     borderWidth: 1,
-    borderRadius: 22,
-    paddingLeft: 14,
+    borderRadius: 18,
+    paddingLeft: 12,
     paddingRight: 8,
-    paddingVertical: 6,
+    paddingVertical: 8,
     flexDirection: "row",
     alignItems: "flex-end",
     gap: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    elevation: 8,
   },
   input: {
     flex: 1,
@@ -125,9 +125,9 @@ const styles = StyleSheet.create({
     paddingBottom: 7,
   },
   sendButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 38,
+    height: 38,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },

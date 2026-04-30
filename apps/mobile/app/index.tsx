@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -23,13 +23,13 @@ export default function SessionsScreen() {
   const colorScheme = useColorScheme() ?? "light";
   const palette = Colors[colorScheme];
   const router = useRouter();
-  const didRestoreActiveSessionRef = useRef(false);
   const {
     activeSessionId,
     activateSession,
     canLoadMoreSessions,
     clearError,
     connectionLabel,
+    consumeLastSessionRestore,
     connected,
     isHydrated,
     lastError,
@@ -40,12 +40,13 @@ export default function SessionsScreen() {
     pairingState,
     serverUrl,
     sessions,
+    shouldRestoreLastSession,
     totalSessionCount,
   } = useChatClient();
 
   useEffect(() => {
     if (
-      didRestoreActiveSessionRef.current ||
+      !shouldRestoreLastSession ||
       !isHydrated ||
       pendingDraft ||
       !activeSessionId
@@ -60,9 +61,17 @@ export default function SessionsScreen() {
       return;
     }
 
-    didRestoreActiveSessionRef.current = true;
+    consumeLastSessionRestore();
     router.replace(`/chat/${activeSession.id}`);
-  }, [activeSessionId, isHydrated, pendingDraft, router, sessions]);
+  }, [
+    activeSessionId,
+    consumeLastSessionRestore,
+    isHydrated,
+    pendingDraft,
+    router,
+    sessions,
+    shouldRestoreLastSession,
+  ]);
 
   if (!isHydrated) {
     return (

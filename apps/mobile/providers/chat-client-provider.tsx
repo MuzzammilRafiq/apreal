@@ -60,6 +60,7 @@ type ChatClientContextValue = {
   activeSession: SessionSummary | null;
   activeTranscript: TranscriptMessage[];
   activeTranscriptLoaded: boolean;
+  shouldRestoreLastSession: boolean;
   lastError: string | null;
   loadingMoreSessions: boolean;
   canLoadMoreSessions: boolean;
@@ -67,6 +68,7 @@ type ChatClientContextValue = {
     sessionId: string | null,
     options?: ActivateSessionOptions,
   ) => void;
+  consumeLastSessionRestore: () => void;
   updateTransportSettings: (settings: StoredTransportSettings) => void;
   requestSessionSnapshot: (sessionId: string | null) => void;
   loadMoreSessions: () => void;
@@ -239,6 +241,7 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
   >(() => new Map());
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [pendingDraft, setPendingDraft] = useState(false);
+  const [shouldRestoreLastSession, setShouldRestoreLastSession] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const [relayAuth, setRelayAuth] = useState<StoredRelayClientAuth | null>(null);
   const [streamRequested, setStreamRequested] = useState(false);
@@ -348,6 +351,7 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
         if (storedActiveSessionId?.trim()) {
           setActiveSessionId(storedActiveSessionId);
           activeSessionIdRef.current = storedActiveSessionId;
+          setShouldRestoreLastSession(true);
         }
       } finally {
         if (!cancelled) {
@@ -403,6 +407,7 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
     setLoadingMoreSessions(false);
     setRelayAuth(null);
     setStreamRequested(false);
+    setShouldRestoreLastSession(false);
     activeSessionIdRef.current = null;
     setActiveSessionId(null);
     setLastError(null);
@@ -546,6 +551,7 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
     options: ActivateSessionOptions = {},
   ) {
     const { load = true } = options;
+    setShouldRestoreLastSession(false);
     activeSessionIdRef.current = sessionId;
     setActiveSessionId(sessionId);
     setPendingDraft(false);
@@ -553,6 +559,10 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
     if (load && sessionId) {
       ensureSessionLoaded(sessionId);
     }
+  }
+
+  function consumeLastSessionRestore() {
+    setShouldRestoreLastSession(false);
   }
 
   useEffect(() => {
@@ -1033,10 +1043,12 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
         activeSession,
         activeTranscript,
         activeTranscriptLoaded,
+        shouldRestoreLastSession,
         lastError,
         loadingMoreSessions,
         canLoadMoreSessions,
         activateSession,
+        consumeLastSessionRestore,
         updateTransportSettings,
         requestSessionSnapshot,
         loadMoreSessions,

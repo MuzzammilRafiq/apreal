@@ -16,6 +16,17 @@ type ChatMessageBubbleProps = {
   message: TranscriptMessage;
 };
 
+const TOOL_DESCRIPTION_MAP: Record<string, string> = {
+  bash: "Runs a shell command in the workspace.",
+  edit: "Updates an existing file in the workspace.",
+  find: "Finds files by name or path.",
+  grep: "Searches workspace files for matching text.",
+  ls: "Lists files and folders in a directory.",
+  read: "Reads a file or a selected line range.",
+  web_search: "Searches the public web and extracts page text.",
+  write: "Creates a new file in the workspace.",
+};
+
 export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
   const colorScheme = useColorScheme() ?? "light";
   const palette = Colors[colorScheme];
@@ -110,6 +121,23 @@ function formatToolStatus(status: TranscriptToolCall["status"]) {
   }
 }
 
+function formatToolDescription(name: string, summary: string) {
+  const normalizedName = name.trim().toLowerCase();
+  const mappedDescription = TOOL_DESCRIPTION_MAP[normalizedName];
+  if (mappedDescription) {
+    return mappedDescription;
+  }
+
+  const normalizedSummary = summary.replace(/\s+/g, " ").trim();
+  if (!normalizedSummary) {
+    return "Runs a tool action.";
+  }
+
+  return normalizedSummary.length > 96
+    ? `${normalizedSummary.slice(0, 93)}...`
+    : normalizedSummary;
+}
+
 function AssistantMarkdownMessage({
   content,
   pending,
@@ -165,6 +193,7 @@ function ToolCallCard({
             backgroundColor: palette.toolCompletedBackground,
             color: palette.toolCompletedText,
           };
+  const description = formatToolDescription(name, summary);
 
   return (
     <View
@@ -177,7 +206,13 @@ function ToolCallCard({
       ]}
     >
       <View style={styles.toolHeader}>
-        <ThemedText style={styles.toolLabel}>Tool call</ThemedText>
+        <ThemedText
+          type="defaultSemiBold"
+          style={styles.toolName}
+          numberOfLines={1}
+        >
+          {name}
+        </ThemedText>
         <View
           style={[
             styles.toolStatusPill,
@@ -191,9 +226,11 @@ function ToolCallCard({
           </ThemedText>
         </View>
       </View>
-      <ThemedText type="defaultSemiBold">{name}</ThemedText>
-      <ThemedText style={[styles.toolSummary, { color: palette.mutedText }]}>
-        {summary}
+      <ThemedText
+        style={[styles.toolDescription, { color: palette.mutedText }]}
+        numberOfLines={2}
+      >
+        {description}
       </ThemedText>
     </View>
   );
@@ -399,20 +436,20 @@ function createMarkdownStyles(palette: (typeof Colors)["light"]) {
       backgroundColor: palette.codeBackground,
       paddingHorizontal: 6,
       paddingVertical: 2,
-      borderRadius: 8,
+      borderRadius: 6,
       fontFamily: Fonts.mono,
     },
     code_block: {
       color: palette.text,
       backgroundColor: palette.codeBackground,
-      borderRadius: 14,
+      borderRadius: 10,
       padding: 10,
       fontFamily: Fonts.mono,
     },
     fence: {
       color: palette.text,
       backgroundColor: palette.codeBackground,
-      borderRadius: 14,
+      borderRadius: 10,
       padding: 10,
       fontFamily: Fonts.mono,
       marginBottom: 10,
@@ -449,16 +486,16 @@ const styles = StyleSheet.create({
   },
   bubble: {
     maxWidth: "86%",
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderWidth: 1,
   },
   assistantBubble: {
-    borderBottomLeftRadius: 10,
+    borderBottomLeftRadius: 8,
   },
   userBubble: {
-    borderBottomRightRadius: 10,
+    borderBottomRightRadius: 8,
   },
   userMessage: {
     fontSize: 14,
@@ -472,63 +509,66 @@ const styles = StyleSheet.create({
   },
   segmentList: {
     width: "100%",
-    gap: 12,
+    gap: 6,
   },
   toolCard: {
     borderWidth: 1,
-    borderRadius: 16,
-    padding: 14,
-    gap: 8,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 4,
   },
   toolHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
+    gap: 6,
   },
-  toolLabel: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: "700",
-  },
-  toolStatusPill: {
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  toolStatusText: {
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: "700",
-  },
-  toolSummary: {
+  toolName: {
+    flex: 1,
+    minWidth: 0,
     fontSize: 13,
     lineHeight: 18,
   },
+  toolStatusPill: {
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  toolStatusText: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: "700",
+  },
+  toolDescription: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
   thinkingShell: {
     borderWidth: 1,
-    borderRadius: 16,
-    padding: 14,
-    gap: 10,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 4,
   },
   thinkingHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 4,
   },
   thinkingLabel: {
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 11,
+    lineHeight: 14,
     fontWeight: "700",
   },
   thinkingBody: {
     fontFamily: Fonts.mono,
     fontSize: 12,
-    lineHeight: 18,
+    lineHeight: 16,
   },
   systemCard: {
     borderWidth: 1,
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: 12,
+    padding: 12,
   },
 });
