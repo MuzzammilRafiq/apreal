@@ -16,17 +16,6 @@ type ChatMessageBubbleProps = {
   message: TranscriptMessage;
 };
 
-const TOOL_DESCRIPTION_MAP: Record<string, string> = {
-  bash: "Runs a shell command in the workspace.",
-  edit: "Updates an existing file in the workspace.",
-  find: "Finds files by name or path.",
-  grep: "Searches workspace files for matching text.",
-  ls: "Lists files and folders in a directory.",
-  read: "Reads a file or a selected line range.",
-  web_search: "Searches the public web and extracts page text.",
-  write: "Creates a new file in the workspace.",
-};
-
 export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
   const colorScheme = useColorScheme() ?? "light";
   const palette = Colors[colorScheme];
@@ -121,23 +110,6 @@ function formatToolStatus(status: TranscriptToolCall["status"]) {
   }
 }
 
-function formatToolDescription(name: string, summary: string) {
-  const normalizedName = name.trim().toLowerCase();
-  const mappedDescription = TOOL_DESCRIPTION_MAP[normalizedName];
-  if (mappedDescription) {
-    return mappedDescription;
-  }
-
-  const normalizedSummary = summary.replace(/\s+/g, " ").trim();
-  if (!normalizedSummary) {
-    return "Runs a tool action.";
-  }
-
-  return normalizedSummary.length > 96
-    ? `${normalizedSummary.slice(0, 93)}...`
-    : normalizedSummary;
-}
-
 function AssistantMarkdownMessage({
   content,
   pending,
@@ -169,43 +141,43 @@ function AssistantMarkdownMessage({
 
 function ToolCallCard({
   name,
-  summary,
   status,
   palette,
 }: {
   name: string;
-  summary: string;
   status: TranscriptToolCall["status"];
   palette: (typeof Colors)["light"];
 }) {
   const toneStyle =
     status === "running"
       ? {
-          backgroundColor: palette.toolRunningBackground,
           color: palette.toolRunningText,
         }
       : status === "failed"
         ? {
-            backgroundColor: palette.toolFailedBackground,
             color: palette.toolFailedText,
           }
         : {
-            backgroundColor: palette.toolCompletedBackground,
             color: palette.toolCompletedText,
           };
-  const description = formatToolDescription(name, summary);
 
   return (
     <View
       style={[
         styles.toolCard,
         {
-          backgroundColor: palette.toolBackground,
-          borderColor: palette.border,
+          backgroundColor: palette.thinkingBackground,
+          borderColor: palette.thinkingBorder,
         },
       ]}
     >
       <View style={styles.toolHeader}>
+        <IconSymbol
+          name="chevron.right"
+          size={12}
+          color={palette.icon}
+          style={styles.toolChevron}
+        />
         <ThemedText
           type="defaultSemiBold"
           style={styles.toolName}
@@ -213,25 +185,10 @@ function ToolCallCard({
         >
           {name}
         </ThemedText>
-        <View
-          style={[
-            styles.toolStatusPill,
-            { backgroundColor: toneStyle.backgroundColor },
-          ]}
-        >
-          <ThemedText
-            style={[styles.toolStatusText, { color: toneStyle.color }]}
-          >
-            {formatToolStatus(status)}
-          </ThemedText>
-        </View>
+        <ThemedText style={[styles.toolStatusText, { color: toneStyle.color }]}>
+          {formatToolStatus(status)}
+        </ThemedText>
       </View>
-      <ThemedText
-        style={[styles.toolDescription, { color: palette.mutedText }]}
-        numberOfLines={2}
-      >
-        {description}
-      </ThemedText>
     </View>
   );
 }
@@ -269,7 +226,7 @@ function ThinkingCard({
       >
         <IconSymbol
           name="chevron.right"
-          size={18}
+          size={11}
           color={palette.icon}
           style={{ transform: [{ rotate: isOpen ? "90deg" : "0deg" }] }}
         />
@@ -314,7 +271,6 @@ function AssistantSegmentBlock({
     return (
       <ToolCallCard
         name={segment.name}
-        summary={segment.summary}
         status={segment.status}
         palette={palette}
       />
@@ -516,33 +472,25 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     paddingHorizontal: 8,
     paddingVertical: 6,
-    gap: 4,
   },
   toolHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     gap: 6,
+  },
+  toolChevron: {
+    marginRight: -2,
   },
   toolName: {
     flex: 1,
     minWidth: 0,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  toolStatusPill: {
-    borderRadius: 4,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  toolStatusText: {
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: "700",
-  },
-  toolDescription: {
     fontSize: 12,
     lineHeight: 16,
+  },
+  toolStatusText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "700",
   },
   thinkingShell: {
     borderWidth: 1,

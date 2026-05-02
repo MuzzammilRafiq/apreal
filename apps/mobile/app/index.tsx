@@ -287,33 +287,6 @@ export default function SessionsScreen() {
                           : formatRelativeTime(session.updatedAt)}
                       </ThemedText>
                     </View>
-                    <ThemedText
-                      style={[
-                        styles.sessionPreview,
-                        { color: palette.mutedText },
-                      ]}
-                      numberOfLines={2}
-                    >
-                      {session.preview}
-                    </ThemedText>
-                    <View style={styles.sessionFooter}>
-                      <ThemedText
-                        style={[styles.sessionMeta, { color: palette.mutedText }]}
-                      >
-                        {session.messageCount} messages
-                      </ThemedText>
-                      {session.busy ||
-                      (pendingDraft && !activeSessionId && isActive) ? (
-                        <ThemedText
-                          style={[
-                            styles.sessionMeta,
-                            { color: palette.statusPending },
-                          ]}
-                        >
-                          Busy
-                        </ThemedText>
-                      ) : null}
-                    </View>
                   </Pressable>
                 );
               })}
@@ -472,12 +445,13 @@ const styles = StyleSheet.create({
   sessionCard: {
     borderWidth: 1,
     borderRadius: 4,
-    padding: 16,
-    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 0,
   },
   sessionRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: 12,
   },
   sessionTitle: {
@@ -486,15 +460,6 @@ const styles = StyleSheet.create({
   sessionMeta: {
     fontSize: 12,
     lineHeight: 16,
-  },
-  sessionPreview: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  sessionFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
   },
   loadMoreButton: {
     borderWidth: 1,

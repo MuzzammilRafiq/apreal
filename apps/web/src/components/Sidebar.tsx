@@ -88,7 +88,7 @@ export const Sidebar = memo(function Sidebar({
 								aria-pressed={session.id === activeSessionId}
 								onClick={() => onActivateSession(session.id)}
 							>
-								<div className="flex items-start justify-between gap-3">
+								<div className="flex items-center justify-between gap-3">
 									<p className="min-w-0 flex-1 text-[0.94rem] font-medium leading-[1.4] text-sidebar-ink">
 										{session.title}
 									</p>
@@ -96,9 +96,6 @@ export const Sidebar = memo(function Sidebar({
 										{session.busy ? "Running" : formatRelativeTime(session.updatedAt)}
 									</span>
 								</div>
-								<p className="line-clamp-2 text-[0.82rem] leading-[1.6] text-sidebar-muted">
-									{session.preview}
-								</p>
 								<p className="hidden">{session.model || "Model starts on first response"}</p>
 							</button>
 						))
