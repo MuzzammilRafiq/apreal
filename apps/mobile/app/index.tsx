@@ -213,15 +213,6 @@ export default function SessionsScreen() {
           </View>
         ) : null}
 
-        <View style={styles.sectionHeader}>
-          <ThemedText type="defaultSemiBold">Sessions</ThemedText>
-          <ThemedText style={{ color: palette.mutedText }}>
-            {totalSessionCount === null
-              ? sessions.length
-              : `${sessions.length}/${totalSessionCount}`}
-          </ThemedText>
-        </View>
-
         <ScrollView
           style={styles.sessionList}
           contentContainerStyle={styles.sessionListContent}
@@ -233,7 +224,6 @@ export default function SessionsScreen() {
                 styles.emptyCard,
                 {
                   backgroundColor: palette.cardBackground,
-                  borderColor: palette.border,
                 },
               ]}
             >
@@ -263,17 +253,16 @@ export default function SessionsScreen() {
                     style={({ pressed }) => [
                       styles.sessionCard,
                       {
-                        backgroundColor:
-                          isActive || pressed
-                            ? palette.cardPressed
-                            : palette.cardBackground,
-                        borderColor: isActive ? palette.tint : palette.border,
+                          backgroundColor:
+                            isActive || pressed
+                              ? palette.cardPressed
+                              : palette.cardBackground,
                       },
                     ]}
                   >
                     <View style={styles.sessionRow}>
                       <ThemedText
-                        type="defaultSemiBold"
+                        type="default"
                         style={styles.sessionTitle}
                         numberOfLines={1}
                       >
@@ -282,9 +271,9 @@ export default function SessionsScreen() {
                       <ThemedText
                         style={[styles.sessionMeta, { color: palette.mutedText }]}
                       >
-                        {session.busy
-                          ? "Running"
-                          : formatRelativeTime(session.updatedAt)}
+                        {session.messageCount > 0
+                          ? `${session.messageCount} msgs · ${session.busy ? "Running" : formatRelativeTime(session.updatedAt)}`
+                          : (session.busy ? "Running" : formatRelativeTime(session.updatedAt))}
                       </ThemedText>
                     </View>
                   </Pressable>
@@ -300,11 +289,10 @@ export default function SessionsScreen() {
                   style={({ pressed }) => [
                     styles.loadMoreButton,
                     {
-                      backgroundColor: pressed
-                        ? palette.cardPressed
-                        : palette.cardBackground,
-                      borderColor: palette.border,
-                      opacity: loadingMoreSessions ? 0.65 : 1,
+                        backgroundColor: pressed
+                          ? palette.cardPressed
+                          : palette.cardBackground,
+                        opacity: loadingMoreSessions ? 0.65 : 1,
                     },
                   ]}
                 >
@@ -430,10 +418,9 @@ const styles = StyleSheet.create({
   },
   sessionListContent: {
     paddingBottom: 16,
-    gap: 12,
+    gap: 2,
   },
   emptyCard: {
-    borderWidth: 1,
     borderRadius: 4,
     padding: 18,
     gap: 8,
@@ -443,10 +430,9 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   sessionCard: {
-    borderWidth: 1,
     borderRadius: 4,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 8,
     gap: 0,
   },
   sessionRow: {
@@ -462,7 +448,6 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   loadMoreButton: {
-    borderWidth: 1,
     borderRadius: 4,
     paddingHorizontal: 16,
     paddingVertical: 14,

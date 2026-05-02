@@ -65,18 +65,10 @@ export const Sidebar = memo(function Sidebar({
 					Start new chat
 				</button>
 			</div>
-			<div className="max-[720px]:max-h-[34svh] flex-1 overflow-y-auto px-4.5 pt-5 pb-6">
-				<div className="flex items-baseline justify-between gap-3 px-1.5 pb-3">
-					<p className="font-mono text-[0.72rem] font-medium uppercase tracking-[0.14em] text-sidebar-muted">
-						Sessions
-					</p>
-					<p id="session-count" className="text-[0.82rem] text-sidebar-muted">
-						{sessions.length} / {totalSessions}
-					</p>
-				</div>
+			<div className="max-[720px]:max-h-[34svh] flex-1 overflow-y-auto px-4.5 pt-4 pb-6">
 				<div id="session-list" className="flex flex-col" aria-label="Chat sessions">
 					{sessions.length === 0 ? (
-						<p className="border-y border-sidebar-line px-3 py-4 leading-[1.7] text-sidebar-muted">
+						<p className="px-3 py-4 leading-[1.7] text-sidebar-muted">
 							No saved sessions yet. Start a new chat and your first prompt will turn into a reusable thread here.
 						</p>
 					) : (
@@ -93,7 +85,9 @@ export const Sidebar = memo(function Sidebar({
 										{session.title}
 									</p>
 									<span className="shrink-0 font-mono text-[0.72rem] text-sidebar-muted">
-										{session.busy ? "Running" : formatRelativeTime(session.updatedAt)}
+										{session.messageCount > 0
+											? `${session.messageCount} msgs · ${session.busy ? "Running" : formatRelativeTime(session.updatedAt)}`
+											: (session.busy ? "Running" : formatRelativeTime(session.updatedAt))}
 									</span>
 								</div>
 								<p className="hidden">{session.model || "Model starts on first response"}</p>

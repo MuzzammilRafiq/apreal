@@ -31,10 +31,10 @@ export function formatSessionState(session: SessionSummary | null, pendingDraft:
 
 export function getSessionCardClassName(isActive: boolean): string {
 	return [
-		"flex w-full cursor-pointer flex-col border-t border-b bg-transparent px-3 py-2.5 text-left text-sidebar-ink transition-colors duration-150 hover:bg-sidebar-active focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring",
+		"flex w-full cursor-pointer flex-col bg-transparent px-3 py-1.5 text-left text-sidebar-ink transition-colors duration-150 hover:bg-sidebar-active focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring",
 		isActive
-			? "border-t-white/15 border-b-white/20 bg-sidebar-active"
-			: "border-t-transparent border-b-sidebar-line",
+			? "bg-sidebar-active"
+			: "",
 	].join(" ");
 }
 
