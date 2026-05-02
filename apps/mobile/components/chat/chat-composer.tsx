@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    minHeight: 34,
+    minHeight: 17,
     maxHeight: 92,
     fontSize: 14,
     lineHeight: 17,
