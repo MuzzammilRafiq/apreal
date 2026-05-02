@@ -434,25 +434,25 @@ function createMarkdownStyles(palette: (typeof Colors)["light"]) {
     code_inline: {
       color: palette.text,
       backgroundColor: palette.codeBackground,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 6,
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderRadius: 0,
       fontFamily: Fonts.mono,
     },
     code_block: {
       color: palette.text,
       backgroundColor: palette.codeBackground,
-      borderRadius: 10,
-      padding: 10,
+      borderRadius: 0,
+      padding: 8,
       fontFamily: Fonts.mono,
     },
     fence: {
       color: palette.text,
       backgroundColor: palette.codeBackground,
-      borderRadius: 10,
-      padding: 10,
+      borderRadius: 0,
+      padding: 8,
       fontFamily: Fonts.mono,
-      marginBottom: 10,
+      marginBottom: 8,
     },
     link: {
       color: palette.tint,
@@ -461,7 +461,7 @@ function createMarkdownStyles(palette: (typeof Colors)["light"]) {
     hr: {
       backgroundColor: palette.border,
       height: StyleSheet.hairlineWidth,
-      marginVertical: 16,
+      marginVertical: 12,
     },
   };
 }
@@ -486,16 +486,16 @@ const styles = StyleSheet.create({
   },
   bubble: {
     maxWidth: "86%",
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderWidth: 1,
   },
   assistantBubble: {
-    borderBottomLeftRadius: 8,
+    borderBottomLeftRadius: 0,
   },
   userBubble: {
-    borderBottomRightRadius: 8,
+    borderBottomRightRadius: 0,
   },
   userMessage: {
     fontSize: 14,
@@ -509,13 +509,13 @@ const styles = StyleSheet.create({
   },
   segmentList: {
     width: "100%",
-    gap: 6,
+    gap: 4,
   },
   toolCard: {
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    borderRadius: 0,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     gap: 4,
   },
   toolHeader: {
@@ -531,7 +531,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   toolStatusPill: {
-    borderRadius: 999,
+    borderRadius: 0,
     paddingHorizontal: 7,
     paddingVertical: 2,
   },
@@ -546,9 +546,9 @@ const styles = StyleSheet.create({
   },
   thinkingShell: {
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    borderRadius: 0,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     gap: 4,
   },
   thinkingHeader: {
@@ -557,18 +557,18 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   thinkingLabel: {
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 10,
+    lineHeight: 12,
     fontWeight: "700",
   },
   thinkingBody: {
     fontFamily: Fonts.mono,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 11,
+    lineHeight: 14,
   },
   systemCard: {
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 0,
+    padding: 10,
   },
 });

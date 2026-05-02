@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
   navButton: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
   },
   card: {
     borderWidth: 1,
-    borderRadius: 20,
+    borderRadius: 0,
     padding: 16,
     gap: 12,
   },
@@ -209,7 +209,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   statusPill: {
-    borderRadius: 999,
+    borderRadius: 0,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
   dismissButton: {
     width: 28,
     height: 28,
-    borderRadius: 14,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
   },

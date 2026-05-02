@@ -90,19 +90,19 @@ export default function SessionsScreen() {
       edges={["top", "bottom"]}
       style={[styles.safeArea, { backgroundColor: palette.background }]}
     >
-      <View
-        style={[
-          styles.header,
-          {
-            backgroundColor: palette.headerBackground,
+        <View
+          style={[
+            styles.header,
+            {
+              backgroundColor: palette.headerBackground,
             borderBottomColor: palette.border,
           },
         ]}
-      >
-        <View style={styles.headerCopy}>
-          <View style={styles.titleRow}>
-            <ThemedText type="title" style={styles.title}>
-              Apreal
+        >
+          <View style={styles.headerCopy}>
+            <View style={styles.titleRow}>
+              <ThemedText type="title" style={styles.title}>
+                Apreal
             </ThemedText>
             <View
               style={[
@@ -115,28 +115,58 @@ export default function SessionsScreen() {
               ]}
             />
           </View>
-          <ThemedText style={[styles.subtitle, { color: palette.mutedText }]}>
-            {connectionLabel}
-          </ThemedText>
-        </View>
+            <ThemedText style={[styles.subtitle, { color: palette.mutedText }]}>
+              {connectionLabel}
+            </ThemedText>
+          </View>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Server settings"
-          onPress={() => router.push("/settings/server")}
-          style={({ pressed }) => [
-            styles.headerButton,
-            {
-              backgroundColor: pressed
-                ? palette.cardPressed
-                : palette.cardBackground,
-              borderColor: palette.border,
-            },
-          ]}
-        >
-          <Ionicons name="settings-outline" size={18} color={palette.text} />
-        </Pressable>
-      </View>
+          <View style={styles.headerActions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Start new chat"
+              disabled={!pairingReady}
+              onPress={() => {
+                activateSession(null, { load: false });
+                router.push("/chat/draft");
+              }}
+              style={({ pressed }) => [
+                styles.headerActionButton,
+                {
+                  backgroundColor: pairingReady
+                    ? pressed
+                      ? palette.cardPressed
+                      : palette.userBubble
+                    : palette.cardBackground,
+                  borderColor: pairingReady ? palette.userBubble : palette.border,
+                  opacity: pairingReady ? (pressed ? 0.9 : 1) : 0.5,
+                },
+              ]}
+            >
+              <Ionicons
+                name="add"
+                size={18}
+                color={pairingReady ? palette.userBubbleText : palette.mutedText}
+              />
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Server settings"
+              onPress={() => router.push("/settings/server")}
+              style={({ pressed }) => [
+                styles.headerActionButton,
+                {
+                  backgroundColor: pressed
+                    ? palette.cardPressed
+                    : palette.cardBackground,
+                  borderColor: palette.border,
+                },
+              ]}
+            >
+              <Ionicons name="settings-outline" size={18} color={palette.text} />
+            </Pressable>
+          </View>
+        </View>
 
       <View style={styles.content}>
         {!pairingReady ? (
@@ -315,34 +345,6 @@ export default function SessionsScreen() {
         </ScrollView>
       </View>
 
-      <View style={styles.footer}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Start new chat"
-          onPress={() => {
-            activateSession(null, { load: false });
-            router.push("/chat/draft");
-          }}
-          style={({ pressed }) => [
-            styles.primaryButton,
-            {
-              backgroundColor: palette.userBubble,
-              opacity: pressed ? 0.86 : 1,
-            },
-          ]}
-          disabled={!pairingReady}
-        >
-          <Ionicons name="add" size={18} color={palette.userBubbleText} />
-          <ThemedText
-            style={[
-              styles.primaryButtonText,
-              { color: palette.userBubbleText },
-            ]}
-          >
-            Start new chat
-          </ThemedText>
-        </Pressable>
-      </View>
     </SafeAreaView>
   );
 }
@@ -369,6 +371,11 @@ const styles = StyleSheet.create({
   headerCopy: {
     flex: 1,
   },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -381,7 +388,7 @@ const styles = StyleSheet.create({
   statusDot: {
     width: 10,
     height: 10,
-    borderRadius: 5,
+    borderRadius: 0,
     marginTop: 4,
   },
   subtitle: {
@@ -389,10 +396,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
-  headerButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  headerActionButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 0,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -406,7 +413,7 @@ const styles = StyleSheet.create({
   },
   statusCard: {
     borderWidth: 1,
-    borderRadius: 20,
+    borderRadius: 0,
     padding: 16,
     gap: 8,
   },
@@ -422,7 +429,7 @@ const styles = StyleSheet.create({
   },
   errorCard: {
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: 0,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
@@ -454,7 +461,7 @@ const styles = StyleSheet.create({
   },
   emptyCard: {
     borderWidth: 1,
-    borderRadius: 20,
+    borderRadius: 0,
     padding: 18,
     gap: 8,
   },
@@ -464,7 +471,7 @@ const styles = StyleSheet.create({
   },
   sessionCard: {
     borderWidth: 1,
-    borderRadius: 20,
+    borderRadius: 0,
     padding: 16,
     gap: 10,
   },
@@ -491,30 +498,10 @@ const styles = StyleSheet.create({
   },
   loadMoreButton: {
     borderWidth: 1,
-    borderRadius: 18,
+    borderRadius: 0,
     paddingHorizontal: 16,
     paddingVertical: 14,
     alignItems: "center",
     justifyContent: "center",
-  },
-  footer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(0,0,0,0.1)",
-  },
-  primaryButton: {
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  primaryButtonText: {
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: "700",
   },
 });

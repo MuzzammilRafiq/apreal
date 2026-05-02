@@ -205,7 +205,7 @@ export default function ChatDetailScreen() {
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={12}
+        keyboardVerticalOffset={0}
       >
         <View
           style={[
@@ -330,15 +330,6 @@ export default function ChatDetailScreen() {
           busy={isBusy}
           canSend={canSend}
           connected={connected}
-          placeholder={
-            !connected
-              ? `Reconnect to the ${connectionLabel} before sending`
-              : !pairingReady
-                ? "Finish relay pairing to unlock chat"
-              : isDraftRoute
-                ? "Describe what you want the assistant to inspect, fix, or build"
-                : "Continue this session with the next task, follow-up, or code request"
-          }
         />
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -360,8 +351,8 @@ const styles = StyleSheet.create({
   header: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 12,
-    paddingTop: 4,
-    paddingBottom: 12,
+    paddingTop: 2,
+    paddingBottom: 8,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
@@ -369,7 +360,7 @@ const styles = StyleSheet.create({
   navButton: {
     width: 36,
     height: 36,
-    borderRadius: 14,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -388,19 +379,19 @@ const styles = StyleSheet.create({
   },
   errorCard: {
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 0,
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  pairingCard: {
+    borderWidth: 1,
+    borderRadius: 0,
     marginHorizontal: 16,
     marginTop: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-  },
-  pairingCard: {
-    borderWidth: 1,
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginTop: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
     gap: 8,
   },
   pairingCode: {
@@ -431,17 +422,17 @@ const styles = StyleSheet.create({
   },
   transcriptContent: {
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingTop: 10,
+    paddingBottom: 8,
     flexGrow: 1,
   },
   messageList: {
-    gap: 12,
+    gap: 8,
   },
   emptyState: {
     flex: 1,
     justifyContent: "center",
-    paddingBottom: 96,
+    paddingBottom: 56,
   },
   emptyTitle: {
     fontSize: 30,

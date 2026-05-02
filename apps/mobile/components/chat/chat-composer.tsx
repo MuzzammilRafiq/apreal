@@ -18,7 +18,6 @@ type ChatComposerProps = {
   connected: boolean;
   busy: boolean;
   canSend: boolean;
-  placeholder: string;
   onSubmitEditing?: TextInputProps["onSubmitEditing"];
 };
 
@@ -30,7 +29,6 @@ export function ChatComposer({
   connected,
   busy,
   canSend,
-  placeholder,
   onSubmitEditing,
 }: ChatComposerProps) {
   const colorScheme = useColorScheme() ?? "light";
@@ -41,7 +39,7 @@ export function ChatComposer({
     <View
       style={[
         styles.wrapper,
-        { paddingBottom: 10 },
+        { paddingBottom: 4 },
       ]}
     >
       <View
@@ -56,8 +54,6 @@ export function ChatComposer({
         <TextInput
           value={value}
           onChangeText={onChangeText}
-          placeholder={placeholder}
-          placeholderTextColor={palette.mutedText}
           style={[styles.input, { color: palette.text }]}
           multiline
           autoCapitalize="sentences"
@@ -96,38 +92,33 @@ export function ChatComposer({
 
 const styles = StyleSheet.create({
   wrapper: {
-    paddingHorizontal: 14,
-    paddingTop: 10,
+    paddingHorizontal: 12,
+    paddingTop: 4,
   },
   shell: {
     borderWidth: 1,
-    borderRadius: 18,
-    paddingLeft: 12,
-    paddingRight: 8,
+    borderRadius: 0,
+    paddingLeft: 10,
+    paddingRight: 6,
     paddingVertical: 8,
     flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    elevation: 8,
+    alignItems: "center",
+    gap: 8,
   },
   input: {
     flex: 1,
-    minHeight: 40,
-    maxHeight: 108,
+    minHeight: 34,
+    maxHeight: 92,
     fontSize: 14,
-    lineHeight: 18,
-    textAlignVertical: "top",
-    paddingTop: 7,
-    paddingBottom: 7,
+    lineHeight: 17,
+    textAlignVertical: "center",
+    paddingTop: 0,
+    paddingBottom: 0,
   },
   sendButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
   },
