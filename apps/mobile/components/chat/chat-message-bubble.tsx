@@ -1,7 +1,23 @@
-import { useEffect, useState } from "react";
-import { Linking, Pressable, StyleSheet, View } from "react-native";
-import Markdown from "react-native-markdown-display";
-
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  Linking,
+  Pressable,
+  ScrollView,
+  Text,
+  StyleSheet,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
+import { Markdown, themes, type Renderers } from "react-native-remark";
+import Prism from "prismjs";
+import "prismjs/components/prism-bash";
+import "prismjs/components/prism-javascript";
+import "prismjs/components/prism-jsx";
+import "prismjs/components/prism-markdown";
+import "prismjs/components/prism-markup";
+import "prismjs/components/prism-typescript";
+import "prismjs/components/prism-yaml";
 import { ThemedText } from "@/components/themed-text";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { Colors, Fonts } from "@/constants/theme";
@@ -66,6 +82,7 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
               content="Thinking..."
               pending={message.pending}
               palette={palette}
+              colorScheme={colorScheme}
             />
           ) : null}
 
@@ -74,6 +91,7 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
               content={message.body}
               pending={message.pending}
               palette={palette}
+              colorScheme={colorScheme}
             />
           ) : null}
 
@@ -89,6 +107,7 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
                     segment.id === liveThinkingSegmentId
                   }
                   palette={palette}
+                  colorScheme={colorScheme}
                 />
               ))}
             </View>
@@ -114,11 +133,29 @@ function AssistantMarkdownMessage({
   content,
   pending,
   palette,
+  colorScheme,
 }: {
   content: string;
   pending: boolean;
   palette: (typeof Colors)["light"];
+  colorScheme: "light" | "dark";
 }) {
+  const markdownStyles = useMemo(() => createMarkdownStyles(palette), [palette]);
+  const markdownRenderers = useMemo<Partial<Renderers>>(
+    () => ({
+      CodeRenderer: ({ node }) => (
+        <CodeBlock
+          key={node.position?.start.offset ?? node.value}
+          node={node}
+          palette={palette}
+          colorScheme={colorScheme}
+          inheritedStyles={undefined}
+        />
+      ),
+    }),
+    [palette, colorScheme],
+  );
+
   return (
     <View
       style={[
@@ -127,14 +164,14 @@ function AssistantMarkdownMessage({
       ]}
     >
       <Markdown
-        onLinkPress={(url) => {
+        markdown={content}
+        theme={themes.defaultTheme}
+        customRenderers={markdownRenderers}
+        customStyles={markdownStyles}
+        onLinkPress={(url: string) => {
           void Linking.openURL(url);
-          return false;
         }}
-        style={createMarkdownStyles(palette)}
-      >
-        {content}
-      </Markdown>
+      />
     </View>
   );
 }
@@ -251,11 +288,13 @@ function AssistantSegmentBlock({
   segment,
   isLiveThinking,
   palette,
+  colorScheme,
 }: {
   item: TranscriptMessage;
   segment: TranscriptMessageSegment;
   isLiveThinking: boolean;
   palette: (typeof Colors)["light"];
+  colorScheme: "light" | "dark";
 }) {
   if (segment.type === "text") {
     return (
@@ -263,6 +302,7 @@ function AssistantSegmentBlock({
         content={segment.content}
         pending={item.pending}
         palette={palette}
+        colorScheme={colorScheme}
       />
     );
   }
@@ -284,6 +324,197 @@ function AssistantSegmentBlock({
       palette={palette}
     />
   );
+}
+
+function CodeBlock({
+  node,
+  palette,
+  colorScheme,
+  inheritedStyles,
+}: {
+  node: Parameters<Renderers["CodeRenderer"]>[0]["node"];
+  palette: (typeof Colors)["light"];
+  colorScheme: "light" | "dark";
+  inheritedStyles: StyleProp<ViewStyle>;
+}) {
+  const content =
+    node.value.endsWith("\n") ? node.value.slice(0, -1) : node.value;
+  const language = normalizeCodeLanguage(node.lang);
+  const grammar = resolvePrismGrammar(language);
+  const tokens = Prism.tokenize(content, grammar) as (PrismToken | string)[];
+  const tokenColors = getCodeTokenColors(colorScheme);
+
+  return (
+    <View
+      style={[
+        inheritedStyles,
+        {
+          backgroundColor: palette.codeBackground,
+          borderRadius: 4,
+          overflow: "hidden",
+          marginBottom: 8,
+        },
+      ]}
+    >
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{
+          padding: 8,
+        }}
+      >
+        <Text
+          style={[
+            styles.codeText,
+            {
+              color: palette.text,
+            },
+          ]}
+        >
+          {renderPrismTokens(tokens, tokenColors)}
+        </Text>
+      </ScrollView>
+    </View>
+  );
+}
+
+function normalizeCodeLanguage(languageHint?: string | null) {
+  const language = languageHint?.trim().toLowerCase() ?? "";
+
+  switch (language) {
+    case "js":
+      return "javascript";
+    case "ts":
+      return "typescript";
+    case "tsx":
+      return "typescript";
+    case "jsx":
+      return "javascript";
+    case "sh":
+    case "shell":
+    case "zsh":
+      return "bash";
+    case "yml":
+      return "yaml";
+    case "md":
+      return "markdown";
+    case "html":
+    case "xml":
+      return "markup";
+    default:
+      return language;
+  }
+}
+
+function resolvePrismGrammar(language: string) {
+  return Prism.languages[language] ?? {};
+}
+
+type PrismToken = {
+  type: string;
+  content: string | (PrismToken | string)[];
+};
+
+function getCodeTokenColors(colorScheme: "light" | "dark") {
+  return colorScheme === "dark"
+    ? {
+        comment: "#7F848E",
+        keyword: "#C678DD",
+        string: "#98C379",
+        number: "#D19A66",
+        boolean: "#D19A66",
+        function: "#61AFEF",
+        className: "#E5C07B",
+        tag: "#E06C75",
+        operator: "#56B6C2",
+        punctuation: "#ABB2BF",
+        property: "#D19A66",
+      }
+    : {
+        comment: "#A0A1A7",
+        keyword: "#A626A4",
+        string: "#50A14F",
+        number: "#986801",
+        boolean: "#986801",
+        function: "#4078F2",
+        className: "#C18401",
+        tag: "#E45649",
+        operator: "#0184BC",
+        punctuation: "#383A42",
+        property: "#986801",
+      };
+}
+
+function renderPrismTokens(
+  tokens: (PrismToken | string)[],
+  tokenColors: ReturnType<typeof getCodeTokenColors>,
+  keyPrefix = "code",
+): ReactNode[] {
+  return tokens.flatMap((token, index) => {
+    const key = `${keyPrefix}-${index}`;
+
+    if (typeof token === "string") {
+      return token;
+    }
+
+    const style = getTokenStyle(token, tokenColors);
+    const children =
+      typeof token.content === "string"
+        ? token.content
+        : renderPrismTokens(token.content as (PrismToken | string)[], tokenColors, key);
+
+    return (
+      <Text key={key} style={style}>
+        {children}
+      </Text>
+    );
+  });
+}
+
+function getTokenStyle(
+  token: PrismToken,
+  tokenColors: ReturnType<typeof getCodeTokenColors>,
+) {
+  const type = token.type;
+
+  switch (type) {
+    case "comment":
+    case "prolog":
+    case "doctype":
+    case "cdata":
+      return { color: tokenColors.comment, fontStyle: "italic" as const };
+    case "keyword":
+    case "atrule":
+    case "rule":
+    case "important":
+      return { color: tokenColors.keyword };
+    case "string":
+    case "char":
+    case "attr-value":
+      return { color: tokenColors.string };
+    case "number":
+    case "boolean":
+    case "constant":
+    case "symbol":
+      return { color: tokenColors.number };
+    case "function":
+    case "method":
+    case "class-name":
+      return { color: tokenColors.function };
+    case "tag":
+    case "selector":
+      return { color: tokenColors.tag };
+    case "operator":
+    case "entity":
+      return { color: tokenColors.operator };
+    case "punctuation":
+      return { color: tokenColors.punctuation };
+    case "property":
+    case "attr-name":
+      return { color: tokenColors.property };
+    default:
+      return undefined;
+  }
 }
 
 function SystemMessageCard({
@@ -318,76 +549,53 @@ function SystemMessageCard({
 
 function createMarkdownStyles(palette: (typeof Colors)["light"]) {
   return {
-    body: {
+    container: {
+      gap: 0,
+    },
+    paragraph: {
       color: palette.text,
       fontSize: 14,
       lineHeight: 20,
       marginTop: 0,
-      marginBottom: 0,
-    },
-    paragraph: {
-      marginTop: 0,
       marginBottom: 10,
     },
-    heading1: {
+    text: {
       color: palette.text,
-      fontSize: 19,
-      lineHeight: 24,
-      fontWeight: "700" as const,
-      marginTop: 0,
-      marginBottom: 10,
-    },
-    heading2: {
-      color: palette.text,
-      fontSize: 17,
-      lineHeight: 22,
-      fontWeight: "700" as const,
-      marginTop: 0,
-      marginBottom: 10,
-    },
-    heading3: {
-      color: palette.text,
-      fontSize: 15,
+      fontSize: 14,
       lineHeight: 20,
+    },
+    heading: (level: number) => ({
+      color: palette.text,
+      fontSize: level === 1 ? 19 : level === 2 ? 17 : 15,
+      lineHeight: level === 1 ? 24 : level === 2 ? 22 : 20,
       fontWeight: "700" as const,
       marginTop: 0,
       marginBottom: 10,
-    },
-    bullet_list: {
-      marginTop: 0,
-      marginBottom: 10,
-    },
-    ordered_list: {
-      marginTop: 0,
-      marginBottom: 10,
-    },
-    list_item: {
-      color: palette.text,
-      marginBottom: 6,
-    },
-    bullet_list_icon: {
-      color: palette.tint,
-    },
-    ordered_list_icon: {
-      color: palette.tint,
-    },
-    strong: {
-      color: palette.text,
-      fontWeight: "700" as const,
-    },
-    em: {
-      color: palette.text,
-      fontStyle: "italic" as const,
-    },
+    }),
     blockquote: {
-      color: palette.mutedText,
       borderLeftWidth: 3,
       borderLeftColor: palette.border,
       paddingLeft: 12,
       marginLeft: 0,
       marginBottom: 10,
     },
-    code_inline: {
+    list: {
+      marginTop: 0,
+      marginBottom: 10,
+    },
+    listItem: {
+      color: palette.text,
+      marginBottom: 6,
+    },
+    strong: {
+      color: palette.text,
+      fontWeight: "700" as const,
+    },
+    emphasis: {
+      color: palette.text,
+      fontStyle: "italic" as const,
+    },
+    inlineCode: {
       color: palette.text,
       backgroundColor: palette.codeBackground,
       paddingHorizontal: 5,
@@ -395,26 +603,15 @@ function createMarkdownStyles(palette: (typeof Colors)["light"]) {
       borderRadius: 4,
       fontFamily: Fonts.mono,
     },
-    code_block: {
-      color: palette.text,
-      backgroundColor: palette.codeBackground,
-      borderRadius: 4,
-      padding: 8,
-      fontFamily: Fonts.mono,
-    },
-    fence: {
-      color: palette.text,
-      backgroundColor: palette.codeBackground,
-      borderRadius: 4,
-      padding: 8,
-      fontFamily: Fonts.mono,
-      marginBottom: 8,
-    },
     link: {
       color: palette.tint,
       textDecorationLine: "underline" as const,
     },
-    hr: {
+    linkReference: {
+      color: palette.tint,
+      textDecorationLine: "underline" as const,
+    },
+    thematicBreak: {
       backgroundColor: palette.border,
       height: StyleSheet.hairlineWidth,
       marginVertical: 12,
@@ -456,6 +653,11 @@ const styles = StyleSheet.create({
   userMessage: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  codeText: {
+    fontFamily: Fonts.mono,
+    fontSize: 12,
+    lineHeight: 18,
   },
   assistantMarkdownShell: {
     width: "100%",
