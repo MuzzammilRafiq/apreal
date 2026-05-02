@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -23,12 +23,12 @@ export default function SessionsScreen() {
   const colorScheme = useColorScheme() ?? "light";
   const palette = Colors[colorScheme];
   const router = useRouter();
+  const [headerHeight, setHeaderHeight] = useState(52);
   const {
     activeSessionId,
     activateSession,
     canLoadMoreSessions,
     clearError,
-    connectionLabel,
     consumeLastSessionRestore,
     connected,
     isHydrated,
@@ -40,7 +40,6 @@ export default function SessionsScreen() {
     pairingState,
     sessions,
     shouldRestoreLastSession,
-    totalSessionCount,
   } = useChatClient();
 
   useEffect(() => {
@@ -90,34 +89,179 @@ export default function SessionsScreen() {
       edges={["top", "bottom"]}
       style={[styles.safeArea, { backgroundColor: palette.background }]}
     >
+      <View style={styles.screen}>
+        <ScrollView
+          style={styles.sessionList}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingTop: headerHeight },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          {!pairingReady ? (
+            <View
+              style={[
+                styles.statusCard,
+                {
+                  backgroundColor: palette.cardBackground,
+                  borderColor: palette.border,
+                },
+              ]}
+            >
+              <ThemedText type="defaultSemiBold">Relay pairing</ThemedText>
+              <ThemedText style={[styles.pairingCode, { color: palette.text }]}> 
+                {pairingState?.pairingCode ?? "Issuing..."}
+              </ThemedText>
+              <ThemedText style={[styles.statusHint, { color: palette.mutedText }]}> 
+                Paste this code into the agent server. Sending stays disabled until
+                the relay reports this phone as paired.
+              </ThemedText>
+            </View>
+          ) : null}
+
+          {lastError ? (
+            <View
+              style={[
+                styles.errorCard,
+                {
+                  backgroundColor: palette.dangerBackground,
+                  borderColor: palette.border,
+                },
+              ]}
+            >
+              <View style={styles.errorRow}>
+                <ThemedText
+                  style={[styles.errorText, { color: palette.dangerText }]}
+                >
+                  {lastError}
+                </ThemedText>
+                <Pressable onPress={clearError} style={styles.dismissButton}>
+                  <Ionicons name="close" size={18} color={palette.dangerText} />
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+
+          {sessions.length === 0 ? (
+            <View
+              style={[
+                styles.emptyCard,
+                {
+                  backgroundColor: palette.cardBackground,
+                },
+              ]}
+            >
+              <ThemedText type="defaultSemiBold">
+                No saved sessions yet
+              </ThemedText>
+              <ThemedText
+                style={[styles.emptyBody, { color: palette.mutedText }]}
+              >
+                Start a new chat and your first prompt will create a reusable
+                session here.
+              </ThemedText>
+            </View>
+          ) : (
+            <View style={styles.sessionListContent}>
+              {sessions.map((session) => {
+                const isActive = session.id === activeSessionId;
+
+                return (
+                  <Pressable
+                    key={session.id}
+                    accessibilityRole="button"
+                    onPress={() => {
+                      activateSession(session.id);
+                      router.push(`/chat/${session.id}`);
+                    }}
+                    style={({ pressed }) => [
+                      styles.sessionCard,
+                      {
+                        backgroundColor:
+                          isActive || pressed
+                            ? palette.cardPressed
+                            : palette.cardBackground,
+                      },
+                    ]}
+                  >
+                    <View style={styles.sessionRow}>
+                      <ThemedText
+                        type="default"
+                        style={styles.sessionTitle}
+                        numberOfLines={1}
+                      >
+                        {session.title}
+                      </ThemedText>
+                      <ThemedText
+                        style={[styles.sessionMeta, { color: palette.mutedText }]}
+                      >
+                        {session.messageCount > 0
+                          ? `${session.messageCount} msgs · ${session.busy ? "Running" : formatRelativeTime(session.updatedAt)}`
+                          : session.busy
+                            ? "Running"
+                            : formatRelativeTime(session.updatedAt)}
+                      </ThemedText>
+                    </View>
+                  </Pressable>
+                );
+              })}
+
+              {canLoadMoreSessions ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Load more sessions"
+                  disabled={loadingMoreSessions}
+                  onPress={loadMoreSessions}
+                  style={({ pressed }) => [
+                    styles.loadMoreButton,
+                    {
+                      backgroundColor: pressed
+                        ? palette.cardPressed
+                        : palette.cardBackground,
+                      opacity: loadingMoreSessions ? 0.65 : 1,
+                    },
+                  ]}
+                >
+                  <ThemedText type="defaultSemiBold">
+                    {loadingMoreSessions ? "Loading..." : "Load more"}
+                  </ThemedText>
+                </Pressable>
+              ) : null}
+            </View>
+          )}
+        </ScrollView>
+
         <View
+          onLayout={(event) => {
+            const nextHeight = Math.round(event.nativeEvent.layout.height);
+            setHeaderHeight((currentHeight) =>
+              currentHeight === nextHeight ? currentHeight : nextHeight,
+            );
+          }}
           style={[
             styles.header,
             {
               backgroundColor: palette.headerBackground,
-            borderBottomColor: palette.border,
-          },
-        ]}
+              borderBottomColor: palette.border,
+            },
+          ]}
         >
           <View style={styles.headerCopy}>
             <View style={styles.titleRow}>
               <ThemedText type="title" style={styles.title}>
                 Apreal
-            </ThemedText>
-            <View
-              style={[
-                styles.statusDot,
-                {
-                  backgroundColor: connected
-                    ? palette.statusConnected
-                    : palette.statusDisconnected,
-                },
-              ]}
-            />
-          </View>
-            <ThemedText style={[styles.subtitle, { color: palette.mutedText }]}>
-              {connectionLabel}
-            </ThemedText>
+              </ThemedText>
+              <View
+                style={[
+                  styles.statusDot,
+                  {
+                    backgroundColor: connected
+                      ? palette.statusConnected
+                      : palette.statusDisconnected,
+                  },
+                ]}
+              />
+            </View>
           </View>
 
           <View style={styles.headerActions}>
@@ -167,145 +311,7 @@ export default function SessionsScreen() {
             </Pressable>
           </View>
         </View>
-
-      <View style={styles.content}>
-        {!pairingReady ? (
-          <View
-            style={[
-              styles.statusCard,
-              {
-                backgroundColor: palette.cardBackground,
-                borderColor: palette.border,
-              },
-            ]}
-          >
-            <ThemedText type="defaultSemiBold">Relay pairing</ThemedText>
-            <ThemedText style={[styles.pairingCode, { color: palette.text }]}>
-              {pairingState?.pairingCode ?? "Issuing..."}
-            </ThemedText>
-            <ThemedText style={[styles.statusHint, { color: palette.mutedText }]}>
-              Paste this code into the agent server. Sending stays disabled until
-              the relay reports this phone as paired.
-            </ThemedText>
-          </View>
-        ) : null}
-
-        {lastError ? (
-          <View
-            style={[
-              styles.errorCard,
-              {
-                backgroundColor: palette.dangerBackground,
-                borderColor: palette.border,
-              },
-            ]}
-          >
-            <View style={styles.errorRow}>
-              <ThemedText
-                style={[styles.errorText, { color: palette.dangerText }]}
-              >
-                {lastError}
-              </ThemedText>
-              <Pressable onPress={clearError} style={styles.dismissButton}>
-                <Ionicons name="close" size={18} color={palette.dangerText} />
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
-
-        <ScrollView
-          style={styles.sessionList}
-          contentContainerStyle={styles.sessionListContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {sessions.length === 0 ? (
-            <View
-              style={[
-                styles.emptyCard,
-                {
-                  backgroundColor: palette.cardBackground,
-                },
-              ]}
-            >
-              <ThemedText type="defaultSemiBold">
-                No saved sessions yet
-              </ThemedText>
-              <ThemedText
-                style={[styles.emptyBody, { color: palette.mutedText }]}
-              >
-                Start a new chat and your first prompt will create a reusable
-                session here.
-              </ThemedText>
-            </View>
-          ) : (
-            <>
-              {sessions.map((session) => {
-                const isActive = session.id === activeSessionId;
-
-                return (
-                  <Pressable
-                    key={session.id}
-                    accessibilityRole="button"
-                    onPress={() => {
-                      activateSession(session.id);
-                      router.push(`/chat/${session.id}`);
-                    }}
-                    style={({ pressed }) => [
-                      styles.sessionCard,
-                      {
-                          backgroundColor:
-                            isActive || pressed
-                              ? palette.cardPressed
-                              : palette.cardBackground,
-                      },
-                    ]}
-                  >
-                    <View style={styles.sessionRow}>
-                      <ThemedText
-                        type="default"
-                        style={styles.sessionTitle}
-                        numberOfLines={1}
-                      >
-                        {session.title}
-                      </ThemedText>
-                      <ThemedText
-                        style={[styles.sessionMeta, { color: palette.mutedText }]}
-                      >
-                        {session.messageCount > 0
-                          ? `${session.messageCount} msgs · ${session.busy ? "Running" : formatRelativeTime(session.updatedAt)}`
-                          : (session.busy ? "Running" : formatRelativeTime(session.updatedAt))}
-                      </ThemedText>
-                    </View>
-                  </Pressable>
-                );
-              })}
-
-              {canLoadMoreSessions ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Load more sessions"
-                  disabled={loadingMoreSessions}
-                  onPress={loadMoreSessions}
-                  style={({ pressed }) => [
-                    styles.loadMoreButton,
-                    {
-                        backgroundColor: pressed
-                          ? palette.cardPressed
-                          : palette.cardBackground,
-                        opacity: loadingMoreSessions ? 0.65 : 1,
-                    },
-                  ]}
-                >
-                  <ThemedText type="defaultSemiBold">
-                    {loadingMoreSessions ? "Loading..." : "Load more"}
-                  </ThemedText>
-                </Pressable>
-              ) : null}
-            </>
-          )}
-        </ScrollView>
       </View>
-
     </SafeAreaView>
   );
 }
@@ -314,18 +320,26 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
+  screen: {
+    flex: 1,
+  },
   centeredState: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
   header: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1,
     paddingHorizontal: 20,
     paddingTop: 8,
-    paddingBottom: 16,
+    paddingBottom: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
   },
@@ -343,19 +357,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   title: {
-    fontSize: 28,
-    lineHeight: 30,
+    fontSize: 20,
   },
   statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 4,
-    marginTop: 4,
-  },
-  subtitle: {
-    marginTop: 6,
-    fontSize: 14,
-    lineHeight: 20,
+    width: 16,
+    height: 16,
+    borderRadius: 5,
   },
   headerActionButton: {
     width: 36,
@@ -365,11 +372,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  content: {
-    flex: 1,
+  scrollContent: {
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
+    paddingBottom: 16,
     gap: 14,
   },
   statusCard: {
@@ -407,17 +412,10 @@ const styles = StyleSheet.create({
   dismissButton: {
     padding: 2,
   },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 2,
-  },
   sessionList: {
     flex: 1,
   },
   sessionListContent: {
-    paddingBottom: 16,
     gap: 2,
   },
   emptyCard: {
