@@ -103,10 +103,10 @@ export default function ServerSettingsScreen() {
             </View>
           </View>
 
-          <ThemedText style={[styles.pairingCode, { color: palette.text }]}> 
+          <ThemedText style={[styles.pairingCode, { color: palette.text }]}>
             {pairingReady ? "Paired" : pairingState?.pairingCode ?? "Issuing..."}
           </ThemedText>
-          <ThemedText style={[styles.copy, { color: palette.mutedText }]}> 
+          <ThemedText style={[styles.copy, { color: palette.mutedText }]}>
             {pairingBody}
           </ThemedText>
         </View>
@@ -122,7 +122,7 @@ export default function ServerSettingsScreen() {
             ]}
           >
             <View style={styles.errorRow}>
-              <ThemedText style={[styles.errorText, { color: palette.dangerText }]}> 
+              <ThemedText style={[styles.errorText, { color: palette.dangerText }]}>
                 {lastError}
               </ThemedText>
               <Pressable onPress={clearError} style={styles.dismissButton}>
@@ -142,16 +142,16 @@ export default function ServerSettingsScreen() {
           ]}
         >
           <ThemedText type="defaultSemiBold">Pairing flow</ThemedText>
-          <ThemedText style={[styles.copy, { color: palette.mutedText }]}> 
+          <ThemedText style={[styles.copy, { color: palette.mutedText }]}>
             1. Wait for this screen to show a pairing code.
           </ThemedText>
-          <ThemedText style={[styles.copy, { color: palette.mutedText }]}> 
+          <ThemedText style={[styles.copy, { color: palette.mutedText }]}>
             2. Copy that code into the agent server once.
           </ThemedText>
-          <ThemedText style={[styles.copy, { color: palette.mutedText }]}> 
+          <ThemedText style={[styles.copy, { color: palette.mutedText }]}>
             3. Keep this app open until the relay reports the device as paired.
           </ThemedText>
-          <ThemedText style={[styles.copy, { color: palette.mutedText }]}> 
+          <ThemedText style={[styles.copy, { color: palette.mutedText }]}>
             4. After pairing, this device reconnects with its stored relay identity.
           </ThemedText>
         </View>
@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
   navButton: {
     width: 36,
     height: 36,
-    borderRadius: 0,
+    borderRadius: 4,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
   },
   card: {
     borderWidth: 1,
-    borderRadius: 0,
+    borderRadius: 4,
     padding: 16,
     gap: 12,
   },
@@ -209,7 +209,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   statusPill: {
-    borderRadius: 0,
+    borderRadius: 4,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
   dismissButton: {
     width: 28,
     height: 28,
-    borderRadius: 0,
+    borderRadius: 4,
     alignItems: "center",
     justifyContent: "center",
   },

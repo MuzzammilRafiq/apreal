@@ -360,7 +360,7 @@ const styles = StyleSheet.create({
   navButton: {
     width: 36,
     height: 36,
-    borderRadius: 0,
+    borderRadius: 4,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -379,7 +379,7 @@ const styles = StyleSheet.create({
   },
   errorCard: {
     borderWidth: 1,
-    borderRadius: 0,
+    borderRadius: 4,
     marginHorizontal: 16,
     marginTop: 12,
     paddingHorizontal: 14,
@@ -387,7 +387,7 @@ const styles = StyleSheet.create({
   },
   pairingCard: {
     borderWidth: 1,
-    borderRadius: 0,
+    borderRadius: 4,
     marginHorizontal: 16,
     marginTop: 12,
     paddingHorizontal: 14,

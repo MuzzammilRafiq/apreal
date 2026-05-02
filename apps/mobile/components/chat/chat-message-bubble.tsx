@@ -436,20 +436,20 @@ function createMarkdownStyles(palette: (typeof Colors)["light"]) {
       backgroundColor: palette.codeBackground,
       paddingHorizontal: 5,
       paddingVertical: 1,
-      borderRadius: 0,
+      borderRadius: 4,
       fontFamily: Fonts.mono,
     },
     code_block: {
       color: palette.text,
       backgroundColor: palette.codeBackground,
-      borderRadius: 0,
+      borderRadius: 4,
       padding: 8,
       fontFamily: Fonts.mono,
     },
     fence: {
       color: palette.text,
       backgroundColor: palette.codeBackground,
-      borderRadius: 0,
+      borderRadius: 4,
       padding: 8,
       fontFamily: Fonts.mono,
       marginBottom: 8,
@@ -486,16 +486,16 @@ const styles = StyleSheet.create({
   },
   bubble: {
     maxWidth: "86%",
-    borderRadius: 0,
+    borderRadius: 4,
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderWidth: 1,
   },
   assistantBubble: {
-    borderBottomLeftRadius: 0,
+    borderBottomLeftRadius: 4,
   },
   userBubble: {
-    borderBottomRightRadius: 0,
+    borderBottomRightRadius: 4,
   },
   userMessage: {
     fontSize: 14,
@@ -513,7 +513,7 @@ const styles = StyleSheet.create({
   },
   toolCard: {
     borderWidth: 1,
-    borderRadius: 0,
+    borderRadius: 4,
     paddingHorizontal: 8,
     paddingVertical: 6,
     gap: 4,
@@ -531,7 +531,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   toolStatusPill: {
-    borderRadius: 0,
+    borderRadius: 4,
     paddingHorizontal: 7,
     paddingVertical: 2,
   },
@@ -546,7 +546,7 @@ const styles = StyleSheet.create({
   },
   thinkingShell: {
     borderWidth: 1,
-    borderRadius: 0,
+    borderRadius: 4,
     paddingHorizontal: 8,
     paddingVertical: 6,
     gap: 4,
@@ -568,7 +568,7 @@ const styles = StyleSheet.create({
   },
   systemCard: {
     borderWidth: 1,
-    borderRadius: 0,
+    borderRadius: 4,
     padding: 10,
   },
 });

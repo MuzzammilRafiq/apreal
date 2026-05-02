@@ -388,7 +388,7 @@ const styles = StyleSheet.create({
   statusDot: {
     width: 10,
     height: 10,
-    borderRadius: 0,
+    borderRadius: 4,
     marginTop: 4,
   },
   subtitle: {
@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
   headerActionButton: {
     width: 36,
     height: 36,
-    borderRadius: 0,
+    borderRadius: 4,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
   },
   statusCard: {
     borderWidth: 1,
-    borderRadius: 0,
+    borderRadius: 4,
     padding: 16,
     gap: 8,
   },
@@ -429,7 +429,7 @@ const styles = StyleSheet.create({
   },
   errorCard: {
     borderWidth: 1,
-    borderRadius: 0,
+    borderRadius: 4,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
@@ -461,7 +461,7 @@ const styles = StyleSheet.create({
   },
   emptyCard: {
     borderWidth: 1,
-    borderRadius: 0,
+    borderRadius: 4,
     padding: 18,
     gap: 8,
   },
@@ -471,7 +471,7 @@ const styles = StyleSheet.create({
   },
   sessionCard: {
     borderWidth: 1,
-    borderRadius: 0,
+    borderRadius: 4,
     padding: 16,
     gap: 10,
   },
@@ -498,7 +498,7 @@ const styles = StyleSheet.create({
   },
   loadMoreButton: {
     borderWidth: 1,
-    borderRadius: 0,
+    borderRadius: 4,
     paddingHorizontal: 16,
     paddingVertical: 14,
     alignItems: "center",

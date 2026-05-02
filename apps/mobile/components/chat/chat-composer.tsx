@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
   },
   shell: {
     borderWidth: 1,
-    borderRadius: 0,
+    borderRadius: 4,
     paddingLeft: 10,
     paddingRight: 6,
     paddingVertical: 8,
@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
   sendButton: {
     width: 36,
     height: 36,
-    borderRadius: 0,
+    borderRadius: 4,
     alignItems: "center",
     justifyContent: "center",
   },
