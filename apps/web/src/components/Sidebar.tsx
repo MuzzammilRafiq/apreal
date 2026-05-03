@@ -4,9 +4,9 @@ import { formatRelativeTime, getSessionCardClassName } from "../chatView";
 
 type SidebarProps = {
 	connected: boolean;
-	authReady: boolean;
-	authCode: string | null;
 	serverReady: boolean;
+	relayReady: boolean;
+	relayTransportConnected: boolean;
 	streamRequested: boolean;
 	pendingDraft: boolean;
 	sessions: SessionSummary[];
@@ -16,15 +16,16 @@ type SidebarProps = {
 	activeSessionId: string | null;
 	sessionState: string;
 	onStartNewChat: () => void;
+	onOpenSettings: () => void;
 	onActivateSession: (sessionId: string) => void;
 	onLoadMoreSessions: () => void;
 };
 
 export const Sidebar = memo(function Sidebar({
 	connected,
-	authReady,
-	authCode,
 	serverReady,
+	relayReady,
+	relayTransportConnected,
 	streamRequested,
 	pendingDraft,
 	sessions,
@@ -34,35 +35,30 @@ export const Sidebar = memo(function Sidebar({
 	activeSessionId,
 	sessionState,
 	onStartNewChat,
+	onOpenSettings,
 	onActivateSession,
 	onLoadMoreSessions,
 }: SidebarProps) {
 	return (
 		<aside className="flex h-full min-h-0 flex-col border-b border-white/10 bg-sidebar-bg text-sidebar-ink min-[721px]:border-r min-[721px]:border-b-0">
 			<div className="border-b border-white/10 px-6 pt-7 pb-6 max-[860px]:px-5">
-				{authCode && !authReady ? (
-					<div className="border border-white/10 bg-sidebar-panel px-4 py-4 text-sm leading-6 text-sidebar-muted">
-						<p className="font-mono text-[0.72rem] font-medium uppercase tracking-[0.12em] text-sidebar-muted">
-							Authentication Code
-						</p>
-						<p className="mt-2 font-mono text-lg font-semibold tracking-[0.2em] text-sidebar-ink">
-							{authCode}
-						</p>
-						<p className="mt-2 text-[0.82rem] leading-[1.6]">
-							Enter this code on the server once. After that, both sides reuse their stored tokens.
-						</p>
-					</div>
-				) : null}
 				<button
 					type="button"
 					id="new-chat-button"
 					className={[
-						`${authCode && !authReady ? "mt-4" : "mt-6"} w-full border border-white/15 bg-sidebar-surface px-4 py-3.5 text-left text-[0.92rem] font-medium text-sidebar-ink transition duration-150 hover:border-white/25 hover:bg-white/8 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring enabled:active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40`,
+						"mt-1 w-full border border-white/15 bg-sidebar-surface px-4 py-3.5 text-left text-[0.92rem] font-medium text-sidebar-ink transition duration-150 hover:border-white/25 hover:bg-white/8 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring enabled:active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40",
 						!activeSessionId && !pendingDraft ? "border-white/25 bg-white/8" : "",
 					].join(" ")}
 					onClick={onStartNewChat}
 				>
 					Start new chat
+				</button>
+				<button
+					type="button"
+					className="mt-3 w-full border border-white/10 bg-sidebar-panel px-4 py-3 text-left text-[0.84rem] font-medium text-sidebar-muted transition duration-150 hover:border-white/20 hover:bg-white/6 hover:text-sidebar-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+					onClick={onOpenSettings}
+				>
+					Open server settings
 				</button>
 			</div>
 			<div className="max-[720px]:max-h-[34svh] flex-1 overflow-y-auto px-4.5 pt-4 pb-6">
@@ -112,10 +108,21 @@ export const Sidebar = memo(function Sidebar({
 				</p>
 				<div className="mt-2 flex items-center gap-2 text-[0.82rem] text-sidebar-muted">
 					<span className={`h-2.5 w-2.5 rounded-full ${serverReady ? "bg-[#56c271]" : "bg-[#d15a4f]"}`} />
-					<span>{serverReady ? "Server token detected" : "Waiting for server token"}</span>
+					<span>{serverReady ? "Local server online" : "Waiting for local server"}</span>
+				</div>
+				<div className="mt-1.5 flex items-center gap-2 text-[0.82rem] text-sidebar-muted">
+					<span className={`h-2.5 w-2.5 rounded-full ${relayReady ? "bg-[#56c271]" : "bg-[#d15a4f]"}`} />
+					<span>{relayReady ? "Relay auth ready" : "Relay auth missing"}</span>
+				</div>
+				<div className="mt-1.5 flex items-center gap-2 text-[0.82rem] text-sidebar-muted">
+					<span className={`h-2.5 w-2.5 rounded-full ${relayTransportConnected ? "bg-[#56c271]" : "bg-[#d6a248]"}`} />
+					<span>{relayTransportConnected ? "Relay transport connected" : "Relay transport idle"}</span>
 				</div>
 				<p id="sidebar-status" className="mt-2 text-base font-medium">
-					{authReady ? (connected ? "Connected" : streamRequested ? "Disconnected - reconnecting..." : "Ready to connect") : "Waiting for server auth"} · {sessionState}
+					{serverReady ? (connected ? "Connected" : streamRequested ? "Disconnected - reconnecting..." : "Ready to connect") : "Waiting for local server"} · {sessionState}
+				</p>
+				<p className="mt-2 text-[0.8rem] leading-6 text-sidebar-muted">
+					{totalSessions} stored {totalSessions === 1 ? "session" : "sessions"}
 				</p>
 			</div>
 		</aside>

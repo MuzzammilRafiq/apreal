@@ -1,15 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { LOCAL_CLIENT_ID_QUERY_PARAM, type LocalWebAdminStatus } from "@apreal/shared";
 import { Composer } from "./components/Composer";
+import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
 import { TranscriptPanel } from "./components/TranscriptPanel";
 import type { SessionCacheEntry, SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "./chatTypes";
 import { formatSessionState } from "./chatView";
-import {
-	ensureRelayClientAuth,
-	readRelayClientHeartbeat,
-	readStoredRelayClientAuth,
-	type StoredRelayClientAuth,
-} from "./relay-auth";
 import {
 	readCachedSessionSnapshot,
 	readCachedSessionSummaries,
@@ -17,15 +13,17 @@ import {
 	writeSessionSummaries,
 	writeSessionSummary,
 } from "./session-cache";
+import { readLocalAdminStatus, submitRelayReauthentication } from "./server-admin";
 import { getWebTransportConfig } from "./transport-config";
 
 const ACTIVE_SESSION_STORAGE_KEY = "pi-browser-active-session";
 const SESSION_PAGE_SIZE = 50;
 const STREAM_DISCONNECTED_MESSAGE = "Disconnected from the server stream. Reconnecting...";
 const STREAM_REQUIRED_MESSAGE = "Client event stream is not connected.";
-const AUTH_REFRESH_INTERVAL_MS = 3_000;
-const RELAY_HEARTBEAT_INTERVAL_MS = 500;
+const ADMIN_STATUS_REFRESH_INTERVAL_MS = 3_000;
 const transportConfig = getWebTransportConfig();
+
+type AppRoute = "chat" | "settings";
 
 type ClientMessage =
 	| { type: "prompt"; prompt: string; sessionId?: string | null }
@@ -46,6 +44,19 @@ type ServerMessage =
 	| { type: "pong" };
 
 type AssistantDeltaField = "body" | "thinking";
+
+function readCurrentRoute(): AppRoute {
+	return window.location.pathname === "/settings" ? "settings" : "chat";
+}
+
+function navigateToRoute(route: AppRoute) {
+	const nextPathname = route === "settings" ? "/settings" : "/";
+	if (window.location.pathname === nextPathname) {
+		return;
+	}
+
+	window.history.pushState({}, "", nextPathname);
+}
 
 function getErrorMessage(error: unknown): string {
 	if (error instanceof Error && error.message) {
@@ -189,6 +200,7 @@ function appendAssistantDeltaToMessage(
 }
 
 export function App() {
+	const [route, setRoute] = useState<AppRoute>(() => readCurrentRoute());
 	const [connected, setConnected] = useState(false);
 	const [pendingDraft, setPendingDraft] = useState(false);
 	const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -198,9 +210,11 @@ export function App() {
 	const [totalSessionCount, setTotalSessionCount] = useState<number | null>(null);
 	const [loadingMoreSessions, setLoadingMoreSessions] = useState(false);
 	const [activeSessionId, setActiveSessionId] = useState<string | null>(() => readStoredSessionId());
-	const [relayAuth, setRelayAuth] = useState<StoredRelayClientAuth | null>(() => readStoredRelayClientAuth(transportConfig.relayUrl));
-	const [serverReady, setServerReady] = useState(false);
-	const [transportReady, setTransportReady] = useState(false);
+	const [adminStatus, setAdminStatus] = useState<LocalWebAdminStatus | null>(null);
+	const [adminStatusError, setAdminStatusError] = useState<string | null>(null);
+	const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
+	const [settingsError, setSettingsError] = useState<string | null>(null);
+	const [submittingPairingCode, setSubmittingPairingCode] = useState(false);
 	const [connectionError, setConnectionError] = useState<string | null>(null);
 	const [streamRequested, setStreamRequested] = useState(false);
 	const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -239,9 +253,9 @@ export function App() {
 	const activeSessionCacheEntry = activeSessionId ? sessionCache.get(activeSessionId) ?? null : null;
 	const activeTranscript = activeSessionCacheEntry?.transcriptLoaded ? activeSessionCacheEntry.transcript : [];
 	const activeTranscriptLoaded = activeSessionCacheEntry?.transcriptLoaded ?? false;
-	const authReady = Boolean(relayAuth?.target?.id);
-	const authCode = !authReady ? relayAuth?.pairingCode ?? null : null;
-	const canOpenRelayTransport = authReady;
+	const serverReady = adminStatus !== null;
+	const relayReady = Boolean(adminStatus?.relayReady);
+	const relayTransportConnected = Boolean(adminStatus?.relayTransportConnected);
 	const isBusy = pendingDraft || Boolean(activeSession?.busy);
 
 	const focusPrompt = useCallback(() => {
@@ -255,6 +269,17 @@ export function App() {
 			resolve();
 		}
 		pendingConnectionResolversRef.current.clear();
+	}, []);
+
+	useEffect(() => {
+		const handlePopState = () => {
+			setRoute(readCurrentRoute());
+		};
+
+		window.addEventListener("popstate", handlePopState);
+		return () => {
+			window.removeEventListener("popstate", handlePopState);
+		};
 	}, []);
 
 	useEffect(() => {
@@ -280,8 +305,8 @@ export function App() {
 	}, [connected]);
 
 	const ensureClientTransport = useCallback(async () => {
-		if (!relayAuth?.token) {
-			throw new Error("Browser authentication is not ready yet.");
+		if (!serverReady) {
+			throw new Error(adminStatusError ?? "The local server is not ready yet.");
 		}
 
 		if (connected) {
@@ -290,11 +315,11 @@ export function App() {
 
 		setStreamRequested(true);
 		await waitForConnectionAttempt();
-	}, [connected, relayAuth?.token, waitForConnectionAttempt]);
+	}, [adminStatusError, connected, serverReady, waitForConnectionAttempt]);
 
 	const sendClientMessage = useCallback(async (message: ClientMessage) => {
-		if (!relayAuth?.token) {
-			throw new Error("Browser authentication is not ready yet.");
+		if (!serverReady) {
+			throw new Error(adminStatusError ?? "The local server is not ready yet.");
 		}
 
 		await ensureClientTransport();
@@ -302,8 +327,8 @@ export function App() {
 		const performRequest = () => fetch(transportConfig.messageUrl, {
 			method: "POST",
 			headers: {
-				authorization: `Bearer ${relayAuth.token}`,
 				"content-type": "application/json",
+				"x-pi-local-client-id": transportConfig.localClientId,
 			},
 			body: JSON.stringify(message),
 		});
@@ -338,7 +363,7 @@ export function App() {
 		}
 
 		throw new Error(errorMessage);
-	}, [ensureClientTransport, relayAuth?.token, waitForConnectionAttempt]);
+	}, [adminStatusError, ensureClientTransport, serverReady, waitForConnectionAttempt]);
 
 	const requestSessionPage = useCallback((offset = 0, limit = SESSION_PAGE_SIZE) => {
 		void sendClientMessage({ type: "load_sessions_page", offset, limit }).catch((error) => {
@@ -472,38 +497,43 @@ export function App() {
 	}, [activateSession]);
 
 	useEffect(() => {
+		const refreshAdminStatus = async () => {
+			const nextStatus = await readLocalAdminStatus(transportConfig.statusUrl);
+			setAdminStatus(nextStatus);
+			setAdminStatusError(null);
+			return nextStatus;
+		};
+
 		let cancelled = false;
 		let refreshTimer: number | null = null;
 
-		const refreshRelayAuth = async () => {
+		const pollAdminStatus = async () => {
 			try {
-				const nextAuth = await ensureRelayClientAuth(transportConfig.relayUrl);
+				const nextStatus = await refreshAdminStatus();
 				if (cancelled) {
 					return;
 				}
 
-				setRelayAuth(nextAuth);
-				if (!nextAuth.target) {
-					setServerReady(false);
-					setTransportReady(false);
-				}
-				if (!nextAuth.target) {
-					setConnected(false);
-					setConnectionError(null);
-					refreshTimer = window.setTimeout(refreshRelayAuth, AUTH_REFRESH_INTERVAL_MS);
+				setStreamRequested(true);
+				if (!nextStatus.relayReady) {
+					setSettingsMessage(null);
 				}
 			} catch (error) {
 				if (cancelled) {
 					return;
 				}
 
+				setAdminStatus(null);
+				setAdminStatusError(getErrorMessage(error));
 				setConnected(false);
-				setConnectionError(getErrorMessage(error));
-				refreshTimer = window.setTimeout(refreshRelayAuth, AUTH_REFRESH_INTERVAL_MS);
+			} finally {
+				if (!cancelled) {
+					refreshTimer = window.setTimeout(pollAdminStatus, ADMIN_STATUS_REFRESH_INTERVAL_MS);
+				}
 			}
 		};
 
-		void refreshRelayAuth();
+		void pollAdminStatus();
 
 		return () => {
 			cancelled = true;
@@ -514,65 +544,19 @@ export function App() {
 	}, []);
 
 	useEffect(() => {
-		if (!relayAuth) {
-			setServerReady(false);
-			setTransportReady(false);
-			return;
-		}
-
-		let cancelled = false;
-		let heartbeatTimer: number | null = null;
-
-		const pollHeartbeat = async () => {
-			try {
-				const heartbeat = await readRelayClientHeartbeat(transportConfig.relayUrl);
-				if (cancelled) {
-					return;
-				}
-
-				setRelayAuth(heartbeat.auth);
-				setServerReady(heartbeat.serverReady);
-				setTransportReady(heartbeat.transportReady);
-			} catch (error) {
-				if (cancelled) {
-					return;
-				}
-
-				setServerReady(false);
-				setTransportReady(false);
-				setConnected(false);
-				setConnectionError((current) => current ?? getErrorMessage(error));
-			} finally {
-				if (!cancelled) {
-					heartbeatTimer = window.setTimeout(pollHeartbeat, RELAY_HEARTBEAT_INTERVAL_MS);
-				}
-			}
-		};
-
-		void pollHeartbeat();
-
-		return () => {
-			cancelled = true;
-			if (heartbeatTimer !== null) {
-				window.clearTimeout(heartbeatTimer);
-			}
-		};
-	}, [relayAuth?.clientId, relayAuth?.clientKey]);
-
-	useEffect(() => {
-		if (relayAuth?.token && canOpenRelayTransport) {
+		if (serverReady) {
 			setStreamRequested(true);
 		}
-	}, [canOpenRelayTransport, relayAuth?.token]);
+	}, [serverReady]);
 
 	useEffect(() => {
-		if (!relayAuth?.token || !canOpenRelayTransport || !streamRequested) {
+		if (!serverReady || !streamRequested) {
 			setConnected(false);
 			return;
 		}
 
 		const streamUrl = new URL(transportConfig.streamUrl);
-		streamUrl.searchParams.set("token", relayAuth.token);
+		streamUrl.searchParams.set(LOCAL_CLIENT_ID_QUERY_PARAM, transportConfig.localClientId);
 		const eventSource = new EventSource(streamUrl.toString());
 
 		eventSource.onopen = () => {
@@ -762,7 +746,7 @@ export function App() {
 			eventSource.close();
 			setConnected(false);
 		};
-	}, [canOpenRelayTransport, relayAuth?.token, streamRequested]);
+	}, [serverReady, streamRequested]);
 
 	const handleLoadMoreSessions = useCallback(() => {
 		const nextVisibleLimit = visibleSessionLimitRef.current + SESSION_PAGE_SIZE;
@@ -784,7 +768,7 @@ export function App() {
 	}, [requestSessionPage, serverLoadedSessionCount, totalSessionCount]);
 
 	const submitPrompt = useCallback((trimmedPrompt: string) => {
-		if (!trimmedPrompt || isBusy || !relayAuth?.token) {
+		if (!trimmedPrompt || isBusy || !serverReady) {
 			return false;
 		}
 
@@ -800,7 +784,7 @@ export function App() {
 		});
 		focusPrompt();
 		return true;
-	}, [activeSessionId, focusPrompt, isBusy, relayAuth?.token, sendClientMessage]);
+	}, [activeSessionId, focusPrompt, isBusy, sendClientMessage, serverReady]);
 
 	const handleAbort = useCallback(() => {
 		if (!activeSession?.busy) {
@@ -814,24 +798,18 @@ export function App() {
 
 	const emptyState = !activeSession
 		? {
-			title: !relayAuth
-				? "Preparing authentication..."
-				: !authReady
-					? "Authenticate this browser"
-					: connected
+			title: !serverReady
+				? "Waiting for local server"
+				: connected
 						? (pendingDraft ? "Creating session..." : "Ready when you are")
 						: streamRequested ? "Connecting..." : "Ready when you are",
-			body: !relayAuth
-				? "Requesting a client identity from the relay."
-				: !authReady
-					? `Enter code ${authCode ?? "..."} on the server once to finish pairing.`
-					: connected
+			body: !serverReady
+				? (adminStatusError ?? "Start the local server to expose the browser UI and chat API.")
+				: connected
 				? "Start with a coding task, file request, or bug report. The first prompt creates a reusable session that stays available in the left rail."
 				: !streamRequested
-					? "Send a message to open the relay stream to the paired server."
-					: serverReady
-					? "Opening the server event stream through the relay."
-					: "Waiting for the paired server to accept relay traffic.",
+					? "Opening the local server event stream."
+					: "Reconnecting to the local server event stream.",
 		}
 		: !activeTranscriptLoaded
 			? {
@@ -842,13 +820,70 @@ export function App() {
 	const sessionState = formatSessionState(activeSession, pendingDraft);
 	const canLoadMoreSessions = visibleSessionLimit < Math.max(totalSessionCount ?? 0, sessions.length);
 
+	const refreshAdminStatus = useCallback(async () => {
+		const nextStatus = await readLocalAdminStatus(transportConfig.statusUrl);
+		setAdminStatus(nextStatus);
+		setAdminStatusError(null);
+		return nextStatus;
+	}, []);
+
+	const handleRouteChange = useCallback((nextRoute: AppRoute) => {
+		navigateToRoute(nextRoute);
+		setRoute(nextRoute);
+	}, []);
+
+	const handleSubmitPairingCode = useCallback((pairingCode: string) => {
+		const trimmedPairingCode = pairingCode.trim();
+		if (!trimmedPairingCode) {
+			setSettingsError("A pairing code is required.");
+			setSettingsMessage(null);
+			return;
+		}
+
+		setSubmittingPairingCode(true);
+		setSettingsError(null);
+		setSettingsMessage(null);
+		void submitRelayReauthentication(transportConfig.relayReauthenticateUrl, trimmedPairingCode)
+			.then((response) => {
+				setAdminStatus(response.status);
+				setAdminStatusError(null);
+				setSettingsMessage("Relay pairing updated. The server restarted its relay transport.");
+			})
+			.catch((error) => {
+				setSettingsError(getErrorMessage(error));
+			})
+			.finally(() => {
+				setSubmittingPairingCode(false);
+			});
+	}, []);
+
+	if (route === "settings") {
+		return (
+			<SettingsPage
+				adminStatus={adminStatus}
+				statusError={adminStatusError}
+				isSubmitting={submittingPairingCode}
+				submissionMessage={settingsMessage}
+				submissionError={settingsError}
+				onBack={() => handleRouteChange("chat")}
+				onRefresh={() => {
+					void refreshAdminStatus().catch((error) => {
+						setAdminStatus(null);
+						setAdminStatusError(getErrorMessage(error));
+					});
+				}}
+				onSubmitPairingCode={handleSubmitPairingCode}
+			/>
+		);
+	}
+
 	return (
 		<main className="grid h-svh w-full overflow-hidden grid-cols-1 font-ui text-ink min-[721px]:grid-cols-[270px_minmax(0,1fr)] min-[1221px]:grid-cols-[320px_minmax(0,1fr)]">
 			<Sidebar
 				connected={connected}
-				authReady={authReady}
-				authCode={authCode}
 				serverReady={serverReady}
+				relayReady={relayReady}
+				relayTransportConnected={relayTransportConnected}
 				streamRequested={streamRequested}
 				pendingDraft={pendingDraft}
 				sessions={visibleSessions}
@@ -858,6 +893,7 @@ export function App() {
 				activeSessionId={activeSessionId}
 				sessionState={sessionState}
 				onStartNewChat={handleStartNewChat}
+				onOpenSettings={() => handleRouteChange("settings")}
 				onActivateSession={(sessionId) => activateSession(sessionId)}
 				onLoadMoreSessions={handleLoadMoreSessions}
 			/>
@@ -873,7 +909,7 @@ export function App() {
 				<div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-4 max-[860px]:px-3">
 					<Composer
 						connected={connected}
-						authReady={authReady}
+						serverReady={serverReady}
 						streamRequested={streamRequested}
 						connectionLabel={transportConfig.label}
 						activeSession={activeSession}

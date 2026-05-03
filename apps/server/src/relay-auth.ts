@@ -1,8 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { stdin as input, stdout as output } from "node:process";
-import { createInterface } from "node:readline/promises";
 import {
 	normalizeRelayPairingCode,
 	RELAY_AGENT_AUTH_PATH,
@@ -139,21 +137,6 @@ async function requestAgentAuth(relayUrl: string, request: RelayAgentAuthRequest
 	return payload as RelayAgentAuthResponse;
 }
 
-async function promptForPairingCode(): Promise<string> {
-	const prompt = createInterface({ input, output });
-	try {
-		const answer = await prompt.question("Enter the browser authentication code: ");
-		const pairingCode = normalizeRelayPairingCode(answer);
-		if (!pairingCode) {
-			throw new Error("Authentication code is required.");
-		}
-
-		return pairingCode;
-	} finally {
-		prompt.close();
-	}
-}
-
 export function getRelayServerUrl(): string {
 	return process.env.PI_RELAY_URL?.trim() || "https://api.malikmuzzammilrafiq.store";
 }
@@ -194,7 +177,11 @@ export async function ensureRelayAgentAuth(
 		}
 	}
 
-	const pairingCode = process.env.PI_RELAY_PAIRING_CODE?.trim() || (await promptForPairingCode());
+	const pairingCode = normalizeRelayPairingCode(process.env.PI_RELAY_PAIRING_CODE);
+	if (!pairingCode) {
+		throw new Error("Relay pairing is not configured. Use the local settings page or set PI_RELAY_PAIRING_CODE.");
+	}
+
 	const issued = await requestAgentAuth(relayUrl, {
 		agentId: storedAuth.agentId,
 		agentKey: storedAuth.agentKey,

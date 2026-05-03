@@ -2,11 +2,11 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
-const DEFAULT_RELAY_URL = "https://api.malikmuzzammilrafiq.store";
+const DEFAULT_SERVER_URL = "http://localhost:3000";
 
 export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), "");
-	const relayTarget = env.VITE_PI_RELAY_URL?.trim() || DEFAULT_RELAY_URL;
+	const serverTarget = env.VITE_PI_SERVER_URL?.trim() || DEFAULT_SERVER_URL;
 
 	return {
 		plugins: [react(), tailwindcss()],
@@ -14,9 +14,9 @@ export default defineConfig(({ mode }) => {
 			port: 5173,
 			proxy: {
 				"/api": {
-					target: relayTarget,
+					target: serverTarget,
 					changeOrigin: true,
-					secure: true,
+					secure: false,
 				},
 			},
 		},

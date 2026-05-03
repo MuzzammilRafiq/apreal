@@ -10,6 +10,8 @@ export function createNodeRequest(request: IncomingMessage, response: ServerResp
 	const host = request.headers.host ?? "localhost";
 	const url = new URL(request.url ?? "/", `${protocol}://${host}`);
 	const abortController = new AbortController();
+	const remoteAddress = request.socket.remoteAddress?.trim();
+	const remoteFamily = request.socket.remoteFamily?.trim();
 
 	request.once("aborted", () => abortController.abort());
 	response.once("close", () => {
@@ -32,6 +34,14 @@ export function createNodeRequest(request: IncomingMessage, response: ServerResp
 		}
 
 		headers.set(key, value);
+	}
+
+	if (remoteAddress) {
+		headers.set("x-pi-remote-address", remoteAddress);
+	}
+
+	if (remoteFamily) {
+		headers.set("x-pi-remote-family", remoteFamily);
 	}
 
 	const body = request.method === "GET" || request.method === "HEAD"

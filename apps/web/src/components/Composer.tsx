@@ -33,7 +33,7 @@ function formatCurrentContext(session: SessionSummary | null): string | null {
 
 type ComposerProps = {
   connected: boolean;
-  authReady: boolean;
+  serverReady: boolean;
   streamRequested: boolean;
   connectionLabel: string;
   activeSession: SessionSummary | null;
@@ -45,7 +45,7 @@ type ComposerProps = {
 
 	export const Composer = memo(function Composer({
   connected,
-  authReady,
+  serverReady,
   streamRequested,
   connectionLabel,
   activeSession,
@@ -55,7 +55,7 @@ type ComposerProps = {
   onAbort,
 }: ComposerProps) {
 	const [prompt, setPrompt] = useState("");
-	const canSend = authReady && !activeSession?.busy && prompt.trim().length > 0;
+  const canSend = serverReady && !activeSession?.busy && prompt.trim().length > 0;
   const currentContextLabel = formatCurrentContext(activeSession);
 
   function resizePromptInput() {
@@ -81,14 +81,14 @@ type ComposerProps = {
   }, [prompt]);
 
   useEffect(() => {
-		if (!authReady) {
+    if (!serverReady) {
 			return;
 		}
 
     window.requestAnimationFrame(() => {
       promptInputRef.current?.focus();
     });
-	}, [activeSessionId, authReady, promptInputRef]);
+  }, [activeSessionId, promptInputRef, serverReady]);
 
   function submitPrompt() {
     const trimmedPrompt = prompt.trim();
@@ -123,15 +123,15 @@ type ComposerProps = {
               submitPrompt();
             }
           }}
-          disabled={!authReady}
+          disabled={!serverReady}
           onInput={resizePromptInput}
           placeholder={
-            !authReady
-              ? "Enter the browser authentication code on the server to finish pairing"
+        !serverReady
+          ? "Start the local server to begin chatting"
               : !connected
                 ? streamRequested
                   ? `Connecting to the ${connectionLabel}...`
-                  : "Send a message to connect"
+            : `Opening the ${connectionLabel} stream...`
               : activeSessionId
                 ? "Continue this session with the next task, follow-up, or code request"
                 : "Describe what you want Pi to inspect, fix, or build"
@@ -142,7 +142,7 @@ type ComposerProps = {
           type="button"
 			id={activeSession?.busy ? "abort-button" : "send-button"}
 			className="flex h-13 w-13 shrink-0 items-center justify-center border border-transparent bg-ink text-sidebar-ink shadow-[0_10px_24px_rgba(23,21,18,0.18)] transition duration-150 hover:bg-ink-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-[0.34]"
-			disabled={!authReady || (!canSend && !activeSession?.busy)}
+      disabled={!serverReady || (!canSend && !activeSession?.busy)}
 			aria-label={activeSession?.busy ? "Stop run" : "Send prompt"}
           onClick={() => {
             if (activeSession?.busy) {

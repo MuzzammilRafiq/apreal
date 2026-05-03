@@ -42,6 +42,7 @@ export interface RelayActions {
 	getClientAuthErrorStatus(error: unknown): number;
 	authenticateClientRequest(request: Request): Promise<{ clientId: string }>;
 	restartRelayTransport(): void;
+	reauthenticateWithPairingCode(pairingCode: string): Promise<Awaited<ReturnType<typeof ensureRelayAgentAuth>>>;
 	handleReauthenticationInput(rawValue: string): Promise<void>;
 }
 
@@ -297,15 +298,14 @@ export function createRelay(
 		void runRelayTransportLoop(relayState.transportGeneration);
 	}
 
-	async function handleReauthenticationInput(rawValue: string) {
+	async function reauthenticateWithPairingCode(pairingCode: string) {
 		if (relayState.reauthRunning) {
-			logger.warn("relay reauthentication already in progress");
-			return;
+			throw new Error("Relay reauthentication already in progress.");
 		}
 
 		relayState.reauthRunning = true;
 		try {
-			relayState.auth = await reauthenticateRelayAgent(logger, rawValue, relayUrl);
+			relayState.auth = await reauthenticateRelayAgent(logger, pairingCode, relayUrl);
 			relayState.startupError = null;
 			resetClientConnections("relay_reauthenticated");
 			restartRelayTransport();
@@ -313,14 +313,21 @@ export function createRelay(
 				agentId: relayState.auth.agentId,
 				targetId: relayState.auth.targetId,
 			});
+			return relayState.auth;
+		} finally {
+			relayState.reauthPending = false;
+			relayState.reauthRunning = false;
+		}
+	}
+
+	async function handleReauthenticationInput(rawValue: string) {
+		try {
+			await reauthenticateWithPairingCode(rawValue);
 			console.log("Relay reauthentication completed.");
 		} catch (error) {
 			const message = getErrorMessage(error);
 			logger.warn("relay reauthentication failed", { error: message });
 			console.error(`Relay reauthentication failed: ${message}`);
-		} finally {
-			relayState.reauthPending = false;
-			relayState.reauthRunning = false;
 		}
 	}
 
@@ -328,6 +335,7 @@ export function createRelay(
 		getClientAuthErrorStatus,
 		authenticateClientRequest,
 		restartRelayTransport,
+		reauthenticateWithPairingCode,
 		handleReauthenticationInput,
 	};
 }

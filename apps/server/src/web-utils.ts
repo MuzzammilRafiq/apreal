@@ -138,8 +138,23 @@ export function createCorsHeaders(): Record<string, string> {
 	return {
 		"access-control-allow-origin": "*",
 		"access-control-allow-methods": "GET, POST, OPTIONS",
-		"access-control-allow-headers": "authorization, content-type",
+		"access-control-allow-headers": "authorization, content-type, x-pi-local-client-id",
 	};
+}
+
+export function getRequestRemoteAddress(request: Request): string | null {
+	const remoteAddress = request.headers.get("x-pi-remote-address")?.trim();
+	return remoteAddress || null;
+}
+
+export function isLoopbackAddress(value: string): boolean {
+	const normalized = value.trim().toLowerCase();
+	return normalized === "::1" || normalized === "127.0.0.1" || normalized === "::ffff:127.0.0.1";
+}
+
+export function isLoopbackClientRequest(request: Request): boolean {
+	const remoteAddress = getRequestRemoteAddress(request);
+	return remoteAddress ? isLoopbackAddress(remoteAddress) : false;
 }
 
 export function isDirectExecution(moduleUrl: string) {

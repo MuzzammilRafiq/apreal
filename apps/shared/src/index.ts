@@ -1,5 +1,7 @@
 export const CLIENT_EVENT_STREAM_PATH = "/api/client/stream";
 export const CLIENT_MESSAGE_PATH = "/api/client/message";
+export const ADMIN_STATUS_PATH = "/api/admin/status";
+export const ADMIN_RELAY_REAUTHENTICATE_PATH = "/api/admin/relay/reauthenticate";
 export const RELAY_CLIENT_AUTH_PATH = "/api/relay/auth/client";
 export const RELAY_CLIENT_HEARTBEAT_PATH = "/api/relay/heartbeat";
 export const RELAY_AGENT_AUTH_PATH = "/api/relay/auth/agent";
@@ -7,6 +9,8 @@ export const RELAY_AGENT_STREAM_PATH = "/api/relay/agent/stream";
 export const RELAY_AGENT_MESSAGE_PATH = "/api/relay/agent/message";
 export const RELAY_CONNECTION_PATH = "/api/relay/connection";
 export const RELAY_PRINCIPAL_TYPES = ["agent", "client"] as const;
+export const LOCAL_CLIENT_ID_HEADER = "x-pi-local-client-id";
+export const LOCAL_CLIENT_ID_QUERY_PARAM = "clientId";
 
 export type RelayPrincipalType = (typeof RELAY_PRINCIPAL_TYPES)[number];
 
@@ -69,6 +73,33 @@ export type RelayClientHeartbeatRequest = RelayClientAuthRequest;
 export type RelayClientHeartbeatResponse = RelayClientAuthResponse & {
 	serverReady: boolean;
 	transportReady: boolean;
+};
+
+export type LocalWebAdminStatus = {
+	service: "web-server";
+	status: "ok";
+	transport: "http-sse+relay";
+	clients: number;
+	sessions: number;
+	port: number;
+	cwd: string;
+	relayUrl: string;
+	relayReady: boolean;
+	relayTransportConnected: boolean;
+	relayStartupError: string | null;
+	agentId: string | null;
+	reauthPending: boolean;
+	reauthRunning: boolean;
+	webUiReady: boolean;
+	webUiPath: string;
+};
+
+export type RelayReauthenticateRequest = {
+	pairingCode: string;
+};
+
+export type RelayReauthenticateResponse = {
+	status: LocalWebAdminStatus;
 };
 
 export type RelayAgentCommand =
