@@ -6,54 +6,54 @@
 	--font-ui: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
 	--font-mono: "IBM Plex Mono", "SFMono-Regular", "Cascadia Mono", monospace;
 
-	--color-canvas: #ede7de;
-	--color-surface: #f8f4ee;
-	--color-surface-strong: #fffdf9;
-	--color-surface-muted: #e5ded3;
-	--color-stage: rgba(255, 251, 245, 0.72);
-	--color-ink: #171512;
-	--color-ink-hover: #2b2722;
-	--color-ink-soft: rgba(23, 21, 18, 0.04);
-	--color-muted: #6f685d;
-	--color-faint: #9f9689;
-	--color-line-soft: rgba(23, 21, 18, 0.08);
-	--color-line: rgba(23, 21, 18, 0.12);
-	--color-line-strong: rgba(23, 21, 18, 0.2);
-	--color-accent: #b85d31;
-	--color-accent-soft: rgba(184, 93, 49, 0.1);
-	--color-accent-line: rgba(184, 93, 49, 0.24);
-	--color-danger: #a63d38;
-	--color-danger-soft: rgba(166, 61, 56, 0.08);
-	--color-danger-line: rgba(166, 61, 56, 0.24);
-	--color-focus-ring: rgba(184, 93, 49, 0.75);
+	--color-canvas: #f5f5f5;
+	--color-surface: #ffffff;
+	--color-surface-strong: #ffffff;
+	--color-surface-muted: #e5e5e5;
+	--color-stage: rgba(255, 255, 255, 0.72);
+	--color-ink: #171717;
+	--color-ink-hover: #2b2b2b;
+	--color-ink-soft: rgba(0, 0, 0, 0.04);
+	--color-muted: #6f6f6f;
+	--color-faint: #9f9f9f;
+	--color-line-soft: rgba(0, 0, 0, 0.08);
+	--color-line: rgba(0, 0, 0, 0.12);
+	--color-line-strong: rgba(0, 0, 0, 0.2);
+	--color-accent: #000000;
+	--color-accent-soft: rgba(0, 0, 0, 0.08);
+	--color-accent-line: rgba(0, 0, 0, 0.2);
+	--color-danger: #cc3333;
+	--color-danger-soft: rgba(204, 51, 51, 0.08);
+	--color-danger-line: rgba(204, 51, 51, 0.24);
+	--color-focus-ring: rgba(0, 0, 0, 0.75);
 
-	--color-sidebar-bg: #111111;
-	--color-sidebar-surface: #171717;
-	--color-sidebar-ink: #f6f1e7;
-	--color-sidebar-muted: rgba(246, 241, 231, 0.56);
+	--color-sidebar-bg: #000000;
+	--color-sidebar-surface: #0a0a0a;
+	--color-sidebar-ink: #ffffff;
+	--color-sidebar-muted: rgba(255, 255, 255, 0.56);
 	--color-sidebar-line: rgba(255, 255, 255, 0.11);
 	--color-sidebar-active: rgba(255, 255, 255, 0.06);
 	--color-sidebar-panel: rgba(255, 255, 255, 0.02);
 
 	--color-tool-surface: rgba(255, 255, 255, 0.52);
-	--color-thinking-border: rgba(23, 21, 18, 0.1);
-	--color-thinking-surface: rgba(23, 21, 18, 0.05);
-	--color-thinking-surface-open: rgba(23, 21, 18, 0.07);
-	--color-thinking-label: #5f5a53;
-	--color-thinking-body: #514d47;
-	--color-chat-overlay: rgba(248, 244, 238, 0.94);
-	--color-code-surface: #fffdf9;
+	--color-thinking-border: rgba(0, 0, 0, 0.1);
+	--color-thinking-surface: rgba(0, 0, 0, 0.05);
+	--color-thinking-surface-open: rgba(0, 0, 0, 0.07);
+	--color-thinking-label: #555555;
+	--color-thinking-body: #444444;
+	--color-chat-overlay: rgba(255, 255, 255, 0.94);
+	--color-code-surface: #ffffff;
 	--color-code-surface-strong: #ffffff;
-	--color-code-line: rgba(23, 21, 18, 0.08);
-	--color-code-label: #8d8478;
-	--color-code-text: #171512;
-	--color-code-comment: #8c8376;
-	--color-code-keyword: #b85d31;
-	--color-code-string: #8d6f13;
-	--color-code-number: #9f4e3d;
-	--color-code-title: #255f78;
-	--color-code-attribute: #77559c;
-	--color-code-meta: #4f7f74;
+	--color-code-line: rgba(0, 0, 0, 0.08);
+	--color-code-label: #888888;
+	--color-code-text: #171717;
+	--color-code-comment: #777777;
+	--color-code-keyword: #000000;
+	--color-code-string: #333333;
+	--color-code-number: #444444;
+	--color-code-title: #333333;
+	--color-code-attribute: #555555;
+	--color-code-meta: #666666;
 
 	--animate-message-enter: message-enter 220ms ease;
 
@@ -82,7 +82,7 @@
 
 	body {
 		background:
-			linear-gradient(180deg, rgba(255, 255, 255, 0.24) 0%, rgba(255, 255, 255, 0) 24%),
+			linear-gradient(180deg, rgba(0, 0, 0, 0.02) 0%, rgba(0, 0, 0, 0) 24%),
 			var(--color-canvas);
 		color: var(--color-ink);
 		font-family: var(--font-ui);
@@ -178,8 +178,8 @@
 		border: 1px solid var(--color-code-line);
 		background: linear-gradient(180deg, var(--color-code-surface-strong), var(--color-code-surface));
 		box-shadow:
-			inset 0 1px 0 rgba(255, 255, 255, 0.9),
-			0 8px 24px rgba(23, 21, 18, 0.06);
+			inset 0 1px 0 rgba(0, 0, 0, 0.04),
+			0 8px 24px rgba(0, 0, 0, 0.06);
 	}
 
 	.markdown-content > .code-block:first-child {
@@ -284,7 +284,7 @@
 	}
 
 	.markdown-content th {
-		background: rgba(23, 21, 18, 0.04);
+		background: rgba(0, 0, 0, 0.04);
 		font-weight: 700;
 	}
 
