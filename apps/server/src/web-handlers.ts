@@ -33,7 +33,7 @@ export interface HandlerState {
 	cwd: string;
 	clients: Map<string, ClientConnection>;
 	sessions: Map<string, SharedSessionState>;
-	chatStore: { saveSession(session: SharedSessionState): void };
+	chatStore: { saveSession(session: SharedSessionState): void; deleteSession?(sessionId: string): void };
 }
 
 export interface HandlerActions {
@@ -318,6 +318,37 @@ export function createHandlers(
 		}
 	}
 
+	async function handleDeleteSession(clientId: string, sessionId: string) {
+		const session = sessions.get(sessionId);
+		if (!session) {
+			chatStore.deleteSession?.(sessionId);
+			clientActions.sendClientPayload(
+				clientId,
+				{ type: "session_deleted", sessionId },
+				{ requireReady: false },
+			);
+			return;
+		}
+
+		if (session.busy) {
+			clientActions.sendError(
+				clientId,
+				"The selected session is still responding. Wait for it to finish or abort the current run.",
+				sessionId,
+			);
+			return;
+		}
+
+		session.abortRequested = true;
+		session.unsubscribe?.();
+		session.unsubscribe = null;
+		session.controller = null;
+		session.controllerPromise = null;
+		sessions.delete(sessionId);
+		chatStore.deleteSession?.(sessionId);
+		clientActions.broadcast({ type: "session_deleted", sessionId });
+	}
+
 	async function handleClientMessage(clientId: string, message: ClientAppMessage) {
 		const client = clients.get(clientId);
 		if (!client || client.closed) {
@@ -342,6 +373,11 @@ export function createHandlers(
 
 		if (message.type === "abort") {
 			await handleAbort(clientId, message.sessionId);
+			return;
+		}
+
+		if (message.type === "delete_session") {
+			await handleDeleteSession(clientId, message.sessionId);
 			return;
 		}
 

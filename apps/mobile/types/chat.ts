@@ -3,6 +3,7 @@ import type { RelayPairingStateMessage } from "@/lib/relay-auth";
 export type ClientMessage =
   | { type: "prompt"; prompt: string; sessionId?: string | null }
   | { type: "abort"; sessionId: string }
+  | { type: "delete_session"; sessionId: string }
   | { type: "load_session"; sessionId: string }
   | { type: "load_sessions_page"; offset?: number; limit?: number }
   | { type: "ping" };
@@ -99,6 +100,7 @@ export type ServerMessage =
       session: SessionSummary;
       transcript: TranscriptMessage[];
     }
+  | { type: "session_deleted"; sessionId: string }
   | {
       type: "assistant_delta";
       sessionId: string;

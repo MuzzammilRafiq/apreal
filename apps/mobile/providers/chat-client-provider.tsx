@@ -74,6 +74,7 @@ type ChatClientContextValue = {
   loadMoreSessions: () => void;
   sendPrompt: (prompt: string, sessionId?: string | null) => boolean;
   abortSession: (sessionId: string) => void;
+  deleteSession: (sessionId: string) => Promise<void>;
   clearError: () => void;
 };
 
@@ -113,6 +114,13 @@ function createSummaryOnlyCacheEntry(session: SessionSummary): SessionCacheEntry
     transcript: [],
     transcriptLoaded: false,
   };
+}
+
+function removeSessionFromList(
+  sessions: SessionSummary[],
+  sessionId: string,
+): SessionSummary[] {
+  return sessions.filter((entry) => entry.id !== sessionId);
 }
 
 function getSegmentSortValue(segment: TranscriptMessageSegment) {
@@ -716,6 +724,42 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
     });
   }
 
+  function removeSessionLocally(sessionId: string) {
+    setSessions((previous) => removeSessionFromList(previous, sessionId));
+    setSessionCache((previous) => {
+      if (!previous.has(sessionId)) {
+        return previous;
+      }
+
+      const nextCache = new Map(previous);
+      nextCache.delete(sessionId);
+      return nextCache;
+    });
+    setTotalSessionCount((previous) => {
+      if (previous === null) {
+        return null;
+      }
+
+      const sessionExists = sessionsRef.current.some((session) => session.id === sessionId);
+      return sessionExists ? Math.max(0, previous - 1) : previous;
+    });
+
+    if (activeSessionIdRef.current === sessionId) {
+      activateSessionRef.current(null, { load: false });
+    }
+  }
+
+  async function deleteSession(sessionId: string) {
+    removeSessionLocally(sessionId);
+    setLastError(null);
+
+    try {
+      await sendClientMessage({ type: "delete_session", sessionId });
+    } catch (error) {
+      setLastError(getErrorMessage(error));
+    }
+  }
+
   function loadMoreSessions() {
     if (loadingMoreSessions) {
       return;
@@ -965,6 +1009,10 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
           upsertSessionSnapshotRef.current(message.session, message.transcript);
           break;
         }
+        case "session_deleted": {
+          removeSessionLocally(message.sessionId);
+          break;
+        }
         case "assistant_delta": {
           applyAssistantDelta(
             message.sessionId,
@@ -1054,6 +1102,7 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
         loadMoreSessions,
         sendPrompt,
         abortSession,
+        deleteSession,
         clearError,
       }}
     >

@@ -1,6 +1,7 @@
 export type ClientAppMessage =
 	| { type: "prompt"; prompt: string; sessionId?: string | null }
 	| { type: "abort"; sessionId: string }
+	| { type: "delete_session"; sessionId: string }
 	| { type: "load_session"; sessionId: string }
 	| { type: "load_sessions_page"; offset?: number; limit?: number }
 	| { type: "ping" };
@@ -11,6 +12,7 @@ export type ServerAppMessage<SessionSummary, TranscriptMessage> =
 	| { type: "session_summary_updated"; session: SessionSummary }
 	| { type: "session_created"; session: SessionSummary; transcript: TranscriptMessage[] }
 	| { type: "session_snapshot"; session: SessionSummary; transcript: TranscriptMessage[] }
+	| { type: "session_deleted"; sessionId: string }
 	| { type: "assistant_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
 	| { type: "assistant_thinking_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
 	| { type: "error"; message: string; sessionId?: string }
@@ -54,6 +56,10 @@ export function parseClientAppMessage(rawMessage: string | Buffer | unknown): Cl
 
 	if (value.type === "abort" && typeof value.sessionId === "string") {
 		return { type: "abort", sessionId: value.sessionId };
+	}
+
+	if (value.type === "delete_session" && typeof value.sessionId === "string") {
+		return { type: "delete_session", sessionId: value.sessionId };
 	}
 
 	if (value.type === "load_session" && typeof value.sessionId === "string") {

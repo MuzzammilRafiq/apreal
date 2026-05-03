@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
+    Alert,
     KeyboardAvoidingView,
     Platform,
     Pressable,
@@ -52,6 +53,7 @@ export default function ChatDetailScreen() {
     clearError,
     connectionLabel,
     connected,
+    deleteSession,
     isHydrated,
     lastError,
     pendingDraft,
@@ -197,6 +199,28 @@ export default function ChatDetailScreen() {
     router.replace("/");
   }
 
+  function handleDeleteChat() {
+    if (!activeSession?.id) {
+      return;
+    }
+
+    Alert.alert(
+      "Delete Chat",
+      `Delete \"${activeSession.title}\" from this phone and the server if it still exists there?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void deleteSession(activeSession.id);
+            router.replace("/");
+          },
+        },
+      ],
+    );
+  }
+
   return (
     <SafeAreaView
       edges={["top", "bottom"]}
@@ -240,14 +264,31 @@ export default function ChatDetailScreen() {
             </ThemedText>
           </View>
 
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Server settings"
-            onPress={() => router.push("/settings/server")}
-            style={styles.navButton}
-          >
-            <Ionicons name="settings-outline" size={18} color={palette.text} />
-          </Pressable>
+          <View style={styles.headerActions}>
+            {!isDraftRoute && activeSession?.id ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Delete chat"
+                onPress={handleDeleteChat}
+                style={styles.navButton}
+              >
+                <Ionicons
+                  name="trash-outline"
+                  size={18}
+                  color={palette.dangerText}
+                />
+              </Pressable>
+            ) : null}
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Server settings"
+              onPress={() => router.push("/settings/server")}
+              style={styles.navButton}
+            >
+              <Ionicons name="settings-outline" size={18} color={palette.text} />
+            </Pressable>
+          </View>
         </View>
 
         {lastError ? (
@@ -363,6 +404,11 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     alignItems: "center",
     justifyContent: "center",
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
   headerCopy: {
     flex: 1,

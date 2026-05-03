@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/themed-text";
@@ -31,6 +31,7 @@ export default function SessionsScreen() {
     clearError,
     consumeLastSessionRestore,
     connected,
+    deleteSession,
     isHydrated,
     lastError,
     loadMoreSessions,
@@ -148,6 +149,7 @@ export default function SessionsScreen() {
                 styles.emptyCard,
                 {
                   backgroundColor: palette.cardBackground,
+                  borderColor: palette.border,
                 },
               ]}
             >
@@ -163,46 +165,112 @@ export default function SessionsScreen() {
             </View>
           ) : (
             <View style={styles.sessionListContent}>
+              <View style={styles.sectionHeader}>
+                <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
+                  Recent sessions
+                </ThemedText>
+                <ThemedText
+                  style={[styles.sectionCaption, { color: palette.mutedText }]}
+                >
+                  Tap a card to continue
+                </ThemedText>
+              </View>
+
               {sessions.map((session) => {
                 const isActive = session.id === activeSessionId;
 
+                function handleDeleteChatSession() {
+                  Alert.alert(
+                    "Delete Chat Session",
+                    `Delete \"${session.title}\" from this phone and the server if it still exists there?`,
+                    [
+                      { text: "Cancel", style: "cancel" },
+                      {
+                        text: "Delete",
+                        style: "destructive",
+                        onPress: () => {
+                          void deleteSession(session.id);
+                        },
+                      },
+                    ],
+                  );
+                }
+
                 return (
-                  <Pressable
+                  <View
                     key={session.id}
-                    accessibilityRole="button"
-                    onPress={() => {
-                      activateSession(session.id);
-                      router.push(`/chat/${session.id}`);
-                    }}
-                    style={({ pressed }) => [
+                    style={[
                       styles.sessionCard,
                       {
-                        backgroundColor:
-                          isActive || pressed
-                            ? palette.cardPressed
-                            : palette.cardBackground,
+                        backgroundColor: isActive
+                          ? palette.cardPressed
+                          : palette.cardBackground,
+                        borderColor: palette.border,
+                        shadowColor: "#000",
                       },
                     ]}
                   >
-                    <View style={styles.sessionRow}>
-                      <ThemedText
-                        type="default"
-                        style={styles.sessionTitle}
-                        numberOfLines={1}
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => {
+                        activateSession(session.id);
+                        router.push(`/chat/${session.id}`);
+                      }}
+                      style={({ pressed }) => [
+                        styles.sessionRow,
+                        pressed ? { opacity: 0.8 } : null,
+                      ]}
+                    >
+                      <View style={styles.sessionCopy}>
+                        <ThemedText
+                          type="defaultSemiBold"
+                          style={styles.sessionTitle}
+                          numberOfLines={1}
+                        >
+                          {session.title}
+                        </ThemedText>
+                        <View style={styles.sessionMetaRow}>
+                          <ThemedText
+                            style={[
+                              styles.sessionMeta,
+                              { color: palette.mutedText },
+                            ]}
+                          >
+                            {session.messageCount > 0
+                              ? `${session.messageCount} msgs`
+                              : "No messages yet"}
+                          </ThemedText>
+                          <ThemedText
+                            style={[
+                              styles.sessionMeta,
+                              { color: palette.mutedText },
+                            ]}
+                          >
+                            {formatRelativeTime(session.updatedAt)}
+                          </ThemedText>
+                        </View>
+                      </View>
+
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete chat session ${session.title}`}
+                        hitSlop={8}
+                        onPress={handleDeleteChatSession}
+                        style={({ pressed }) => [
+                          styles.deleteButton,
+                          pressed
+                            ? { backgroundColor: palette.dangerBackground }
+                            : null,
+                        ]}
                       >
-                        {session.title}
-                      </ThemedText>
-                      <ThemedText
-                        style={[styles.sessionMeta, { color: palette.mutedText }]}
-                      >
-                        {session.messageCount > 0
-                          ? `${session.messageCount} msgs · ${session.busy ? "Running" : formatRelativeTime(session.updatedAt)}`
-                          : session.busy
-                            ? "Running"
-                            : formatRelativeTime(session.updatedAt)}
-                      </ThemedText>
-                    </View>
-                  </Pressable>
+                        <Ionicons
+                          name="trash-outline"
+                          size={18}
+                          color={palette.dangerText}
+                        />
+                      </Pressable>
+                    </Pressable>
+                  </View>
                 );
               })}
 
@@ -218,6 +286,7 @@ export default function SessionsScreen() {
                       backgroundColor: pressed
                         ? palette.cardPressed
                         : palette.cardBackground,
+                      borderColor: palette.border,
                       opacity: loadingMoreSessions ? 0.65 : 1,
                     },
                   ]}
@@ -367,7 +436,7 @@ const styles = StyleSheet.create({
   headerActionButton: {
     width: 36,
     height: 36,
-    borderRadius: 4,
+    borderRadius: 12,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -375,11 +444,11 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 16,
     paddingBottom: 16,
-    gap: 14,
+    gap: 16,
   },
   statusCard: {
     borderWidth: 1,
-    borderRadius: 4,
+    borderRadius: 16,
     padding: 16,
     gap: 8,
   },
@@ -395,7 +464,7 @@ const styles = StyleSheet.create({
   },
   errorCard: {
     borderWidth: 1,
-    borderRadius: 4,
+    borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
@@ -416,10 +485,24 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sessionListContent: {
+    gap: 10,
+  },
+  sectionHeader: {
     gap: 2,
+    paddingTop: 0,
+    paddingBottom: 0,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  sectionCaption: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   emptyCard: {
-    borderRadius: 4,
+    borderWidth: 1,
+    borderRadius: 16,
     padding: 18,
     gap: 8,
   },
@@ -428,25 +511,49 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   sessionCard: {
-    borderRadius: 4,
+    borderWidth: 1,
+    borderRadius: 16,
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    gap: 0,
+    paddingVertical: 12,
+    shadowOpacity: 0.05,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 1,
   },
   sessionRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 12,
+  },
+  sessionCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
+  },
+  deleteButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
   },
   sessionTitle: {
     flex: 1,
+    fontSize: 16,
+    lineHeight: 21,
+  },
+  sessionMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
   sessionMeta: {
     fontSize: 12,
     lineHeight: 16,
   },
   loadMoreButton: {
-    borderRadius: 4,
+    borderWidth: 1,
+    borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 14,
     alignItems: "center",
