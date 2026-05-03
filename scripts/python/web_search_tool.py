@@ -208,6 +208,62 @@ async def _fetch_one(
     return hit, response.text, None
 
 
+async def _fetch_with_browser(url: str, timeout_seconds: float) -> str | None:
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        return None
+
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            try:
+                await page.goto(url, timeout=timeout_seconds * 1000, wait_until="domcontentloaded")
+                await page.wait_for_timeout(1500)
+                html = await page.content()
+                return html
+            finally:
+                await browser.close()
+    except Exception:
+        return None
+
+
+def _extract_from_html(
+    hit: SearchHit,
+    html: str,
+    chunk_size: int,
+    chunk_overlap: int,
+    max_chunks_per_page: int,
+) -> tuple[list[WebChunk], SearchFailure | None]:
+    extracted = trafilatura.extract(
+        html,
+        output_format="txt",
+        include_comments=False,
+        include_images=False,
+        include_links=False,
+    )
+    if not extracted:
+        return [], SearchFailure(stage="extract", url=hit.url, error="trafilatura returned no text")
+
+    normalized = _normalize_whitespace(extracted)
+    page_chunks = _chunk_text(normalized, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    if not page_chunks:
+        return [], SearchFailure(stage="chunk", url=hit.url, error="no chunkable text")
+
+    chunks = [
+        WebChunk(
+            title=hit.title,
+            url=hit.url,
+            rank=hit.rank,
+            chunk_id=chunk_index,
+            text=chunk,
+        )
+        for chunk_index, chunk in enumerate(page_chunks[:max_chunks_per_page], start=1)
+    ]
+    return chunks, None
+
+
 async def _fetch_pages(
     hits: list[SearchHit],
     timeout_seconds: float,
@@ -250,33 +306,11 @@ def _extract_chunks(
     failures: list[SearchFailure] = []
 
     for hit, html in pages:
-        extracted = trafilatura.extract(
-            html,
-            output_format="txt",
-            include_comments=False,
-            include_images=False,
-            include_links=False,
-        )
-        if not extracted:
-            failures.append(SearchFailure(stage="extract", url=hit.url, error="trafilatura returned no text"))
+        page_chunks, failure = _extract_from_html(hit, html, chunk_size, chunk_overlap, max_chunks_per_page)
+        if failure is not None:
+            failures.append(failure)
             continue
-
-        normalized = _normalize_whitespace(extracted)
-        page_chunks = _chunk_text(normalized, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-        if not page_chunks:
-            failures.append(SearchFailure(stage="chunk", url=hit.url, error="no chunkable text"))
-            continue
-
-        for chunk_index, chunk in enumerate(page_chunks[:max_chunks_per_page], start=1):
-            chunks.append(
-                WebChunk(
-                    title=hit.title,
-                    url=hit.url,
-                    rank=hit.rank,
-                    chunk_id=chunk_index,
-                    text=chunk,
-                )
-            )
+        chunks.extend(page_chunks)
 
     return chunks, failures
 
@@ -289,6 +323,7 @@ async def async_search_web(
     chunk_size: int = 1400,
     chunk_overlap: int = 200,
     timeout_seconds: float = 10.0,
+    browser_fallback: bool = True,
 ) -> WebSearchResponse:
     hits = duckduckgo_search(query, max_results=max_results)
     pages, fetch_failures = await _fetch_pages(hits, timeout_seconds=timeout_seconds)
@@ -298,6 +333,29 @@ async def async_search_web(
         chunk_overlap=chunk_overlap,
         max_chunks_per_page=max_chunks_per_page,
     )
+
+    if browser_fallback and extract_failures:
+        extract_urls = {f.url for f in extract_failures}
+        hit_map = {hit.url: hit for hit in hits}
+
+        for url in extract_urls:
+            hit = hit_map.get(url)
+            if hit is None:
+                continue
+
+            html = await _fetch_with_browser(url, timeout_seconds=timeout_seconds)
+            if html is None:
+                continue
+
+            retry_chunks, retry_failure = _extract_from_html(
+                hit, html, chunk_size, chunk_overlap, max_chunks_per_page
+            )
+            if retry_failure is not None:
+                continue
+
+            chunks.extend(retry_chunks)
+            extract_failures = [f for f in extract_failures if f.url != url]
+
     return WebSearchResponse(
         query=query,
         hits=hits,
@@ -314,6 +372,7 @@ def search_web(
     chunk_size: int = 1400,
     chunk_overlap: int = 200,
     timeout_seconds: float = 10.0,
+    browser_fallback: bool = True,
 ) -> WebSearchResponse:
     return asyncio.run(
         async_search_web(
@@ -323,6 +382,7 @@ def search_web(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             timeout_seconds=timeout_seconds,
+            browser_fallback=browser_fallback,
         )
     )
 
@@ -335,6 +395,7 @@ def search_web_merged(
     chunk_size: int = 1400,
     chunk_overlap: int = 200,
     timeout_seconds: float = 10.0,
+    browser_fallback: bool = True,
 ) -> list[dict[str, str]]:
     result = search_web(
         query,
@@ -343,6 +404,7 @@ def search_web_merged(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         timeout_seconds=timeout_seconds,
+        browser_fallback=browser_fallback,
     )
     merged_pages = _merge_chunks_by_url(result.chunks)
     return [asdict(page) for page in merged_pages]
