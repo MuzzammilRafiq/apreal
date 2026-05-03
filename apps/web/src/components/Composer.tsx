@@ -136,7 +136,7 @@ type ComposerProps = {
                 ? "Continue this session with the next task, follow-up, or code request"
                 : "Describe what you want Pi to inspect, fix, or build"
           }
-          className="min-h-[calc(1.75em+1.5rem)] max-h-[calc((1.75em*7)+1.5rem)] flex-1 resize-none overflow-hidden border-none bg-transparent px-3 py-3 text-[1.05rem] leading-[1.75] text-ink outline-none placeholder:text-faint focus-visible:outline-none"
+          className="min-h-[calc(1.75em+1.5rem)] max-h-[calc(12.25em+1.5rem)] flex-1 resize-none overflow-hidden border-none bg-transparent px-3 py-3 text-[1.05rem] leading-[1.75] text-ink outline-none placeholder:text-faint focus-visible:outline-none"
         />
         <button
           type="button"
