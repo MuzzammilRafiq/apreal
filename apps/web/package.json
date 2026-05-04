@@ -4,6 +4,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite --host",
+		"prebuild": "pnpm --dir ../shared build",
 		"build": "vite build",
 		"preview": "vite preview",
 		"typecheck": "tsc --noEmit"

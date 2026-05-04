@@ -4,6 +4,7 @@ import {
 	ModelRegistry,
 	SessionManager,
 	SettingsManager,
+	type ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -313,6 +314,7 @@ function readLegacyOpenRouterApiKeyFromAuthFile(): string | undefined {
 type AgentControllerOptions = {
 	sessionId?: string;
 	transport?: string;
+	customTools?: ToolDefinition[];
 };
 
 type OpenRouterRuntime = {
@@ -380,7 +382,7 @@ async function getOpenRouterRuntime(): Promise<OpenRouterRuntime> {
 	}
 }
 
-async function createOpenRouterSession(cwd: string) {
+async function createOpenRouterSession(cwd: string, customTools: ToolDefinition[] = agentToolsConfig.customTools) {
 	const runtime = await getOpenRouterRuntime();
 	const settingsManager = SettingsManager.inMemory({
 		defaultProvider: OPENROUTER_PROVIDER,
@@ -395,7 +397,7 @@ async function createOpenRouterSession(cwd: string) {
 		settingsManager,
 		sessionManager: SessionManager.inMemory(),
 		tools: createConfiguredBuiltInTools(cwd),
-		customTools: agentToolsConfig.customTools,
+		customTools,
 	});
 
 	return { ...result, model: runtime.model };
@@ -414,7 +416,7 @@ export async function createAgentController(
 	const logger = createLogger(`session:${sessionId}`);
 	logger.info("creating agent session", { cwd, transport });
 
-	const { session, model } = await createOpenRouterSession(cwd);
+	const { session, model } = await createOpenRouterSession(cwd, options?.customTools);
 	const listeners = new Set<(event: AgentStreamEvent) => void>();
 	let disposed = false;
 	logger.info("agent session ready", { cwd, model: formatModelLabel(model), transport });

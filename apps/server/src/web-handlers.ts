@@ -1,3 +1,4 @@
+import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { ClientAppMessage } from "./protocol.ts";
 import {
 	createAgentController,
@@ -34,6 +35,7 @@ export interface HandlerState {
 	clients: Map<string, ClientConnection>;
 	sessions: Map<string, SharedSessionState>;
 	chatStore: { saveSession(session: SharedSessionState): void; deleteSession?(sessionId: string): void };
+	customTools?: ToolDefinition[];
 }
 
 export interface HandlerActions {
@@ -44,7 +46,7 @@ export function createHandlers(
 	state: HandlerState,
 	clientActions: ClientActions,
 ): HandlerActions {
-	const { logger, cwd, clients, sessions, chatStore } = state;
+	const { logger, cwd, clients, sessions, chatStore, customTools } = state;
 
 	function handleControllerEvent(session: SharedSessionState, event: AgentStreamEvent) {
 		let shouldPersist = false;
@@ -162,6 +164,7 @@ export function createHandlers(
 			const controller = await createAgentController(cwd, {
 				sessionId: session.id,
 				transport: "http",
+				customTools,
 			});
 			session.controller = controller;
 			session.model = formatModelLabel(controller.model);

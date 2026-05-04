@@ -178,6 +178,7 @@ export default function SessionsScreen() {
 
               {sessions.map((session) => {
                 const isActive = session.id === activeSessionId;
+                const isScheduledSession = session.title.startsWith("[Scheduled:");
 
                 function handleDeleteChatSession() {
                   Alert.alert(
@@ -222,13 +223,32 @@ export default function SessionsScreen() {
                       ]}
                     >
                       <View style={styles.sessionCopy}>
-                        <ThemedText
-                          type="defaultSemiBold"
-                          style={styles.sessionTitle}
-                          numberOfLines={1}
-                        >
-                          {session.title}
-                        </ThemedText>
+                        <View style={styles.sessionTitleRow}>
+                          {isScheduledSession ? (
+                            <View
+                              style={[
+                                styles.scheduledBadge,
+                                {
+                                  borderColor: palette.border,
+                                  backgroundColor: palette.cardPressed,
+                                },
+                              ]}
+                            >
+                              <Ionicons
+                                name="time-outline"
+                                size={12}
+                                color={palette.mutedText}
+                              />
+                            </View>
+                          ) : null}
+                          <ThemedText
+                            type="defaultSemiBold"
+                            style={styles.sessionTitle}
+                            numberOfLines={1}
+                          >
+                            {session.title}
+                          </ThemedText>
+                        </View>
                         <View style={styles.sessionMetaRow}>
                           <ThemedText
                             style={[
@@ -529,6 +549,19 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     gap: 6,
+  },
+  sessionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  scheduledBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   deleteButton: {
     width: 32,

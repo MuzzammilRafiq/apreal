@@ -26,6 +26,7 @@ export interface ClientManagerState {
 	logger: Logger;
 	clients: Map<string, ClientConnection>;
 	sessions: Map<string, SharedSessionState>;
+	getToolsLabel?: () => string;
 }
 
 export interface ClientActions {
@@ -60,7 +61,7 @@ function createSseComment(comment: string): Uint8Array {
 }
 
 export function createClientManager(state: ClientManagerState): ClientActions {
-	const { logger, clients, sessions } = state;
+	const { logger, clients, sessions, getToolsLabel } = state;
 
 	function sendClientPayload(
 		clientId: string,
@@ -208,7 +209,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 				type: "connected",
 				clientId,
 				message: "Connected. Browser chats are shared across tabs while the server is running.",
-				tools: getConfiguredToolsLabel(),
+				tools: getToolsLabel ? getToolsLabel() : getConfiguredToolsLabel(),
 			},
 			{ requireReady: false },
 		);

@@ -16,6 +16,7 @@ type SidebarProps = {
 	activeSessionId: string | null;
 	sessionState: string;
 	onStartNewChat: () => void;
+	onOpenJobs: () => void;
 	onOpenSettings: () => void;
 	onActivateSession: (sessionId: string) => void;
 	onLoadMoreSessions: () => void;
@@ -35,6 +36,7 @@ export const Sidebar = memo(function Sidebar({
 	activeSessionId,
 	sessionState,
 	onStartNewChat,
+	onOpenJobs,
 	onOpenSettings,
 	onActivateSession,
 	onLoadMoreSessions,
@@ -56,6 +58,13 @@ export const Sidebar = memo(function Sidebar({
 				<button
 					type="button"
 					className="mt-3 w-full border border-white/10 bg-sidebar-panel px-4 py-3 text-left text-[0.84rem] font-medium text-sidebar-muted transition duration-150 hover:border-white/20 hover:bg-white/6 hover:text-sidebar-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+					onClick={onOpenJobs}
+				>
+					Open scheduled jobs
+				</button>
+				<button
+					type="button"
+					className="mt-3 w-full border border-white/10 bg-sidebar-panel px-4 py-3 text-left text-[0.84rem] font-medium text-sidebar-muted transition duration-150 hover:border-white/20 hover:bg-white/6 hover:text-sidebar-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
 					onClick={onOpenSettings}
 				>
 					Open server settings
@@ -68,27 +77,44 @@ export const Sidebar = memo(function Sidebar({
 							No saved sessions yet. Start a new chat and your first prompt will turn into a reusable thread here.
 						</p>
 					) : (
-						sessions.map((session) => (
-							<button
-								key={session.id}
-								type="button"
-								className={getSessionCardClassName(session.id === activeSessionId)}
-								aria-pressed={session.id === activeSessionId}
-								onClick={() => onActivateSession(session.id)}
-							>
-								<div className="flex items-center justify-between gap-3">
-									<p className="min-w-0 flex-1 text-[0.94rem] font-medium leading-[1.4] text-sidebar-ink">
-										{session.title}
-									</p>
-									<span className="shrink-0 font-mono text-[0.72rem] text-sidebar-muted">
-										{session.messageCount > 0
-											? `${session.messageCount} msgs · ${session.busy ? "Running" : formatRelativeTime(session.updatedAt)}`
-											: (session.busy ? "Running" : formatRelativeTime(session.updatedAt))}
-									</span>
-								</div>
-								<p className="hidden">{session.model || "Model starts on first response"}</p>
-							</button>
-						))
+						sessions.map((session) => {
+							const isScheduledSession = session.title.startsWith("[Scheduled:");
+
+							return (
+								<button
+									key={session.id}
+									type="button"
+									className={getSessionCardClassName(session.id === activeSessionId)}
+									aria-pressed={session.id === activeSessionId}
+									onClick={() => onActivateSession(session.id)}
+								>
+									<div className="flex items-center justify-between gap-3">
+										<div className="flex min-w-0 flex-1 items-center gap-2">
+											{isScheduledSession ? (
+												<span
+													className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#d6a248]/60 bg-[#d6a248]/12 text-[#e6bf6d]"
+													aria-label="Scheduled session"
+												>
+													<svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+														<circle cx="10" cy="10" r="6" />
+														<path d="M10 6.5v4l2.5 1.5" strokeLinecap="round" strokeLinejoin="round" />
+													</svg>
+												</span>
+											) : null}
+											<p className="min-w-0 flex-1 text-[0.94rem] font-medium leading-[1.4] text-sidebar-ink">
+												{session.title}
+											</p>
+										</div>
+										<span className="shrink-0 font-mono text-[0.72rem] text-sidebar-muted">
+											{session.messageCount > 0
+												? `${session.messageCount} msgs · ${session.busy ? "Running" : formatRelativeTime(session.updatedAt)}`
+												: (session.busy ? "Running" : formatRelativeTime(session.updatedAt))}
+										</span>
+									</div>
+									<p className="hidden">{session.model || "Model starts on first response"}</p>
+								</button>
+							);
+						})
 					)}
 					{canLoadMoreSessions ? (
 						<button

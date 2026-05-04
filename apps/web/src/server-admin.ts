@@ -5,6 +5,9 @@ import {
 	type RelayReauthenticateRequest,
 	type RelayReauthenticateResponse,
 } from "@apreal/shared";
+import type { ScheduledJobDetails } from "./chatTypes";
+
+const ADMIN_JOBS_PATH = "/api/admin/jobs";
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -47,7 +50,35 @@ function parseStatus(payload: unknown): LocalWebAdminStatus {
 	}
 
 	return payload as LocalWebAdminStatus;
+}
+
+function parseScheduledJobs(payload: unknown): ScheduledJobDetails[] {
+	if (!isObjectRecord(payload) || !Array.isArray(payload.jobs)) {
+		throw new Error("Scheduled jobs returned an invalid response.");
 	}
+
+	return payload.jobs.map((job) => {
+		if (
+			!isObjectRecord(job) ||
+			typeof job.id !== "string" ||
+			typeof job.name !== "string" ||
+			typeof job.prompt !== "string" ||
+			typeof job.intervalMs !== "number" ||
+			typeof job.enabled !== "boolean" ||
+			typeof job.nextRunAt !== "number" ||
+			typeof job.createdAt !== "number" ||
+			typeof job.updatedAt !== "number" ||
+			typeof job.runCount !== "number" ||
+			typeof job.maxCatchup !== "number" ||
+			(job.lastRunAt !== null && typeof job.lastRunAt !== "number") ||
+			(job.lastError !== null && typeof job.lastError !== "string")
+		) {
+			throw new Error("Scheduled jobs returned an invalid response.");
+		}
+
+		return job as ScheduledJobDetails;
+	});
+}
 
 export async function readLocalAdminStatus(statusUrl: string): Promise<LocalWebAdminStatus> {
 	const response = await fetch(statusUrl, {
@@ -91,7 +122,23 @@ export async function submitRelayReauthentication(
 	};
 }
 
+export async function readScheduledJobs(requestUrl = ADMIN_JOBS_PATH): Promise<ScheduledJobDetails[]> {
+	const response = await fetch(requestUrl, {
+		method: "GET",
+		headers: {
+			accept: "application/json",
+		},
+	});
+	const payload = await parseJsonResponse(response);
+	if (!response.ok) {
+		throw new Error(getResponseMessage(payload, `Scheduled jobs request failed with status ${response.status}`));
+	}
+
+	return parseScheduledJobs(payload);
+}
+
 export {
+	ADMIN_JOBS_PATH,
 	ADMIN_RELAY_REAUTHENTICATE_PATH,
 	ADMIN_STATUS_PATH,
 };

@@ -65,3 +65,18 @@ export type SessionCacheEntry = {
 	transcript: TranscriptMessage[];
 	transcriptLoaded: boolean;
 };
+
+export type ScheduledJobDetails = {
+	id: string;
+	name: string;
+	prompt: string;
+	intervalMs: number;
+	enabled: boolean;
+	lastRunAt: number | null;
+	nextRunAt: number;
+	createdAt: number;
+	updatedAt: number;
+	runCount: number;
+	maxCatchup: number;
+	lastError: string | null;
+};

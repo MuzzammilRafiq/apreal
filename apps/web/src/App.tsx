@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LOCAL_CLIENT_ID_QUERY_PARAM, type LocalWebAdminStatus } from "@apreal/shared";
 import { Composer } from "./components/Composer";
+import { ScheduledJobsPage } from "./components/ScheduledJobsPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
 import { TranscriptPanel } from "./components/TranscriptPanel";
-import type { SessionCacheEntry, SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "./chatTypes";
+import type { ScheduledJobDetails, SessionCacheEntry, SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "./chatTypes";
 import { formatSessionState } from "./chatView";
 import {
 	readCachedSessionSnapshot,
@@ -13,7 +14,7 @@ import {
 	writeSessionSummaries,
 	writeSessionSummary,
 } from "./session-cache";
-import { readLocalAdminStatus, submitRelayReauthentication } from "./server-admin";
+import { readLocalAdminStatus, readScheduledJobs, submitRelayReauthentication } from "./server-admin";
 import { getWebTransportConfig } from "./transport-config";
 
 const ACTIVE_SESSION_STORAGE_KEY = "pi-browser-active-session";
@@ -23,7 +24,7 @@ const STREAM_REQUIRED_MESSAGE = "Client event stream is not connected.";
 const ADMIN_STATUS_REFRESH_INTERVAL_MS = 3_000;
 const transportConfig = getWebTransportConfig();
 
-type AppRoute = "chat" | "settings";
+type AppRoute = "chat" | "settings" | "jobs";
 
 type ClientMessage =
 	| { type: "prompt"; prompt: string; sessionId?: string | null }
@@ -46,11 +47,19 @@ type ServerMessage =
 type AssistantDeltaField = "body" | "thinking";
 
 function readCurrentRoute(): AppRoute {
-	return window.location.pathname === "/settings" ? "settings" : "chat";
+	if (window.location.pathname === "/settings") {
+		return "settings";
+	}
+
+	if (window.location.pathname === "/jobs") {
+		return "jobs";
+	}
+
+	return "chat";
 }
 
 function navigateToRoute(route: AppRoute) {
-	const nextPathname = route === "settings" ? "/settings" : "/";
+	const nextPathname = route === "settings" ? "/settings" : route === "jobs" ? "/jobs" : "/";
 	if (window.location.pathname === nextPathname) {
 		return;
 	}
@@ -212,6 +221,9 @@ export function App() {
 	const [activeSessionId, setActiveSessionId] = useState<string | null>(() => readStoredSessionId());
 	const [adminStatus, setAdminStatus] = useState<LocalWebAdminStatus | null>(null);
 	const [adminStatusError, setAdminStatusError] = useState<string | null>(null);
+	const [scheduledJobs, setScheduledJobs] = useState<ScheduledJobDetails[]>([]);
+	const [scheduledJobsError, setScheduledJobsError] = useState<string | null>(null);
+	const [loadingScheduledJobs, setLoadingScheduledJobs] = useState(false);
 	const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
 	const [settingsError, setSettingsError] = useState<string | null>(null);
 	const [submittingPairingCode, setSubmittingPairingCode] = useState(false);
@@ -827,6 +839,21 @@ export function App() {
 		return nextStatus;
 	}, []);
 
+	const refreshScheduledJobs = useCallback(async () => {
+		setLoadingScheduledJobs(true);
+		try {
+			const jobs = await readScheduledJobs();
+			setScheduledJobs(jobs);
+			setScheduledJobsError(null);
+			return jobs;
+		} catch (error) {
+			setScheduledJobsError(getErrorMessage(error));
+			throw error;
+		} finally {
+			setLoadingScheduledJobs(false);
+		}
+	}, []);
+
 	const handleRouteChange = useCallback((nextRoute: AppRoute) => {
 		navigateToRoute(nextRoute);
 		setRoute(nextRoute);
@@ -857,6 +884,16 @@ export function App() {
 			});
 	}, []);
 
+	useEffect(() => {
+		if (route !== "jobs") {
+			return;
+		}
+
+		void refreshScheduledJobs().catch(() => {
+			// The error state is already captured for rendering.
+		});
+	}, [refreshScheduledJobs, route]);
+
 	if (route === "settings") {
 		return (
 			<SettingsPage
@@ -877,6 +914,23 @@ export function App() {
 		);
 	}
 
+	if (route === "jobs") {
+		return (
+			<ScheduledJobsPage
+				adminStatus={adminStatus}
+				jobs={scheduledJobs}
+				isLoading={loadingScheduledJobs}
+				error={scheduledJobsError}
+				onBack={() => handleRouteChange("chat")}
+				onRefresh={() => {
+					void refreshScheduledJobs().catch(() => {
+						// The error state is already captured for rendering.
+					});
+				}}
+			/>
+		);
+	}
+
 	return (
 		<main className="grid h-svh w-full overflow-hidden grid-cols-1 font-ui text-ink min-[721px]:grid-cols-[270px_minmax(0,1fr)] min-[1221px]:grid-cols-[320px_minmax(0,1fr)]">
 			<Sidebar
@@ -893,6 +947,7 @@ export function App() {
 				activeSessionId={activeSessionId}
 				sessionState={sessionState}
 				onStartNewChat={handleStartNewChat}
+				onOpenJobs={() => handleRouteChange("jobs")}
 				onOpenSettings={() => handleRouteChange("settings")}
 				onActivateSession={(sessionId) => activateSession(sessionId)}
 				onLoadMoreSessions={handleLoadMoreSessions}

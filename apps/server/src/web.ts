@@ -17,11 +17,14 @@ import {
 	type RelayReauthenticateResponse,
 } from "@apreal/shared";
 import { createChatStore } from "./chat-store.ts";
+import { getConfiguredToolsLabel } from "./agent-tools.ts";
 import { createLogger } from "./logger.ts";
 import {
 	ensureRelayAgentAuth,
 	getRelayServerUrl,
 } from "./relay-auth.ts";
+import { createCustomTools } from "./tools/index.ts";
+import { createJobExecutor, JobStore, Scheduler } from "./scheduled-jobs/index.ts";
 import { getErrorMessage, prewarmAgentRuntime } from "./session.ts";
 import { createClientManager, type Logger } from "./web-client-manager.ts";
 import { createHandlers } from "./web-handlers.ts";
@@ -56,6 +59,7 @@ export type {
 
 const WEB_DIST_DIR = resolve(SERVER_SRC_DIR, "..", "..", "web", "dist");
 const WEB_INDEX_PATH = join(WEB_DIST_DIR, "index.html");
+const ADMIN_JOBS_PATH = "/api/admin/jobs";
 
 const CONTENT_TYPES = new Map<string, string>([
 	[".css", "text/css; charset=utf-8"],
@@ -173,14 +177,35 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 
 	const clients = new Map<string, ClientConnection>();
 	const sessions = new Map<string, import("./web-session-state.ts").SharedSessionState>();
-	const chatStore = createChatStore(join(homedir(), ".pi", "agent", "sessions.db"));
+	const dbPath = join(homedir(), ".pi", "agent", "sessions.db");
+	const chatStore = createChatStore(dbPath);
+	const jobStore = new JobStore(dbPath);
 	for (const [sessionId, session] of chatStore.loadSessions()) {
 		sessions.set(sessionId, session);
 	}
 
-	const clientManager = createClientManager({ logger, clients, sessions });
+	let customTools = createCustomTools();
+	const schedulerLogger = createLogger("scheduler");
+	const clientManager = createClientManager({
+		logger,
+		clients,
+		sessions,
+		getToolsLabel: () => getConfiguredToolsLabel(customTools),
+	});
+	const executor = createJobExecutor({
+		store: jobStore,
+		sessions,
+		chatStore,
+		clients,
+		cwd,
+		clientActions: clientManager,
+		logger: schedulerLogger,
+		getCustomTools: () => customTools,
+	});
+	const scheduler = new Scheduler(jobStore, schedulerLogger, executor);
+	customTools = createCustomTools(jobStore, scheduler);
 	const handlers = createHandlers(
-		{ logger, cwd, clients, sessions, chatStore },
+		{ logger, cwd, clients, sessions, chatStore, customTools },
 		clientManager,
 	);
 	const relay = createRelay(
@@ -340,6 +365,36 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 					});
 				}
 
+				if (url.pathname === ADMIN_JOBS_PATH) {
+					const localOnlyResponse = assertLocalAdminRequest(request);
+					if (localOnlyResponse) {
+						return localOnlyResponse;
+					}
+
+					if (request.method === "OPTIONS") {
+						return new Response(null, {
+							status: 204,
+							headers: createCorsHeaders(),
+						});
+					}
+
+					if (request.method !== "GET") {
+						return new Response("Method Not Allowed", {
+							status: 405,
+							headers: createCorsHeaders(),
+						});
+					}
+
+					return json(
+						{
+							jobs: jobStore.listAllJobs(),
+						},
+						{
+							headers: createCorsHeaders(),
+						},
+					);
+				}
+
 				if (url.pathname === ADMIN_RELAY_REAUTHENTICATE_PATH) {
 					const localOnlyResponse = assertLocalAdminRequest(request);
 					if (localOnlyResponse) {
@@ -421,6 +476,35 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		throw error;
 	}
 
+	await scheduler.start();
+	const activeJobCount = jobStore.listEnabledJobs().length;
+
+	let shuttingDown = false;
+	const shutdown = () => {
+		if (shuttingDown) {
+			return;
+		}
+
+		shuttingDown = true;
+		scheduler.stop();
+		commandInput.close();
+		relayState.transportGeneration += 1;
+		relayState.transportAbortController?.abort();
+		server.close((error) => {
+			if (error) {
+				logger.error("failed to shut down web server cleanly", {
+					error: getErrorMessage(error),
+				});
+				process.exit(1);
+				return;
+			}
+
+			process.exit(0);
+		});
+	};
+	process.on("SIGTERM", shutdown);
+	process.on("SIGINT", shutdown);
+
 	logger.info("web server ready", {
 		cwd,
 		port: listeningPort,
@@ -437,6 +521,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	console.log(`Settings API: http://localhost:${listeningPort}${ADMIN_STATUS_PATH}`);
 	console.log(`Relay auth: ${relayUrl}`);
 	console.log(`Agent id: ${relayState.auth?.agentId ?? "not registered"}`);
+	console.log(`Scheduled jobs: ${activeJobCount} active`);
 	if (relayState.startupError) {
 		console.log(`Relay registration status: ${relayState.startupError}`);
 	}
