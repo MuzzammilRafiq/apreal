@@ -27,13 +27,12 @@ export function createDeleteScheduledJobTool(store: JobStore, scheduler: Schedul
 
 			switch (params.action) {
 				case "pause": {
-					store.setEnabled(params.jobId, false);
+					store.pauseJob(params.jobId);
 					await scheduler.reschedule(params.jobId);
 					break;
 				}
 				case "resume": {
-					store.setEnabled(params.jobId, true);
-					const job = store.getJob(params.jobId);
+					const job = store.resumeJob(params.jobId);
 					if (!job) {
 						throw new Error(`Scheduled job not found after resume: ${params.jobId}`);
 					}

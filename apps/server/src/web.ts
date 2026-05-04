@@ -29,6 +29,7 @@ import { getErrorMessage, prewarmAgentRuntime } from "./session.ts";
 import { createClientManager, type Logger } from "./web-client-manager.ts";
 import { createHandlers } from "./web-handlers.ts";
 import { startHttpServer } from "./web-http-server.ts";
+import { buildSessionSummary, type SharedSessionState } from "./web-session-state.ts";
 import {
 	createRelay,
 	type RelayMutableState,
@@ -60,6 +61,7 @@ export type {
 const WEB_DIST_DIR = resolve(SERVER_SRC_DIR, "..", "..", "web", "dist");
 const WEB_INDEX_PATH = join(WEB_DIST_DIR, "index.html");
 const ADMIN_JOBS_PATH = "/api/admin/jobs";
+const ADMIN_JOBS_PATH_PREFIX = `${ADMIN_JOBS_PATH}/`;
 
 const CONTENT_TYPES = new Map<string, string>([
 	[".css", "text/css; charset=utf-8"],
@@ -98,6 +100,39 @@ async function fileExists(filePath: string): Promise<boolean> {
 	} catch {
 		return false;
 	}
+}
+
+function parseAdminJobRoute(pathname: string): { jobId: string; subpath: "runs" | null } | null {
+	if (!pathname.startsWith(ADMIN_JOBS_PATH_PREFIX)) {
+		return null;
+	}
+
+	const remainder = pathname.slice(ADMIN_JOBS_PATH_PREFIX.length);
+	const [jobIdPart, subpath, ...rest] = remainder.split("/").filter(Boolean);
+	if (!jobIdPart || rest.length > 0) {
+		return null;
+	}
+
+	if (subpath && subpath !== "runs") {
+		return null;
+	}
+
+	try {
+		return {
+			jobId: decodeURIComponent(jobIdPart),
+			subpath: subpath === "runs" ? "runs" : null,
+		};
+	} catch {
+		return null;
+	}
+}
+
+function listScheduledJobRuns(jobName: string, sessions: Map<string, SharedSessionState>) {
+	const prefix = `[Scheduled: ${jobName}]`;
+	return [...sessions.values()]
+		.filter((session) => session.title.startsWith(prefix))
+		.sort((left, right) => right.updatedAt - left.updatedAt || right.createdAt - left.createdAt)
+		.map((session) => buildSessionSummary(session));
 }
 
 async function createStaticResponse(request: Request, url: URL): Promise<Response | null> {
@@ -393,6 +428,162 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 							headers: createCorsHeaders(),
 						},
 					);
+				}
+
+				const adminJobRoute = parseAdminJobRoute(url.pathname);
+				if (adminJobRoute) {
+					const localOnlyResponse = assertLocalAdminRequest(request);
+					if (localOnlyResponse) {
+						return localOnlyResponse;
+					}
+
+					if (request.method === "OPTIONS") {
+						return new Response(null, {
+							status: 204,
+							headers: createCorsHeaders(),
+						});
+					}
+
+					const job = jobStore.getJob(adminJobRoute.jobId);
+					if (!job) {
+						return json(
+							{ message: "Scheduled job not found." },
+							{ status: 404, headers: createCorsHeaders() },
+						);
+					}
+
+					if (adminJobRoute.subpath === "runs") {
+						if (request.method !== "GET") {
+							return new Response("Method Not Allowed", {
+								status: 405,
+								headers: createCorsHeaders(),
+							});
+						}
+
+						const runs = listScheduledJobRuns(job.name, sessions);
+						return json(
+							{
+								jobId: job.id,
+								jobName: job.name,
+								count: runs.length,
+								runs,
+							},
+							{
+								headers: createCorsHeaders(),
+							},
+						);
+					}
+
+					if (request.method === "PATCH") {
+						let payload: unknown;
+						try {
+							payload = await request.json();
+						} catch {
+							return json(
+								{ message: "Request body must be valid JSON." },
+								{ status: 400, headers: createCorsHeaders() },
+							);
+						}
+
+						if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+							return json(
+								{ message: "Request body must be a JSON object." },
+								{ status: 400, headers: createCorsHeaders() },
+							);
+						}
+
+						const hasIntervalMinutes = "intervalMinutes" in payload;
+						const nextIntervalMinutes = hasIntervalMinutes
+							? Number((payload as Record<string, unknown>).intervalMinutes)
+							: undefined;
+						const hasEnabled = "enabled" in payload;
+						const nextEnabled = hasEnabled ? (payload as Record<string, unknown>).enabled : null;
+
+						if (!hasIntervalMinutes && !hasEnabled) {
+							return json(
+								{ message: "At least one job setting must be provided." },
+								{ status: 400, headers: createCorsHeaders() },
+							);
+						}
+
+						if (
+							hasIntervalMinutes &&
+							(nextIntervalMinutes === undefined || !Number.isFinite(nextIntervalMinutes) || nextIntervalMinutes < 5)
+						) {
+							return json(
+								{ message: "intervalMinutes must be a number greater than or equal to 5." },
+								{ status: 400, headers: createCorsHeaders() },
+							);
+						}
+
+						if (hasEnabled && typeof nextEnabled !== "boolean") {
+							return json(
+								{ message: "enabled must be a boolean value." },
+								{ status: 400, headers: createCorsHeaders() },
+							);
+						}
+
+						let updatedJob = job;
+						if (hasIntervalMinutes) {
+							const nextJob = jobStore.updateInterval(job.id, Math.round((nextIntervalMinutes ?? 0) * 60_000));
+							if (!nextJob) {
+								return json(
+									{ message: "Scheduled job not found." },
+									{ status: 404, headers: createCorsHeaders() },
+								);
+							}
+							updatedJob = nextJob;
+						}
+
+						if (hasEnabled) {
+							const nextJob = nextEnabled ? jobStore.resumeJob(job.id) : jobStore.pauseJob(job.id);
+							if (!nextJob) {
+								return json(
+									{ message: "Scheduled job not found." },
+									{ status: 404, headers: createCorsHeaders() },
+								);
+							}
+							updatedJob = nextJob;
+						}
+
+						if (updatedJob.enabled) {
+							scheduler.scheduleJob(updatedJob);
+						} else {
+							await scheduler.reschedule(updatedJob.id);
+						}
+
+						return json(
+							{ job: updatedJob },
+							{
+								headers: createCorsHeaders(),
+							},
+						);
+					}
+
+					if (request.method === "DELETE") {
+						jobStore.deleteJob(job.id);
+						await scheduler.reschedule(job.id);
+						return json(
+							{ ok: true, jobId: job.id },
+							{
+								headers: createCorsHeaders(),
+							},
+						);
+					}
+
+					if (request.method === "GET") {
+						return json(
+							{ job },
+							{
+								headers: createCorsHeaders(),
+							},
+						);
+					}
+
+					return new Response("Method Not Allowed", {
+						status: 405,
+						headers: createCorsHeaders(),
+					});
 				}
 
 				if (url.pathname === ADMIN_RELAY_REAUTHENTICATE_PATH) {

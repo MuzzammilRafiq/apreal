@@ -14,7 +14,14 @@ import {
 	writeSessionSummaries,
 	writeSessionSummary,
 } from "./session-cache";
-import { readLocalAdminStatus, readScheduledJobs, submitRelayReauthentication } from "./server-admin";
+import {
+	deleteScheduledJob as deleteScheduledJobRequest,
+	readLocalAdminStatus,
+	readScheduledJobRuns,
+	readScheduledJobs,
+	submitRelayReauthentication,
+	updateScheduledJob as updateScheduledJobRequest,
+} from "./server-admin";
 import { getWebTransportConfig } from "./transport-config";
 
 const ACTIVE_SESSION_STORAGE_KEY = "pi-browser-active-session";
@@ -130,6 +137,10 @@ function upsertSessionInList(sessions: SessionSummary[], session: SessionSummary
 	return next;
 }
 
+function isScheduledSessionSummary(session: SessionSummary | null | undefined): boolean {
+	return Boolean(session?.title.startsWith("[Scheduled:"));
+}
+
 function createSummaryOnlyCacheEntry(session: SessionSummary): SessionCacheEntry {
 	return {
 		session,
@@ -224,6 +235,9 @@ export function App() {
 	const [scheduledJobs, setScheduledJobs] = useState<ScheduledJobDetails[]>([]);
 	const [scheduledJobsError, setScheduledJobsError] = useState<string | null>(null);
 	const [loadingScheduledJobs, setLoadingScheduledJobs] = useState(false);
+	const [scheduledJobRuns, setScheduledJobRuns] = useState<SessionSummary[]>([]);
+	const [scheduledJobRunsError, setScheduledJobRunsError] = useState<string | null>(null);
+	const [loadingScheduledJobRuns, setLoadingScheduledJobRuns] = useState(false);
 	const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
 	const [settingsError, setSettingsError] = useState<string | null>(null);
 	const [submittingPairingCode, setSubmittingPairingCode] = useState(false);
@@ -259,9 +273,10 @@ export function App() {
 	}, [visibleSessionLimit]);
 
 	const visibleSessions = sessions.slice(0, visibleSessionLimit);
+	const cachedActiveSession = activeSessionId ? sessionCache.get(activeSessionId)?.session ?? null : null;
 	const activeSession =
 		sessions.find((session) => session.id === activeSessionId) ??
-		(activeSessionId ? sessionCache.get(activeSessionId)?.session ?? null : null);
+		(cachedActiveSession && !isScheduledSessionSummary(cachedActiveSession) ? cachedActiveSession : null);
 	const activeSessionCacheEntry = activeSessionId ? sessionCache.get(activeSessionId) ?? null : null;
 	const activeTranscript = activeSessionCacheEntry?.transcriptLoaded ? activeSessionCacheEntry.transcript : [];
 	const activeTranscriptLoaded = activeSessionCacheEntry?.transcriptLoaded ?? false;
@@ -433,8 +448,8 @@ export function App() {
 					return;
 				}
 
-				setSessions(cachedSessions);
-				setTotalSessionCount((current) => current ?? cachedSessions.length);
+				setSessions(cachedSessions.filter((session) => !isScheduledSessionSummary(session)));
+				setTotalSessionCount((current) => current ?? cachedSessions.filter((session) => !isScheduledSessionSummary(session)).length);
 				setSessionCache((previous) => {
 					const next = new Map(previous);
 					for (const session of cachedSessions) {
@@ -496,7 +511,9 @@ export function App() {
 			});
 			return next;
 		});
-		setSessions((previous) => upsertSessionInList(previous, session));
+		if (!isScheduledSessionSummary(session)) {
+			setSessions((previous) => upsertSessionInList(previous, session));
+		}
 		void writeSessionSnapshot(session, transcript);
 	}, []);
 
@@ -599,7 +616,9 @@ export function App() {
 					setSessions((previous) => {
 						let next = previous;
 						for (const session of message.sessions) {
-							next = upsertSessionInList(next, session);
+							if (!isScheduledSessionSummary(session)) {
+								next = upsertSessionInList(next, session);
+							}
 						}
 						return next;
 					});
@@ -625,7 +644,9 @@ export function App() {
 					break;
 				}
 				case "session_summary_updated": {
-					setSessions((previous) => upsertSessionInList(previous, message.session));
+					if (!isScheduledSessionSummary(message.session)) {
+						setSessions((previous) => upsertSessionInList(previous, message.session));
+					}
 					setSessionCache((previous) => {
 						const next = new Map(previous);
 						const cached = next.get(message.session.id);
@@ -637,16 +658,18 @@ export function App() {
 							: createSummaryOnlyCacheEntry(message.session));
 						return next;
 					});
-					setTotalSessionCount((previous) => {
-						if (previous === null) {
-							return Math.max(sessionsRef.current.length, 1);
-						}
-						const exists = sessionsRef.current.some((session) => session.id === message.session.id);
-						return exists ? previous : previous + 1;
-					});
+					if (!isScheduledSessionSummary(message.session)) {
+						setTotalSessionCount((previous) => {
+							if (previous === null) {
+								return Math.max(sessionsRef.current.length, 1);
+							}
+							const exists = sessionsRef.current.some((session) => session.id === message.session.id);
+							return exists ? previous : previous + 1;
+						});
+					}
 					void writeSessionSummary(message.session);
 
-					if (activeSessionIdRef.current === message.session.id) {
+					if (activeSessionIdRef.current === message.session.id && !isScheduledSessionSummary(message.session)) {
 						ensureSessionLoadedRef.current(message.session.id);
 					}
 					break;
@@ -654,15 +677,17 @@ export function App() {
 				case "session_created": {
 					setConnectionError(null);
 					upsertSessionSnapshotRef.current(message.session, message.transcript);
-					setTotalSessionCount((previous) => {
-						if (previous === null) {
-							return Math.max(sessionsRef.current.length, 1);
-						}
-						const exists = sessionsRef.current.some((session) => session.id === message.session.id);
-						return exists ? previous : previous + 1;
-					});
-					setPendingDraft(false);
-					activateSessionRef.current(message.session.id, { load: false });
+					if (!isScheduledSessionSummary(message.session)) {
+						setTotalSessionCount((previous) => {
+							if (previous === null) {
+								return Math.max(sessionsRef.current.length, 1);
+							}
+							const exists = sessionsRef.current.some((session) => session.id === message.session.id);
+							return exists ? previous : previous + 1;
+						});
+						setPendingDraft(false);
+						activateSessionRef.current(message.session.id, { load: false });
+					}
 					break;
 				}
 				case "session_snapshot": {
@@ -845,6 +870,10 @@ export function App() {
 			const jobs = await readScheduledJobs();
 			setScheduledJobs(jobs);
 			setScheduledJobsError(null);
+			if (jobs.length === 0) {
+				setScheduledJobRuns([]);
+				setScheduledJobRunsError(null);
+			}
 			return jobs;
 		} catch (error) {
 			setScheduledJobsError(getErrorMessage(error));
@@ -853,6 +882,57 @@ export function App() {
 			setLoadingScheduledJobs(false);
 		}
 	}, []);
+
+	const refreshScheduledJobRuns = useCallback(async (jobId: string) => {
+		setLoadingScheduledJobRuns(true);
+		setScheduledJobRuns([]);
+		setScheduledJobRunsError(null);
+		try {
+			const runs = await readScheduledJobRuns(jobId);
+			setScheduledJobRuns(runs);
+			setScheduledJobRunsError(null);
+			return runs;
+		} catch (error) {
+			setScheduledJobRunsError(getErrorMessage(error));
+			throw error;
+		} finally {
+			setLoadingScheduledJobRuns(false);
+		}
+	}, []);
+
+	const updateScheduledJob = useCallback(async (jobId: string, intervalMinutes: number) => {
+		await updateScheduledJobRequest(jobId, { intervalMinutes });
+		await refreshScheduledJobs();
+	}, [refreshScheduledJobs]);
+
+	const toggleScheduledJobEnabled = useCallback(async (jobId: string, enabled: boolean) => {
+		await updateScheduledJobRequest(jobId, { enabled });
+		await refreshScheduledJobs();
+	}, [refreshScheduledJobs]);
+
+	const deleteScheduledJob = useCallback(async (jobId: string) => {
+		await deleteScheduledJobRequest(jobId);
+		setScheduledJobRuns([]);
+		setScheduledJobRunsError(null);
+		await refreshScheduledJobs();
+	}, [refreshScheduledJobs]);
+
+	const handleOpenJobs = useCallback(() => {
+		navigateToRoute("jobs");
+		setRoute("jobs");
+	}, []);
+
+	const handleRefreshJobs = useCallback(() => {
+		void refreshScheduledJobs().catch(() => {
+			// The error state is already captured for rendering.
+		});
+	}, [refreshScheduledJobs]);
+
+	const handleRefreshJobRuns = useCallback((jobId: string) => {
+		void refreshScheduledJobRuns(jobId).catch(() => {
+			// The error state is already captured for rendering.
+		});
+	}, [refreshScheduledJobRuns]);
 
 	const handleRouteChange = useCallback((nextRoute: AppRoute) => {
 		navigateToRoute(nextRoute);
@@ -919,14 +999,20 @@ export function App() {
 			<ScheduledJobsPage
 				adminStatus={adminStatus}
 				jobs={scheduledJobs}
-				isLoading={loadingScheduledJobs}
-				error={scheduledJobsError}
+				jobRuns={scheduledJobRuns}
+				sessionCache={sessionCache}
+				jobsError={scheduledJobsError}
+				jobRunsError={scheduledJobRunsError}
+				isLoadingJobs={loadingScheduledJobs}
+				isLoadingJobRuns={loadingScheduledJobRuns}
+				connectionError={connectionError}
 				onBack={() => handleRouteChange("chat")}
-				onRefresh={() => {
-					void refreshScheduledJobs().catch(() => {
-						// The error state is already captured for rendering.
-					});
-				}}
+				onRefreshJobs={handleRefreshJobs}
+				onRefreshJobRuns={handleRefreshJobRuns}
+				onUpdateJobInterval={updateScheduledJob}
+				onToggleJobEnabled={toggleScheduledJobEnabled}
+				onDeleteJob={deleteScheduledJob}
+				onEnsureRunLoaded={ensureSessionLoaded}
 			/>
 		);
 	}
@@ -947,7 +1033,7 @@ export function App() {
 				activeSessionId={activeSessionId}
 				sessionState={sessionState}
 				onStartNewChat={handleStartNewChat}
-				onOpenJobs={() => handleRouteChange("jobs")}
+				onOpenJobs={handleOpenJobs}
 				onOpenSettings={() => handleRouteChange("settings")}
 				onActivateSession={(sessionId) => activateSession(sessionId)}
 				onLoadMoreSessions={handleLoadMoreSessions}

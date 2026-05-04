@@ -65,6 +65,9 @@ export class JobStore {
 	private readonly listEnabledJobsStatement;
 	private readonly listAllJobsStatement;
 	private readonly markJobRunStatement;
+	private readonly updateJobIntervalStatement;
+	private readonly pauseJobStatement;
+	private readonly resumeJobStatement;
 	private readonly updateNextRunStatement;
 	private readonly setEnabledStatement;
 	private readonly deleteJobStatement;
@@ -157,6 +160,29 @@ export class JobStore {
 				last_error = ?
 			WHERE id = ?
 		`);
+		this.updateJobIntervalStatement = this.database.prepare(`
+			UPDATE scheduled_jobs
+			SET
+				interval_ms = ?,
+				next_run_at = ?,
+				updated_at = ?
+			WHERE id = ?
+		`);
+		this.pauseJobStatement = this.database.prepare(`
+			UPDATE scheduled_jobs
+			SET
+				enabled = 0,
+				updated_at = ?
+			WHERE id = ?
+		`);
+		this.resumeJobStatement = this.database.prepare(`
+			UPDATE scheduled_jobs
+			SET
+				enabled = 1,
+				next_run_at = ?,
+				updated_at = ?
+			WHERE id = ?
+		`);
 		this.updateNextRunStatement = this.database.prepare(`
 			UPDATE scheduled_jobs
 			SET
@@ -226,6 +252,28 @@ export class JobStore {
 
 	markJobRun(jobId: string, runAt: number, errorMessage?: string): void {
 		this.markJobRunStatement.run(runAt, Date.now(), errorMessage ?? null, jobId);
+	}
+
+	updateInterval(jobId: string, intervalMs: number): ScheduledJob | null {
+		const now = Date.now();
+		this.updateJobIntervalStatement.run(intervalMs, now + intervalMs, now, jobId);
+		return this.getJob(jobId);
+	}
+
+	pauseJob(jobId: string): ScheduledJob | null {
+		this.pauseJobStatement.run(Date.now(), jobId);
+		return this.getJob(jobId);
+	}
+
+	resumeJob(jobId: string): ScheduledJob | null {
+		const currentJob = this.getJob(jobId);
+		if (!currentJob) {
+			return null;
+		}
+
+		const now = Date.now();
+		this.resumeJobStatement.run(now + currentJob.intervalMs, now, jobId);
+		return this.getJob(jobId);
 	}
 
 	updateNextRun(jobId: string, nextRunAt: number): void {

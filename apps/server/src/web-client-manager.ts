@@ -63,6 +63,10 @@ function createSseComment(comment: string): Uint8Array {
 export function createClientManager(state: ClientManagerState): ClientActions {
 	const { logger, clients, sessions, getToolsLabel } = state;
 
+	function isScheduledSession(session: SharedSessionState): boolean {
+		return session.title.startsWith("[Scheduled:");
+	}
+
 	function sendClientPayload(
 		clientId: string,
 		payload: ServerMessage,
@@ -148,6 +152,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 
 	function listSessions(): SessionSummary[] {
 		return Array.from(sessions.values())
+			.filter((session) => !isScheduledSession(session))
 			.sort((left, right) => right.updatedAt - left.updatedAt)
 			.map(buildSessionSummary);
 	}
