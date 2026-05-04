@@ -110,10 +110,10 @@ export default function SessionsScreen() {
               ]}
             >
               <ThemedText type="defaultSemiBold">Relay pairing</ThemedText>
-              <ThemedText style={[styles.pairingCode, { color: palette.text }]}> 
+              <ThemedText style={[styles.pairingCode, { color: palette.text }]}>
                 {pairingState?.pairingCode ?? "Issuing..."}
               </ThemedText>
-              <ThemedText style={[styles.statusHint, { color: palette.mutedText }]}> 
+              <ThemedText style={[styles.statusHint, { color: palette.mutedText }]}>
                 Paste this code into the agent server. Sending stays disabled until
                 the relay reports this phone as paired.
               </ThemedText>

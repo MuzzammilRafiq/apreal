@@ -1,3 +1,5 @@
+export type { ScheduledJobDetails } from "@apreal/shared";
+
 export type TranscriptToolCall = {
 	id: string;
 	name: string;
@@ -64,19 +66,4 @@ export type SessionCacheEntry = {
 	session: SessionSummary;
 	transcript: TranscriptMessage[];
 	transcriptLoaded: boolean;
-};
-
-export type ScheduledJobDetails = {
-	id: string;
-	name: string;
-	prompt: string;
-	intervalMs: number;
-	enabled: boolean;
-	lastRunAt: number | null;
-	nextRunAt: number;
-	createdAt: number;
-	updatedAt: number;
-	runCount: number;
-	maxCatchup: number;
-	lastError: string | null;
 };

@@ -1,3 +1,9 @@
+import type {
+  ClientJobsCommand,
+  ScheduledJobDetails,
+  ScheduledJobRunSummary,
+  ServerJobsMessage,
+} from "@apreal/shared";
 import type { RelayPairingStateMessage } from "@/lib/relay-auth";
 
 export type ClientMessage =
@@ -6,7 +12,8 @@ export type ClientMessage =
   | { type: "delete_session"; sessionId: string }
   | { type: "load_session"; sessionId: string }
   | { type: "load_sessions_page"; offset?: number; limit?: number }
-  | { type: "ping" };
+  | { type: "ping" }
+  | ClientJobsCommand;
 
 export type TranscriptToolCall = {
   id: string;
@@ -79,6 +86,8 @@ export type SessionCacheEntry = {
   transcriptLoaded: boolean;
 };
 
+export type JobRunSummary = ScheduledJobRunSummary;
+
 export type ServerMessage =
   | { type: "connected"; clientId: string; message: string; tools?: string }
   | RelayPairingStateMessage
@@ -116,4 +125,11 @@ export type ServerMessage =
       contentIndex: number;
     }
   | { type: "error"; message: string; sessionId?: string }
-  | { type: "pong" };
+  | { type: "pong" }
+  | ServerJobsMessage;
+
+export type {
+  ScheduledJobDetails,
+  ScheduledJobRunSummary,
+  ScheduledJobUpdateRequest,
+} from "@apreal/shared";

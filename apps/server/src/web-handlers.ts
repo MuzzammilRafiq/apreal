@@ -1,4 +1,5 @@
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ScheduledJobUpdateRequest } from "@apreal/shared";
 import type { ClientAppMessage } from "./protocol.ts";
 import {
 	createAgentController,
@@ -12,6 +13,7 @@ import {
 	appendTranscriptMessage,
 	applyAssistantMessageSnapshot,
 	buildSessionPayload,
+	buildSessionSummary,
 	createPendingAssistantMessage,
 	createSharedSession,
 	failRunningAssistantToolCalls,
@@ -26,6 +28,7 @@ import {
 import type { ClientActions, Logger } from "./web-client-manager.ts";
 import type { ClientConnection } from "./web-utils.ts";
 import { createLogger as createScopedLogger } from "./logger.ts";
+import type { JobStore, Scheduler } from "./scheduled-jobs/index.ts";
 
 export { type ClientActions } from "./web-client-manager.ts";
 
@@ -36,6 +39,8 @@ export interface HandlerState {
 	sessions: Map<string, SharedSessionState>;
 	chatStore: { saveSession(session: SharedSessionState): void; deleteSession?(sessionId: string): void };
 	customTools?: ToolDefinition[];
+	jobStore?: JobStore;
+	scheduler?: Scheduler;
 }
 
 export interface HandlerActions {
@@ -46,7 +51,129 @@ export function createHandlers(
 	state: HandlerState,
 	clientActions: ClientActions,
 ): HandlerActions {
-	const { logger, cwd, clients, sessions, chatStore, customTools } = state;
+	const { logger, cwd, clients, sessions, chatStore, customTools, jobStore, scheduler } = state;
+
+	function listScheduledJobRuns(jobName: string) {
+		const prefix = `[Scheduled: ${jobName}]`;
+		return [...sessions.values()]
+			.filter((session) => session.title.startsWith(prefix))
+			.sort((left, right) => right.updatedAt - left.updatedAt || right.createdAt - left.createdAt)
+			.map((session) => buildSessionSummary(session));
+	}
+
+	function sendJobsSnapshot(clientId: string) {
+		if (!jobStore) {
+			clientActions.sendError(clientId, "Scheduled jobs are not available on this server.");
+			return;
+		}
+
+		clientActions.sendClientPayload(clientId, {
+			type: "jobs_snapshot",
+			jobs: jobStore.listAllJobs(),
+		});
+	}
+
+	function sendJobRunsSnapshot(clientId: string, jobId: string) {
+		if (!jobStore) {
+			clientActions.sendError(clientId, "Scheduled jobs are not available on this server.");
+			return;
+		}
+
+		const job = jobStore.getJob(jobId);
+		if (!job) {
+			clientActions.sendError(clientId, "Scheduled job not found.");
+			return;
+		}
+
+		clientActions.sendClientPayload(clientId, {
+			type: "job_runs_snapshot",
+			jobId: job.id,
+			runs: listScheduledJobRuns(job.name),
+		});
+	}
+
+	function validateScheduledJobChanges(changes: ScheduledJobUpdateRequest): string | null {
+		if (changes.intervalMinutes !== undefined) {
+			if (!Number.isFinite(changes.intervalMinutes) || changes.intervalMinutes < 5) {
+				return "intervalMinutes must be a number greater than or equal to 5.";
+			}
+		}
+
+		if (changes.enabled !== undefined && typeof changes.enabled !== "boolean") {
+			return "enabled must be a boolean value.";
+		}
+
+		return null;
+	}
+
+	async function handleUpdateJob(clientId: string, jobId: string, changes: ScheduledJobUpdateRequest) {
+		if (!jobStore || !scheduler) {
+			clientActions.sendError(clientId, "Scheduled jobs are not available on this server.");
+			return;
+		}
+
+		const validationError = validateScheduledJobChanges(changes);
+		if (validationError) {
+			clientActions.sendError(clientId, validationError);
+			return;
+		}
+
+		const job = jobStore.getJob(jobId);
+		if (!job) {
+			clientActions.sendError(clientId, "Scheduled job not found.");
+			return;
+		}
+
+		let updatedJob = job;
+		if (changes.intervalMinutes !== undefined) {
+			const nextJob = jobStore.updateInterval(job.id, Math.round(changes.intervalMinutes * 60_000));
+			if (!nextJob) {
+				clientActions.sendError(clientId, "Scheduled job not found.");
+				return;
+			}
+			updatedJob = nextJob;
+		}
+
+		if (changes.enabled !== undefined) {
+			const nextJob = changes.enabled ? jobStore.resumeJob(job.id) : jobStore.pauseJob(job.id);
+			if (!nextJob) {
+				clientActions.sendError(clientId, "Scheduled job not found.");
+				return;
+			}
+			updatedJob = nextJob;
+		}
+
+		if (updatedJob.enabled) {
+			scheduler.scheduleJob(updatedJob);
+		} else {
+			await scheduler.reschedule(updatedJob.id);
+		}
+
+		clientActions.broadcast({
+			type: "job_updated",
+			job: updatedJob,
+		});
+	}
+
+	async function handleDeleteJob(clientId: string, jobId: string) {
+		if (!jobStore || !scheduler) {
+			clientActions.sendError(clientId, "Scheduled jobs are not available on this server.");
+			return;
+		}
+
+		const job = jobStore.getJob(jobId);
+		if (!job) {
+			clientActions.sendError(clientId, "Scheduled job not found.");
+			return;
+		}
+
+		jobStore.deleteJob(job.id);
+		await scheduler.reschedule(job.id);
+		clientActions.broadcast({
+			type: "job_deleted",
+			jobId: job.id,
+		});
+	}
 
 	function handleControllerEvent(session: SharedSessionState, event: AgentStreamEvent) {
 		let shouldPersist = false;
@@ -392,6 +519,26 @@ export function createHandlers(
 			}
 
 			clientActions.sendSessionSnapshot(clientId, session);
+			return;
+		}
+
+		if (message.type === "load_jobs") {
+			sendJobsSnapshot(clientId);
+			return;
+		}
+
+		if (message.type === "load_job_runs") {
+			sendJobRunsSnapshot(clientId, message.jobId);
+			return;
+		}
+
+		if (message.type === "update_job") {
+			await handleUpdateJob(clientId, message.jobId, message.changes);
+			return;
+		}
+
+		if (message.type === "delete_job") {
+			await handleDeleteJob(clientId, message.jobId);
 			return;
 		}
 

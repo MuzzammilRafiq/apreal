@@ -1,7 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import type {
+  ScheduledJobDetails,
+  ScheduledJobUpdateRequest,
+} from "@apreal/shared";
 import EventSource from "react-native-sse";
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -24,6 +29,7 @@ import {
 } from "@/lib/transport-config";
 import type {
   ClientMessage,
+  JobRunSummary,
   SessionCacheEntry,
   SessionSummary,
   ServerMessage,
@@ -64,6 +70,11 @@ type ChatClientContextValue = {
   lastError: string | null;
   loadingMoreSessions: boolean;
   canLoadMoreSessions: boolean;
+  jobs: ScheduledJobDetails[];
+  jobsLoaded: boolean;
+  loadingJobs: boolean;
+  jobRunsByJobId: Record<string, JobRunSummary[]>;
+  loadingJobRunsByJobId: Record<string, boolean>;
   activateSession: (
     sessionId: string | null,
     options?: ActivateSessionOptions,
@@ -72,6 +83,14 @@ type ChatClientContextValue = {
   updateTransportSettings: (settings: StoredTransportSettings) => void;
   requestSessionSnapshot: (sessionId: string | null) => void;
   loadMoreSessions: () => void;
+  refreshJobs: () => Promise<void>;
+  refreshJobRuns: (jobId: string) => Promise<void>;
+  updateScheduledJob: (
+    jobId: string,
+    changes: ScheduledJobUpdateRequest,
+  ) => Promise<void>;
+  deleteScheduledJob: (jobId: string) => Promise<void>;
+  getSessionCacheEntry: (sessionId: string) => SessionCacheEntry | null;
   sendPrompt: (prompt: string, sessionId?: string | null) => boolean;
   abortSession: (sessionId: string) => void;
   deleteSession: (sessionId: string) => Promise<void>;
@@ -108,12 +127,43 @@ function upsertSessionInList(
   return nextSessions;
 }
 
+function upsertRunInList(runs: JobRunSummary[], run: JobRunSummary) {
+  const nextRuns = runs.filter((entry) => entry.id !== run.id);
+  nextRuns.push(run);
+  nextRuns.sort((left, right) => right.updatedAt - left.updatedAt);
+  return nextRuns;
+}
+
 function createSummaryOnlyCacheEntry(session: SessionSummary): SessionCacheEntry {
   return {
     session,
     transcript: [],
     transcriptLoaded: false,
   };
+}
+
+function sortJobs(jobs: ScheduledJobDetails[]): ScheduledJobDetails[] {
+  return [...jobs].sort((left, right) => {
+    if (left.enabled !== right.enabled) {
+      return Number(right.enabled) - Number(left.enabled);
+    }
+
+    return left.nextRunAt - right.nextRunAt || left.name.localeCompare(right.name);
+  });
+}
+
+function upsertJobInList(
+  jobs: ScheduledJobDetails[],
+  job: ScheduledJobDetails,
+): ScheduledJobDetails[] {
+  return sortJobs([...jobs.filter((entry) => entry.id !== job.id), job]);
+}
+
+function removeJobFromList(
+  jobs: ScheduledJobDetails[],
+  jobId: string,
+): ScheduledJobDetails[] {
+  return jobs.filter((entry) => entry.id !== jobId);
 }
 
 function removeSessionFromList(
@@ -147,6 +197,15 @@ function insertSegmentInOrder(
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unable to connect right now.";
+}
+
+function parseScheduledJobNameFromTitle(title: string): string | null {
+  const match = /^\[Scheduled: ([^\]]+)\]/.exec(title);
+  return match?.[1] ?? null;
+}
+
+function isScheduledSessionSummary(session: { title: string }): boolean {
+  return parseScheduledJobNameFromTitle(session.title) !== null;
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -256,15 +315,30 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
   const [loadingMoreSessions, setLoadingMoreSessions] = useState(false);
   const [serverLoadedSessionCount, setServerLoadedSessionCount] = useState(0);
   const [totalSessionCount, setTotalSessionCount] = useState<number | null>(null);
+  const [jobs, setJobs] = useState<ScheduledJobDetails[]>([]);
+  const [jobsLoaded, setJobsLoaded] = useState(false);
+  const [loadingJobs, setLoadingJobs] = useState(false);
+  const [jobRunsByJobId, setJobRunsByJobId] = useState<
+    Record<string, JobRunSummary[]>
+  >({});
+  const [loadingJobRunsByJobId, setLoadingJobRunsByJobId] = useState<
+    Record<string, boolean>
+  >({});
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const activeSessionIdRef = useRef<string | null>(activeSessionId);
   const pendingDraftRef = useRef(pendingDraft);
   const sessionsRef = useRef(sessions);
   const sessionCacheRef = useRef(sessionCache);
+  const jobsRef = useRef(jobs);
+  const loadingJobsRef = useRef(loadingJobs);
+  const loadingJobRunsByJobIdRef = useRef(loadingJobRunsByJobId);
   const transportSettingsRef = useRef(transportSettings);
   const pendingConnectionResolversRef = useRef(new Set<() => void>());
   const resolvePendingConnectionsRef = useRef<() => void>(() => {});
+  const sendClientMessageRef = useRef<(message: ClientMessage) => Promise<void>>(
+    async () => {},
+  );
   const ensureSessionLoadedRef = useRef<(sessionId: string | null) => void>(
     () => {},
   );
@@ -294,6 +368,18 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     sessionCacheRef.current = sessionCache;
   }, [sessionCache]);
+
+  useEffect(() => {
+    jobsRef.current = jobs;
+  }, [jobs]);
+
+  useEffect(() => {
+    loadingJobsRef.current = loadingJobs;
+  }, [loadingJobs]);
+
+  useEffect(() => {
+    loadingJobRunsByJobIdRef.current = loadingJobRunsByJobId;
+  }, [loadingJobRunsByJobId]);
 
   useEffect(() => {
     transportSettingsRef.current = transportSettings;
@@ -413,6 +499,11 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
     setServerLoadedSessionCount(0);
     setTotalSessionCount(null);
     setLoadingMoreSessions(false);
+    setJobs([]);
+    setJobsLoaded(false);
+    setLoadingJobs(false);
+    setJobRunsByJobId({});
+    setLoadingJobRunsByJobId({});
     setRelayAuth(null);
     setStreamRequested(false);
     setShouldRestoreLastSession(false);
@@ -515,6 +606,10 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
     throw new Error(errorMessage);
   }
 
+  useEffect(() => {
+    sendClientMessageRef.current = sendClientMessage;
+  }, [relayAuth?.token, connected, transportConfig.messageUrl]);
+
   function requestSessionPage(offset = 0, limit = SESSION_PAGE_SIZE) {
     void sendClientMessage({ type: "load_sessions_page", offset, limit }).catch(
       (error) => {
@@ -527,6 +622,91 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     requestSessionPageRef.current = requestSessionPage;
   }, [relayAuth?.token, connected, transportConfig.messageUrl]);
+
+  const refreshJobs = useCallback(async () => {
+    if (loadingJobsRef.current) {
+      return;
+    }
+
+    setLoadingJobs((previous) => (previous ? previous : true));
+    setLastError(null);
+
+    try {
+      await sendClientMessageRef.current({ type: "load_jobs" });
+    } catch (error) {
+      setLoadingJobs(false);
+      const message = getErrorMessage(error);
+      setLastError(message);
+      throw new Error(message);
+    }
+  }, []);
+
+  const refreshJobRuns = useCallback(async (jobId: string) => {
+    if (loadingJobRunsByJobIdRef.current[jobId]) {
+      return;
+    }
+
+    setLoadingJobRunsByJobId((previous) => {
+      if (previous[jobId]) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        [jobId]: true,
+      };
+    });
+    setLastError(null);
+
+    try {
+      await sendClientMessageRef.current({ type: "load_job_runs", jobId });
+    } catch (error) {
+      setLoadingJobRunsByJobId((previous) => {
+        if (!previous[jobId]) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          [jobId]: false,
+        };
+      });
+      const message = getErrorMessage(error);
+      setLastError(message);
+      throw new Error(message);
+    }
+  }, []);
+
+  async function updateScheduledJob(
+    jobId: string,
+    changes: ScheduledJobUpdateRequest,
+  ) {
+    setLastError(null);
+
+    try {
+      await sendClientMessage({
+        type: "update_job",
+        jobId,
+        changes,
+      });
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setLastError(message);
+      throw new Error(message);
+    }
+  }
+
+  async function deleteScheduledJob(jobId: string) {
+    setLastError(null);
+
+    try {
+      await sendClientMessage({ type: "delete_job", jobId });
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setLastError(message);
+      throw new Error(message);
+    }
+  }
 
   function ensureSessionLoaded(sessionId: string | null) {
     if (!sessionId) {
@@ -577,6 +757,47 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
     activateSessionRef.current = activateSession;
   }, [relayAuth?.token, connected, transportConfig.messageUrl]);
 
+  function findScheduledJobIdForSession(session: { title: string }) {
+    const jobName = parseScheduledJobNameFromTitle(session.title);
+    if (!jobName) {
+      return null;
+    }
+
+    return jobsRef.current.find((job) => job.name === jobName)?.id ?? null;
+  }
+
+  function upsertJobRunForSession(session: JobRunSummary) {
+    const jobId = findScheduledJobIdForSession(session);
+    if (!jobId) {
+      return;
+    }
+
+    setJobRunsByJobId((previous) => ({
+      ...previous,
+      [jobId]: upsertRunInList(previous[jobId] ?? [], session),
+    }));
+  }
+
+  function removeRunLocally(sessionId: string) {
+    setJobRunsByJobId((previous) => {
+      let changed = false;
+      const next: Record<string, JobRunSummary[]> = {};
+
+      for (const [jobId, runs] of Object.entries(previous)) {
+        const filteredRuns = runs.filter((run) => run.id !== sessionId);
+        if (filteredRuns.length !== runs.length) {
+          changed = true;
+        }
+
+        if (filteredRuns.length > 0) {
+          next[jobId] = filteredRuns;
+        }
+      }
+
+      return changed ? next : previous;
+    });
+  }
+
   function upsertSessionSnapshot(
     session: SessionSummary,
     transcript: TranscriptMessage[],
@@ -590,15 +811,25 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
       });
       return nextCache;
     });
-    setSessions((previous) => upsertSessionInList(previous, session));
+
+    if (!isScheduledSessionSummary(session)) {
+      setSessions((previous) => upsertSessionInList(previous, session));
+      return;
+    }
+
+    upsertJobRunForSession(session);
   }
 
   useEffect(() => {
     upsertSessionSnapshotRef.current = upsertSessionSnapshot;
   }, []);
 
-  function requestSessionSnapshot(sessionId: string | null) {
-    ensureSessionLoaded(sessionId);
+  const requestSessionSnapshot = useCallback((sessionId: string | null) => {
+    ensureSessionLoadedRef.current(sessionId);
+  }, []);
+
+  function getSessionCacheEntry(sessionId: string) {
+    return sessionCache.get(sessionId) ?? null;
   }
 
   function applyAssistantDelta(
@@ -787,6 +1018,11 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
     setStreamRequested(false);
     setServerLoadedSessionCount(0);
     setTotalSessionCount(null);
+    setJobs([]);
+    setJobsLoaded(false);
+    setLoadingJobs(false);
+    setJobRunsByJobId({});
+    setLoadingJobRunsByJobId({});
 
     const refreshRelayAuth = async () => {
       try {
@@ -958,7 +1194,6 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
           break;
         }
         case "session_summary_updated": {
-          setSessions((previous) => upsertSessionInList(previous, message.session));
           setSessionCache((previous) => {
             const nextCache = new Map(previous);
             const cached = nextCache.get(message.session.id);
@@ -973,35 +1208,43 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
             );
             return nextCache;
           });
-          setTotalSessionCount((previous) => {
-            if (previous === null) {
-              return Math.max(sessionsRef.current.length, 1);
-            }
-            const exists = sessionsRef.current.some(
-              (session) => session.id === message.session.id,
-            );
-            return exists ? previous : previous + 1;
-          });
+          if (isScheduledSessionSummary(message.session)) {
+            upsertJobRunForSession(message.session);
+          } else {
+            setSessions((previous) => upsertSessionInList(previous, message.session));
+            setTotalSessionCount((previous) => {
+              if (previous === null) {
+                return Math.max(sessionsRef.current.length, 1);
+              }
+              const exists = sessionsRef.current.some(
+                (session) => session.id === message.session.id,
+              );
+              return exists ? previous : previous + 1;
+            });
 
-          if (activeSessionIdRef.current === message.session.id) {
-            ensureSessionLoadedRef.current(message.session.id);
+            if (activeSessionIdRef.current === message.session.id) {
+              ensureSessionLoadedRef.current(message.session.id);
+            }
           }
           break;
         }
         case "session_created": {
           setLastError(null);
           upsertSessionSnapshotRef.current(message.session, message.transcript);
-          setTotalSessionCount((previous) => {
-            if (previous === null) {
-              return Math.max(sessionsRef.current.length, 1);
-            }
-            const exists = sessionsRef.current.some(
-              (session) => session.id === message.session.id,
-            );
-            return exists ? previous : previous + 1;
-          });
-          setPendingDraft(false);
-          activateSessionRef.current(message.session.id, { load: false });
+
+          if (!isScheduledSessionSummary(message.session)) {
+            setTotalSessionCount((previous) => {
+              if (previous === null) {
+                return Math.max(sessionsRef.current.length, 1);
+              }
+              const exists = sessionsRef.current.some(
+                (session) => session.id === message.session.id,
+              );
+              return exists ? previous : previous + 1;
+            });
+            setPendingDraft(false);
+            activateSessionRef.current(message.session.id, { load: false });
+          }
           break;
         }
         case "session_snapshot": {
@@ -1011,6 +1254,61 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
         }
         case "session_deleted": {
           removeSessionLocally(message.sessionId);
+          removeRunLocally(message.sessionId);
+          break;
+        }
+        case "jobs_snapshot": {
+          setLoadingJobs(false);
+          setJobsLoaded(true);
+          setJobs(sortJobs(message.jobs));
+          setJobRunsByJobId((previous) => {
+            const validJobIds = new Set(message.jobs.map((job) => job.id));
+            const nextEntries = Object.entries(previous).filter(([jobId]) =>
+              validJobIds.has(jobId),
+            );
+
+            return nextEntries.length === Object.keys(previous).length
+              ? previous
+              : Object.fromEntries(nextEntries);
+          });
+          break;
+        }
+        case "job_runs_snapshot": {
+          setLoadingJobRunsByJobId((previous) => ({
+            ...previous,
+            [message.jobId]: false,
+          }));
+          setJobRunsByJobId((previous) => ({
+            ...previous,
+            [message.jobId]: message.runs,
+          }));
+          break;
+        }
+        case "job_updated": {
+          setJobsLoaded(true);
+          setJobs((previous) => upsertJobInList(previous, message.job));
+          break;
+        }
+        case "job_deleted": {
+          setJobs((previous) => removeJobFromList(previous, message.jobId));
+          setJobRunsByJobId((previous) => {
+            if (!(message.jobId in previous)) {
+              return previous;
+            }
+
+            const next = { ...previous };
+            delete next[message.jobId];
+            return next;
+          });
+          setLoadingJobRunsByJobId((previous) => {
+            if (!(message.jobId in previous)) {
+              return previous;
+            }
+
+            const next = { ...previous };
+            delete next[message.jobId];
+            return next;
+          });
           break;
         }
         case "assistant_delta": {
@@ -1035,6 +1333,7 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
         }
         case "error": {
           setPendingDraft(false);
+          setLoadingJobs(false);
           setLastError(message.message);
           break;
         }
@@ -1046,6 +1345,7 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
 
     eventSource.addEventListener("error", () => {
       setConnected(false);
+      setLoadingJobs(false);
       setLastError((current) => current ?? STREAM_DISCONNECTED_MESSAGE);
     });
 
@@ -1095,11 +1395,21 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
         lastError,
         loadingMoreSessions,
         canLoadMoreSessions,
+        jobs,
+        jobsLoaded,
+        loadingJobs,
+        jobRunsByJobId,
+        loadingJobRunsByJobId,
         activateSession,
         consumeLastSessionRestore,
         updateTransportSettings,
         requestSessionSnapshot,
         loadMoreSessions,
+        refreshJobs,
+        refreshJobRuns,
+        updateScheduledJob,
+        deleteScheduledJob,
+        getSessionCacheEntry,
         sendPrompt,
         abortSession,
         deleteSession,

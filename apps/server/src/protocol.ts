@@ -1,10 +1,17 @@
+import type {
+	ClientJobsCommand,
+	ScheduledJobUpdateRequest,
+	ServerJobsMessage,
+} from "@apreal/shared";
+
 export type ClientAppMessage =
 	| { type: "prompt"; prompt: string; sessionId?: string | null }
 	| { type: "abort"; sessionId: string }
 	| { type: "delete_session"; sessionId: string }
 	| { type: "load_session"; sessionId: string }
 	| { type: "load_sessions_page"; offset?: number; limit?: number }
-	| { type: "ping" };
+	| { type: "ping" }
+	| ClientJobsCommand;
 
 export type ServerAppMessage<SessionSummary, TranscriptMessage> =
 	| { type: "connected"; clientId: string; message: string; tools?: string }
@@ -16,7 +23,8 @@ export type ServerAppMessage<SessionSummary, TranscriptMessage> =
 	| { type: "assistant_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
 	| { type: "assistant_thinking_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
 	| { type: "error"; message: string; sessionId?: string }
-	| { type: "pong" };
+	| { type: "pong" }
+	| ServerJobsMessage;
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -32,6 +40,33 @@ function normalizeRawMessage(rawMessage: string | Buffer | unknown): unknown {
 	}
 
 	return rawMessage;
+}
+
+function parseJobChanges(value: unknown): ScheduledJobUpdateRequest | null {
+	if (!isObjectRecord(value)) {
+		return null;
+	}
+
+	const hasIntervalMinutes = "intervalMinutes" in value;
+	const hasEnabled = "enabled" in value;
+	if (!hasIntervalMinutes && !hasEnabled) {
+		return null;
+	}
+
+	const intervalMinutes = hasIntervalMinutes ? value.intervalMinutes : undefined;
+	const enabled = hasEnabled ? value.enabled : undefined;
+	if (intervalMinutes !== undefined && typeof intervalMinutes !== "number") {
+		return null;
+	}
+
+	if (enabled !== undefined && typeof enabled !== "boolean") {
+		return null;
+	}
+
+	return {
+		...(intervalMinutes !== undefined ? { intervalMinutes } : {}),
+		...(enabled !== undefined ? { enabled } : {}),
+	};
 }
 
 export function parseClientAppMessage(rawMessage: string | Buffer | unknown): ClientAppMessage | null {
@@ -76,6 +111,31 @@ export function parseClientAppMessage(rawMessage: string | Buffer | unknown): Cl
 
 	if (value.type === "ping") {
 		return { type: "ping" };
+	}
+
+	if (value.type === "load_jobs") {
+		return { type: "load_jobs" };
+	}
+
+	if (value.type === "load_job_runs" && typeof value.jobId === "string") {
+		return { type: "load_job_runs", jobId: value.jobId };
+	}
+
+	if (value.type === "update_job" && typeof value.jobId === "string") {
+		const changes = parseJobChanges(value.changes);
+		if (!changes) {
+			return null;
+		}
+
+		return {
+			type: "update_job",
+			jobId: value.jobId,
+			changes,
+		};
+	}
+
+	if (value.type === "delete_job" && typeof value.jobId === "string") {
+		return { type: "delete_job", jobId: value.jobId };
 	}
 
 	return null;

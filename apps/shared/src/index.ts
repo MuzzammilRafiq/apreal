@@ -124,6 +124,80 @@ export type RelayAgentMessage = {
 	message: unknown;
 };
 
+export type ScheduledJobDetails = {
+	id: string;
+	name: string;
+	prompt: string;
+	intervalMs: number;
+	enabled: boolean;
+	lastRunAt: number | null;
+	nextRunAt: number;
+	createdAt: number;
+	updatedAt: number;
+	runCount: number;
+	maxCatchup: number;
+	lastError: string | null;
+};
+
+export type ScheduledJobUpdateRequest = {
+	intervalMinutes?: number;
+	enabled?: boolean;
+};
+
+export type ScheduledJobRunSummary = {
+	id: string;
+	title: string;
+	preview: string;
+	createdAt: number;
+	updatedAt: number;
+	revision: number;
+	busy: boolean;
+	model: string | null;
+	messageCount: number;
+	contextUsage: {
+		tokens: number | null;
+		contextWindow: number;
+		percent: number | null;
+	} | null;
+};
+
+export type ClientJobsCommand =
+	| {
+		type: "load_jobs";
+	}
+	| {
+		type: "load_job_runs";
+		jobId: string;
+	}
+	| {
+		type: "update_job";
+		jobId: string;
+		changes: ScheduledJobUpdateRequest;
+	}
+	| {
+		type: "delete_job";
+		jobId: string;
+	};
+
+export type ServerJobsMessage =
+	| {
+		type: "jobs_snapshot";
+		jobs: ScheduledJobDetails[];
+	}
+	| {
+		type: "job_updated";
+		job: ScheduledJobDetails;
+	}
+	| {
+		type: "job_deleted";
+		jobId: string;
+	}
+	| {
+		type: "job_runs_snapshot";
+		jobId: string;
+		runs: ScheduledJobRunSummary[];
+	};
+
 const PRINCIPAL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;
 const PAIRING_CODE_PATTERN = /^[A-Z0-9]{6,16}$/;
 

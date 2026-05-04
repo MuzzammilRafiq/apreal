@@ -240,7 +240,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	const scheduler = new Scheduler(jobStore, schedulerLogger, executor);
 	customTools = createCustomTools(jobStore, scheduler);
 	const handlers = createHandlers(
-		{ logger, cwd, clients, sessions, chatStore, customTools },
+		{ logger, cwd, clients, sessions, chatStore, customTools, jobStore, scheduler },
 		clientManager,
 	);
 	const relay = createRelay(
