@@ -5,7 +5,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/themed-text";
-import { Colors } from "@/constants/theme";
+import { Colors, Radii } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useChatClient } from "@/providers/chat-client-provider";
 
@@ -468,7 +468,7 @@ const styles = StyleSheet.create({
   },
   statusCard: {
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: Radii.surface,
     padding: 16,
     gap: 8,
   },
@@ -484,7 +484,7 @@ const styles = StyleSheet.create({
   },
   errorCard: {
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: Radii.surface,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
@@ -522,7 +522,7 @@ const styles = StyleSheet.create({
   },
   emptyCard: {
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: Radii.surface,
     padding: 18,
     gap: 8,
   },
@@ -532,7 +532,7 @@ const styles = StyleSheet.create({
   },
   sessionCard: {
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: Radii.surface,
     paddingHorizontal: 16,
     paddingVertical: 12,
     shadowOpacity: 0.05,
@@ -586,7 +586,7 @@ const styles = StyleSheet.create({
   },
   loadMoreButton: {
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: Radii.surface,
     paddingHorizontal: 16,
     paddingVertical: 14,
     alignItems: "center",

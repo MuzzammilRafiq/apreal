@@ -81,6 +81,10 @@ export const Colors = {
   },
 };
 
+export const Radii = {
+  surface: 16,
+} as const;
+
 export const Fonts = Platform.select({
   ios: {
     /** iOS `UIFontDescriptorSystemDesignDefault` */

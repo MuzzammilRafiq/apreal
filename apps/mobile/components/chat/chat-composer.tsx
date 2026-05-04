@@ -7,7 +7,7 @@ import {
   type TextInputProps,
 } from "react-native";
 
-import { Colors } from "@/constants/theme";
+import { Colors, Radii } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
 type ChatComposerProps = {
@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
   },
   shell: {
     borderWidth: 1,
-    borderRadius: 4,
+    borderRadius: Radii.surface,
     paddingLeft: 10,
     paddingRight: 6,
     paddingVertical: 8,
@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
   sendButton: {
     width: 36,
     height: 36,
-    borderRadius: 4,
+    borderRadius: Radii.surface,
     alignItems: "center",
     justifyContent: "center",
   },

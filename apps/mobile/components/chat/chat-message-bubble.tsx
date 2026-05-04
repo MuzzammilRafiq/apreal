@@ -20,7 +20,7 @@ import "prismjs/components/prism-typescript";
 import "prismjs/components/prism-yaml";
 import { ThemedText } from "@/components/themed-text";
 import { IconSymbol } from "@/components/ui/icon-symbol";
-import { Colors, Fonts } from "@/constants/theme";
+import { Colors, Fonts, Radii } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import type {
   TranscriptMessage,
@@ -350,7 +350,7 @@ function CodeBlock({
         inheritedStyles,
         {
           backgroundColor: palette.codeBackground,
-          borderRadius: 4,
+          borderRadius: Radii.surface,
           overflow: "hidden",
           marginBottom: 8,
         },
@@ -600,7 +600,7 @@ function createMarkdownStyles(palette: (typeof Colors)["light"]) {
       backgroundColor: palette.codeBackground,
       paddingHorizontal: 5,
       paddingVertical: 1,
-      borderRadius: 4,
+      borderRadius: Radii.surface,
       fontFamily: Fonts.mono,
     },
     link: {
@@ -639,16 +639,16 @@ const styles = StyleSheet.create({
   },
   bubble: {
     maxWidth: "86%",
-    borderRadius: 4,
+    borderRadius: Radii.surface,
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderWidth: 1,
   },
   assistantBubble: {
-    borderBottomLeftRadius: 4,
+    borderBottomLeftRadius: Radii.surface,
   },
   userBubble: {
-    borderBottomRightRadius: 4,
+    borderBottomRightRadius: Radii.surface,
   },
   userMessage: {
     fontSize: 14,
@@ -671,7 +671,7 @@ const styles = StyleSheet.create({
   },
   toolCard: {
     borderWidth: 1,
-    borderRadius: 4,
+    borderRadius: Radii.surface,
     paddingHorizontal: 8,
     paddingVertical: 6,
   },
@@ -696,7 +696,7 @@ const styles = StyleSheet.create({
   },
   thinkingShell: {
     borderWidth: 1,
-    borderRadius: 4,
+    borderRadius: Radii.surface,
     paddingHorizontal: 8,
     paddingVertical: 6,
     gap: 4,
@@ -718,7 +718,7 @@ const styles = StyleSheet.create({
   },
   systemCard: {
     borderWidth: 1,
-    borderRadius: 4,
+    borderRadius: Radii.surface,
     padding: 10,
   },
 });

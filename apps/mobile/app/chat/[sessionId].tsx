@@ -17,7 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { ChatMessageBubble } from "@/components/chat/chat-message-bubble";
 import { ThemedText } from "@/components/themed-text";
-import { Colors } from "@/constants/theme";
+import { Colors, Radii } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useChatClient } from "@/providers/chat-client-provider";
 
@@ -401,7 +401,7 @@ const styles = StyleSheet.create({
   navButton: {
     width: 36,
     height: 36,
-    borderRadius: 4,
+    borderRadius: Radii.surface,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -425,7 +425,7 @@ const styles = StyleSheet.create({
   },
   errorCard: {
     borderWidth: 1,
-    borderRadius: 4,
+    borderRadius: Radii.surface,
     marginHorizontal: 16,
     marginTop: 12,
     paddingHorizontal: 14,
@@ -433,7 +433,7 @@ const styles = StyleSheet.create({
   },
   pairingCard: {
     borderWidth: 1,
-    borderRadius: 4,
+    borderRadius: Radii.surface,
     marginHorizontal: 16,
     marginTop: 12,
     paddingHorizontal: 14,
