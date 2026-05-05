@@ -3,7 +3,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const relayRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const relayDistDir = join(relayRoot, "dist");
+const relayDistDir = join(relayRoot, "dist", "src");
 const sharedDistFile = join(relayRoot, "..", "shared", "dist", "index.js");
 const bundledSharedFile = join(relayDistDir, "shared.js");
 const sharedImportPattern = /from\s+(["'])@apreal\/shared\1/g;
