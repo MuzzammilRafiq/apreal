@@ -16,24 +16,24 @@ import {
 	type RelayReauthenticateRequest,
 	type RelayReauthenticateResponse,
 } from "@apreal/shared";
-import { createChatStore } from "./chat-store.ts";
-import { getConfiguredToolsLabel } from "./agent-tools.ts";
-import { createLogger } from "./logger.ts";
+import { createChatStore } from "../chat-store.ts";
+import { getConfiguredToolsLabel } from "../agent-tools.ts";
+import { createLogger } from "../logger.ts";
 import {
 	ensureRelayAgentAuth,
 	getRelayServerUrl,
-} from "./relay-auth.ts";
-import { createCustomTools } from "./tools/index.ts";
-import { createJobExecutor, JobStore, Scheduler } from "./scheduled-jobs/index.ts";
-import { getErrorMessage, prewarmAgentRuntime } from "./session.ts";
-import { createClientManager, type Logger } from "./web-client-manager.ts";
-import { createHandlers } from "./web-handlers.ts";
-import { startHttpServer } from "./web-http-server.ts";
-import { buildSessionSummary, type SharedSessionState } from "./web-session-state.ts";
+} from "../relay-auth.ts";
+import { createCustomTools } from "../tools/index.ts";
+import { createJobExecutor, JobStore, Scheduler } from "../scheduled-jobs/index.ts";
+import { getErrorMessage, prewarmAgentRuntime } from "../session.ts";
+import { createClientManager, type Logger } from "./client-manager.ts";
+import { createHandlers } from "./handlers.ts";
+import { startHttpServer } from "./http-server.ts";
+import { buildSessionSummary, type SharedSessionState } from "./session-state.ts";
 import {
 	createRelay,
 	type RelayMutableState,
-} from "./web-relay.ts";
+} from "./relay.ts";
 import {
 	createCorsHeaders,
 	isLoopbackClientRequest,
@@ -45,7 +45,7 @@ import {
 	SERVER_SRC_DIR,
 	type ClientConnection,
 	type ServerMessage,
-} from "./web-utils.ts";
+} from "./utils.ts";
 
 export type {
 	SessionSummary,
@@ -56,7 +56,7 @@ export type {
 	TranscriptThinkingSegment,
 	TranscriptToolCall,
 	TranscriptToolCallSegment,
-} from "./web-session-state.ts";
+} from "./session-state.ts";
 
 const WEB_DIST_DIR = resolve(SERVER_SRC_DIR, "..", "..", "web", "dist");
 const WEB_INDEX_PATH = join(WEB_DIST_DIR, "index.html");
@@ -211,7 +211,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	}
 
 	const clients = new Map<string, ClientConnection>();
-	const sessions = new Map<string, import("./web-session-state.ts").SharedSessionState>();
+	const sessions = new Map<string, import("./session-state.ts").SharedSessionState>();
 	const dbPath = join(homedir(), ".pi", "agent", "sessions.db");
 	const chatStore = createChatStore(dbPath);
 	const jobStore = new JobStore(dbPath);

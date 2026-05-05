@@ -7,8 +7,8 @@ import {
 import type {
 	SessionSummary,
 	TranscriptMessage,
-} from "./web-session-state.ts";
-import type { ServerAppMessage } from "./protocol.ts";
+} from "./session-state.ts";
+import type { ServerAppMessage } from "../protocol.ts";
 
 export const DEFAULT_PORT = 3000;
 export const DEFAULT_SESSION_PAGE_LIMIT = 50;
@@ -40,7 +40,7 @@ export {
 	type TranscriptThinkingSegment,
 	type TranscriptToolCall,
 	type TranscriptToolCallSegment,
-} from "./web-session-state.ts";
+} from "./session-state.ts";
 
 export function parseRelayAgentCommand(rawMessage: string): RelayAgentCommand | null {
 	let value: unknown;

@@ -10,16 +10,16 @@ import {
 	readClientTokenFromRequest,
 	reauthenticateRelayAgent,
 	verifyRelayClientAccess,
-} from "./relay-auth.ts";
-import { parseClientAppMessage, type ClientAppMessage } from "./protocol.ts";
+} from "../relay-auth.ts";
+import { parseClientAppMessage, type ClientAppMessage } from "../protocol.ts";
 import {
 	isObjectRecord,
 	parseRelayAgentCommand,
 	RELAY_STREAM_RETRY_MS,
 	type ServerMessage,
-} from "./web-utils.ts";
-import { getErrorMessage } from "./session.ts";
-import type { ClientActions, Logger } from "./web-client-manager.ts";
+} from "./utils.ts";
+import { getErrorMessage } from "../session.ts";
+import type { ClientActions, Logger } from "./client-manager.ts";
 
 export interface RelayMutableState {
 	auth: Awaited<ReturnType<typeof ensureRelayAgentAuth>> | null;
@@ -35,7 +35,7 @@ export interface RelayState {
 	logger: Logger;
 	relayUrl: string;
 	relayState: RelayMutableState;
-	clients: Map<string, import("./web-utils.ts").ClientConnection>;
+	clients: Map<string, import("./utils.ts").ClientConnection>;
 }
 
 export interface RelayActions {
@@ -126,7 +126,7 @@ export function createRelay(
 		throw new Error(message);
 	}
 
-	function createRelaySendPayload(clientId: string): import("./web-utils.ts").ClientConnection["send"] {
+	function createRelaySendPayload(clientId: string): import("./utils.ts").ClientConnection["send"] {
 		return (payload) => {
 			void postRelayServerMessage(clientId, payload).catch((error) => {
 				logger.warn("failed to deliver relay client payload", {

@@ -1,4 +1,4 @@
-import { runWebServer } from "./web.ts";
+import { runWebServer } from "./web";
 import { fileURLToPath } from "node:url";
 // import dotenv from "dotenv";
 

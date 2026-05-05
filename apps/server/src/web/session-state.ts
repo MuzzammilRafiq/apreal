@@ -1,5 +1,5 @@
-import { summarizePrompt } from "./logger.ts";
-import type { AgentContextUsage, AgentController, AgentStreamEvent } from "./session.ts";
+import { summarizePrompt } from "../logger.ts";
+import type { AgentContextUsage, AgentController, AgentStreamEvent } from "../session.ts";
 
 export type TranscriptMessage = {
 	id: string;

@@ -1,12 +1,12 @@
-import { getConfiguredToolsLabel } from "./agent-tools.ts";
-import type { ClientAppMessage } from "./protocol.ts";
-import { parseClientAppMessage } from "./protocol.ts";
+import { getConfiguredToolsLabel } from "../agent-tools.ts";
+import type { ClientAppMessage } from "../protocol.ts";
+import { parseClientAppMessage } from "../protocol.ts";
 import {
 	buildSessionPayload,
 	buildSessionSummary,
 	type SessionSummary,
 	type SharedSessionState,
-} from "./web-session-state.ts";
+} from "./session-state.ts";
 import {
 	createCorsHeaders,
 	json,
@@ -17,8 +17,8 @@ import {
 	type ClientConnection,
 	type ClientTransport,
 	type ServerMessage,
-} from "./web-utils.ts";
-import type { createLogger } from "./logger.ts";
+} from "./utils.ts";
+import type { createLogger } from "../logger.ts";
 
 export type Logger = ReturnType<typeof createLogger>;
 

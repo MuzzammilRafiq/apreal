@@ -1,12 +1,12 @@
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { ScheduledJobUpdateRequest } from "@apreal/shared";
-import type { ClientAppMessage } from "./protocol.ts";
+import type { ClientAppMessage } from "../protocol.ts";
 import {
 	createAgentController,
 	formatModelLabel,
 	getErrorMessage,
 	type AgentStreamEvent,
-} from "./session.ts";
+} from "../session.ts";
 import {
 	appendAssistantText,
 	appendAssistantThinking,
@@ -24,13 +24,13 @@ import {
 	updateAssistantToolCallStatus,
 	upsertAssistantToolCall,
 	type SharedSessionState,
-} from "./web-session-state.ts";
-import type { ClientActions, Logger } from "./web-client-manager.ts";
-import type { ClientConnection } from "./web-utils.ts";
-import { createLogger as createScopedLogger } from "./logger.ts";
-import type { JobStore, Scheduler } from "./scheduled-jobs/index.ts";
+} from "./session-state.ts";
+import type { ClientActions, Logger } from "./client-manager.ts";
+import type { ClientConnection } from "./utils.ts";
+import { createLogger as createScopedLogger } from "../logger.ts";
+import type { JobStore, Scheduler } from "../scheduled-jobs/index.ts";
 
-export { type ClientActions } from "./web-client-manager.ts";
+export { type ClientActions } from "./client-manager.ts";
 
 export interface HandlerState {
 	logger: Logger;

@@ -2,8 +2,8 @@ import { createServer, type IncomingMessage, type Server as HttpServer, type Ser
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { createCorsHeaders } from "./web-utils.ts";
-import { getErrorMessage } from "./session.ts";
+import { createCorsHeaders } from "./utils.ts";
+import { getErrorMessage } from "../session.ts";
 
 export function createNodeRequest(request: IncomingMessage, response: ServerResponse): Request {
 	const protocol = request.headers["x-forwarded-proto"] ?? "http";
