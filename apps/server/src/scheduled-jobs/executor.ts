@@ -22,9 +22,9 @@ import {
 	updateAssistantToolCallStatus,
 	upsertAssistantToolCall,
 	type SharedSessionState,
-} from "../web-session-state.ts";
-import type { ClientActions } from "../web-handlers.ts";
-import type { ClientConnection } from "../web-utils.ts";
+} from "../web/session-state.ts";
+import type { ClientActions } from "../web/handlers.ts";
+import type { ClientConnection } from "../web/utils.ts";
 import type { ScheduledJob } from "./types.ts";
 import type { JobStore } from "./store.ts";
 
