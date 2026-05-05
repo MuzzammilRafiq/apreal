@@ -1190,6 +1190,4 @@ export function runRelayServer(options?: { port?: number }) {
 	return server;
 }
 
-if (typeof process.argv[1] === "string" && fileURLToPath(import.meta.url) === process.argv[1]) {
-	runRelayServer();
-}
+runRelayServer();
