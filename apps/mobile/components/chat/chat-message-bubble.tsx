@@ -178,10 +178,12 @@ function AssistantMarkdownMessage({
 
 function ToolCallCard({
   name,
+  summary,
   status,
   palette,
 }: {
   name: string;
+  summary: string;
   status: TranscriptToolCall["status"];
   palette: (typeof Colors)["light"];
 }) {
@@ -226,6 +228,14 @@ function ToolCallCard({
           {formatToolStatus(status)}
         </ThemedText>
       </View>
+      {summary && summary !== "No arguments" ? (
+        <ThemedText
+          style={[styles.toolSummary, { color: palette.text }]}
+          selectable
+        >
+          {summary}
+        </ThemedText>
+      ) : null}
     </View>
   );
 }
@@ -311,6 +321,7 @@ function AssistantSegmentBlock({
     return (
       <ToolCallCard
         name={segment.name}
+        summary={segment.summary}
         status={segment.status}
         palette={palette}
       />
@@ -693,6 +704,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
     fontWeight: "700",
+  },
+  toolSummary: {
+    marginTop: 6,
+    fontFamily: Fonts.mono,
+    fontSize: 11,
+    lineHeight: 15,
   },
   thinkingShell: {
     borderWidth: 1,
