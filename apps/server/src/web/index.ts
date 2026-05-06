@@ -58,7 +58,7 @@ export type {
 	TranscriptToolCallSegment,
 } from "./session-state.ts";
 
-const WEB_DIST_DIR = resolve(SERVER_SRC_DIR, "..", "..", "web", "dist");
+const WEB_DIST_DIR = resolve(SERVER_SRC_DIR, "..", "..", "..", "web", "dist");
 const WEB_INDEX_PATH = join(WEB_DIST_DIR, "index.html");
 const ADMIN_JOBS_PATH = "/api/admin/jobs";
 const ADMIN_JOBS_PATH_PREFIX = `${ADMIN_JOBS_PATH}/`;
@@ -135,6 +135,36 @@ function listScheduledJobRuns(jobName: string, sessions: Map<string, SharedSessi
 		.map((session) => buildSessionSummary(session));
 }
 
+function createMissingWebUiResponse(request: Request, port: number): Response {
+	const headers = new Headers({
+		"cache-control": "no-store",
+		"content-type": "text/html; charset=utf-8",
+	});
+	if (request.method === "HEAD") {
+		return new Response(null, { headers });
+	}
+
+	const body = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Apreal server is running</title>
+</head>
+<body>
+  <h1>Apreal server is running</h1>
+  <p>The browser UI bundle is not available at this origin yet.</p>
+  <p>Run <code>pnpm --dir apps/web dev</code> and open <a href="http://localhost:5173">http://localhost:5173</a>, or build <code>apps/web</code> to serve it from this server.</p>
+  <p><a href="/health">Health check</a></p>
+  <p><a href="${ADMIN_STATUS_PATH}">Server status</a></p>
+  <p>Expected build output: <code>${WEB_DIST_DIR}</code></p>
+  <p>Current server: <code>http://localhost:${port}</code></p>
+</body>
+</html>`;
+
+	return new Response(body, { headers });
+}
+
 async function createStaticResponse(request: Request, url: URL): Promise<Response | null> {
 	if (request.method !== "GET" && request.method !== "HEAD") {
 		return null;
@@ -175,6 +205,10 @@ async function createStaticResponse(request: Request, url: URL): Promise<Respons
 	const directMatch = await tryServeFile(requestedFilePath);
 	if (directMatch) {
 		return directMatch;
+	}
+
+	if (requestedPath === "/") {
+		return null;
 	}
 
 	if (extname(normalizedRelativePath)) {
@@ -653,6 +687,13 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 					if (staticResponse) {
 						return staticResponse;
 					}
+
+					const normalizedRelativePath = url.pathname === "/"
+						? "index.html"
+						: url.pathname.replace(/^\/+/, "");
+					if (!webUiReady && (url.pathname === "/" || !extname(normalizedRelativePath))) {
+						return createMissingWebUiResponse(request, listeningPort);
+					}
 				}
 
 				return new Response("Not Found", { status: 404 });
@@ -707,7 +748,12 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		relayTransportConnected: relayState.transportConnected,
 	});
 	console.log(`Pi web server ready in ${cwd}`);
-	console.log(`Frontend UI: http://localhost:${listeningPort}`);
+	if (webUiReady) {
+		console.log(`Frontend UI: http://localhost:${listeningPort}`);
+	} else {
+		console.log(`Frontend setup page: http://localhost:${listeningPort}`);
+		console.log("Browser UI bundle missing. Run `pnpm --dir apps/web dev` for the Vite UI at http://localhost:5173, or build apps/web for same-origin serving.");
+	}
 	console.log(`Health check: http://localhost:${listeningPort}/health`);
 	console.log(`Settings API: http://localhost:${listeningPort}${ADMIN_STATUS_PATH}`);
 	console.log(`Relay auth: ${relayUrl}`);
