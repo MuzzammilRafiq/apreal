@@ -381,23 +381,6 @@ export default function SessionsScreen() {
                 color={pairingReady ? palette.userBubbleText : palette.mutedText}
               />
             </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Server settings"
-              onPress={() => router.push("/settings/server")}
-              style={({ pressed }) => [
-                styles.headerActionButton,
-                {
-                  backgroundColor: pressed
-                    ? palette.cardPressed
-                    : palette.cardBackground,
-                  borderColor: palette.border,
-                },
-              ]}
-            >
-              <Ionicons name="settings-outline" size={18} color={palette.text} />
-            </Pressable>
           </View>
         </View>
       </View>

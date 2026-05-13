@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
+import { Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/themed-text";
@@ -11,7 +11,6 @@ import { useChatClient } from "@/providers/chat-client-provider";
 export default function ServerSettingsScreen() {
   const colorScheme = useColorScheme() ?? "light";
   const palette = Colors[colorScheme];
-  const router = useRouter();
   const { connected, pairingReady, pairingState, lastError, clearError } =
     useChatClient();
 
@@ -19,15 +18,6 @@ export default function ServerSettingsScreen() {
   const pairingBody = pairingReady
     ? "This device is already paired. Future relay connections will keep using the stored client identity."
     : "Paste this code into the agent server. Chat stays locked until the relay marks this phone as paired.";
-
-  function handleBackNavigation() {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-
-    router.replace("/");
-  }
 
   return (
     <SafeAreaView
@@ -43,14 +33,6 @@ export default function ServerSettingsScreen() {
           },
         ]}
       >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={handleBackNavigation}
-          style={styles.navButton}
-        >
-          <Ionicons name="chevron-back" size={20} color={palette.text} />
-        </Pressable>
         <View style={styles.headerCopy}>
           <ThemedText type="defaultSemiBold" style={styles.headerTitle}>
             Relay settings

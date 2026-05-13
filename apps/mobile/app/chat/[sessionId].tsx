@@ -279,15 +279,6 @@ export default function ChatDetailScreen() {
                 />
               </Pressable>
             ) : null}
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Server settings"
-              onPress={() => router.push("/settings/server")}
-              style={styles.navButton}
-            >
-              <Ionicons name="settings-outline" size={18} color={palette.text} />
-            </Pressable>
           </View>
         </View>
 
