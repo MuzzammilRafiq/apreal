@@ -917,10 +917,6 @@ export function App() {
 		await refreshScheduledJobs();
 	}, [refreshScheduledJobs]);
 
-	const handleOpenJobs = useCallback(() => {
-		navigateToRoute("jobs");
-		setRoute("jobs");
-	}, []);
 
 	const handleRefreshJobs = useCallback(() => {
 		void refreshScheduledJobs().catch(() => {
@@ -1033,7 +1029,6 @@ export function App() {
 				activeSessionId={activeSessionId}
 				sessionState={sessionState}
 				onStartNewChat={handleStartNewChat}
-				onOpenJobs={handleOpenJobs}
 				onOpenSettings={() => handleRouteChange("settings")}
 				onActivateSession={(sessionId) => activateSession(sessionId)}
 				onLoadMoreSessions={handleLoadMoreSessions}

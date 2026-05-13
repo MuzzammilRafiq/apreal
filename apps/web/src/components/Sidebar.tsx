@@ -16,7 +16,6 @@ type SidebarProps = {
 	activeSessionId: string | null;
 	sessionState: string;
 	onStartNewChat: () => void;
-	onOpenJobs: () => void;
 	onOpenSettings: () => void;
 	onActivateSession: (sessionId: string) => void;
 	onLoadMoreSessions: () => void;
@@ -36,7 +35,6 @@ export const Sidebar = memo(function Sidebar({
 	activeSessionId,
 	sessionState,
 	onStartNewChat,
-	onOpenJobs,
 	onOpenSettings,
 	onActivateSession,
 	onLoadMoreSessions,
@@ -54,13 +52,6 @@ export const Sidebar = memo(function Sidebar({
 					onClick={onStartNewChat}
 				>
 					Start new chat
-				</button>
-				<button
-					type="button"
-					className="mt-3 w-full border border-white/10 bg-sidebar-panel px-4 py-3 text-left text-[0.84rem] font-medium text-sidebar-muted transition duration-150 hover:border-white/20 hover:bg-white/6 hover:text-sidebar-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
-					onClick={onOpenJobs}
-				>
-					Open scheduled jobs
 				</button>
 				<button
 					type="button"
