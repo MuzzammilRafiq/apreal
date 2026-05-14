@@ -1,8 +1,11 @@
 import type {
+  ClientProvidersCommand,
+  ProvidersResponse,
   ClientJobsCommand,
   ScheduledJobDetails,
   ScheduledJobRunSummary,
   ServerJobsMessage,
+  ServerProvidersMessage,
 } from "@apreal/shared";
 import type { RelayPairingStateMessage } from "@/lib/relay-auth";
 
@@ -13,7 +16,8 @@ export type ClientMessage =
   | { type: "load_session"; sessionId: string }
   | { type: "load_sessions_page"; offset?: number; limit?: number }
   | { type: "ping" }
-  | ClientJobsCommand;
+  | ClientJobsCommand
+  | ClientProvidersCommand;
 
 export type TranscriptToolCall = {
   id: string;
@@ -57,6 +61,8 @@ export type TranscriptMessage = {
   role: "user" | "assistant" | "system" | "error";
   body: string;
   thinking: string;
+  modelLabel: string | null;
+  modelSource: string | null;
   toolCalls: TranscriptToolCall[];
   segments: TranscriptMessageSegment[];
   pending: boolean;
@@ -126,9 +132,11 @@ export type ServerMessage =
     }
   | { type: "error"; message: string; sessionId?: string }
   | { type: "pong" }
-  | ServerJobsMessage;
+  | ServerJobsMessage
+  | ServerProvidersMessage;
 
 export type {
+  ProvidersResponse,
   ScheduledJobDetails,
   ScheduledJobRunSummary,
   ScheduledJobUpdateRequest,

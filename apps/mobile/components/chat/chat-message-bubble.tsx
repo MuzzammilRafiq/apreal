@@ -51,6 +51,9 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
     message.role === "assistant" &&
     assistantSegments.length === 0 &&
     Boolean(message.body);
+  const shouldShowAssistantMeta =
+    message.role === "assistant" &&
+    Boolean(message.modelLabel || message.modelSource);
 
   return (
     <View style={[styles.row, isUser ? styles.userRow : styles.assistantRow]}>
@@ -110,6 +113,31 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
                   colorScheme={colorScheme}
                 />
               ))}
+            </View>
+          ) : null}
+
+          {shouldShowAssistantMeta ? (
+            <View
+              style={[
+                styles.assistantMeta,
+                { borderTopColor: palette.border },
+              ]}
+            >
+              {message.modelLabel ? (
+                <ThemedText style={styles.assistantMetaPrimary}>
+                  {message.modelLabel}
+                </ThemedText>
+              ) : null}
+              {message.modelSource ? (
+                <ThemedText
+                  style={[
+                    styles.assistantMetaSecondary,
+                    { color: palette.mutedText },
+                  ]}
+                >
+                  {message.modelSource}
+                </ThemedText>
+              ) : null}
             </View>
           ) : null}
         </View>
@@ -679,6 +707,21 @@ const styles = StyleSheet.create({
   segmentList: {
     width: "100%",
     gap: 4,
+  },
+  assistantMeta: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 2,
+  },
+  assistantMetaPrimary: {
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: "700",
+  },
+  assistantMetaSecondary: {
+    fontSize: 11,
+    lineHeight: 15,
   },
   toolCard: {
     borderWidth: 1,

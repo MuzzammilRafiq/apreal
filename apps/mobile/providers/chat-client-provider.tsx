@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type {
+  ProvidersResponse,
   ScheduledJobDetails,
   ScheduledJobUpdateRequest,
 } from "@apreal/shared";
@@ -73,6 +74,9 @@ type ChatClientContextValue = {
   jobs: ScheduledJobDetails[];
   jobsLoaded: boolean;
   loadingJobs: boolean;
+  providers: ProvidersResponse | null;
+  providersLoaded: boolean;
+  loadingProviders: boolean;
   jobRunsByJobId: Record<string, JobRunSummary[]>;
   loadingJobRunsByJobId: Record<string, boolean>;
   activateSession: (
@@ -84,7 +88,9 @@ type ChatClientContextValue = {
   requestSessionSnapshot: (sessionId: string | null) => void;
   loadMoreSessions: () => void;
   refreshJobs: () => Promise<void>;
+  refreshProviders: () => Promise<void>;
   refreshJobRuns: (jobId: string) => Promise<void>;
+  updateDefaultModel: (provider: string, modelId: string) => Promise<void>;
   updateScheduledJob: (
     jobId: string,
     changes: ScheduledJobUpdateRequest,
@@ -112,6 +118,8 @@ function createLocalId(prefix: string) {
 function cloneTranscript(transcript: TranscriptMessage[]): TranscriptMessage[] {
   return transcript.map((entry) => ({
     ...entry,
+    modelLabel: entry.modelLabel ?? null,
+    modelSource: entry.modelSource ?? null,
     toolCalls: entry.toolCalls.map((toolCall) => ({ ...toolCall })),
     segments: entry.segments.map((segment) => ({ ...segment })),
   }));
@@ -318,6 +326,9 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
   const [jobs, setJobs] = useState<ScheduledJobDetails[]>([]);
   const [jobsLoaded, setJobsLoaded] = useState(false);
   const [loadingJobs, setLoadingJobs] = useState(false);
+  const [providers, setProviders] = useState<ProvidersResponse | null>(null);
+  const [providersLoaded, setProvidersLoaded] = useState(false);
+  const [loadingProviders, setLoadingProviders] = useState(false);
   const [jobRunsByJobId, setJobRunsByJobId] = useState<
     Record<string, JobRunSummary[]>
   >({});
@@ -332,6 +343,7 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
   const sessionCacheRef = useRef(sessionCache);
   const jobsRef = useRef(jobs);
   const loadingJobsRef = useRef(loadingJobs);
+  const loadingProvidersRef = useRef(loadingProviders);
   const loadingJobRunsByJobIdRef = useRef(loadingJobRunsByJobId);
   const transportSettingsRef = useRef(transportSettings);
   const pendingConnectionResolversRef = useRef(new Set<() => void>());
@@ -376,6 +388,10 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     loadingJobsRef.current = loadingJobs;
   }, [loadingJobs]);
+
+  useEffect(() => {
+    loadingProvidersRef.current = loadingProviders;
+  }, [loadingProviders]);
 
   useEffect(() => {
     loadingJobRunsByJobIdRef.current = loadingJobRunsByJobId;
@@ -641,6 +657,24 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
     }
   }, []);
 
+  const refreshProviders = useCallback(async () => {
+    if (loadingProvidersRef.current) {
+      return;
+    }
+
+    setLoadingProviders((previous) => (previous ? previous : true));
+    setLastError(null);
+
+    try {
+      await sendClientMessageRef.current({ type: "load_providers" });
+    } catch (error) {
+      setLoadingProviders(false);
+      const message = getErrorMessage(error);
+      setLastError(message);
+      throw new Error(message);
+    }
+  }, []);
+
   const refreshJobRuns = useCallback(async (jobId: string) => {
     if (loadingJobRunsByJobIdRef.current[jobId]) {
       return;
@@ -676,6 +710,22 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
       throw new Error(message);
     }
   }, []);
+
+  async function updateDefaultModel(provider: string, modelId: string) {
+    setLastError(null);
+
+    try {
+      await sendClientMessage({
+        type: "set_default_model",
+        provider,
+        modelId,
+      });
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setLastError(message);
+      throw new Error(message);
+    }
+  }
 
   async function updateScheduledJob(
     jobId: string,
@@ -1273,6 +1323,16 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
           });
           break;
         }
+        case "providers_snapshot": {
+          setLoadingProviders(false);
+          setProvidersLoaded(true);
+          setProviders({
+            providers: message.providers,
+            defaultProvider: message.defaultProvider,
+            defaultModel: message.defaultModel,
+          });
+          break;
+        }
         case "job_runs_snapshot": {
           setLoadingJobRunsByJobId((previous) => ({
             ...previous,
@@ -1334,6 +1394,7 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
         case "error": {
           setPendingDraft(false);
           setLoadingJobs(false);
+          setLoadingProviders(false);
           setLastError(message.message);
           break;
         }
@@ -1398,6 +1459,9 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
         jobs,
         jobsLoaded,
         loadingJobs,
+        providers,
+        providersLoaded,
+        loadingProviders,
         jobRunsByJobId,
         loadingJobRunsByJobId,
         activateSession,
@@ -1406,7 +1470,9 @@ export function ChatClientProvider({ children }: PropsWithChildren) {
         requestSessionSnapshot,
         loadMoreSessions,
         refreshJobs,
+        refreshProviders,
         refreshJobRuns,
+        updateDefaultModel,
         updateScheduledJob,
         deleteScheduledJob,
         getSessionCacheEntry,
