@@ -77,7 +77,7 @@ pnpm typecheck
 
 ## Runtime Notes
 
-- Put `OPENROUTER_API_KEY` in your shell or `.env.local`.
+- Agent provider login is handled by the Pi CLI on the laptop. Run `pi`, then use `/login` and `/model` to choose the provider/subscription and default model for new chats.
 - `LOG_LEVEL` supports `debug`, `info`, `warn`, and `error`.
 - The browser talks only to the relay host for auth plus chat transport.
 - The browser talks only to the relay host. The Pi server keeps an outbound authenticated stream open to the relay, and browser messages are forwarded over that live channel.

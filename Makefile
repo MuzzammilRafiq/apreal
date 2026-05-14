@@ -11,6 +11,7 @@ web:
 	pnpm run dev:web
 
 server:
+	pnpm run build:web
 	pnpm run dev:server
 
 run:
