@@ -39,6 +39,8 @@ export type TranscriptMessage = {
 	role: "user" | "assistant" | "system" | "error";
 	body: string;
 	thinking: string;
+	modelLabel: string | null;
+	modelSource: string | null;
 	toolCalls: TranscriptToolCall[];
 	segments: TranscriptMessageSegment[];
 	pending: boolean;

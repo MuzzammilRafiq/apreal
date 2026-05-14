@@ -105,6 +105,7 @@ function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 	const shouldShowPlaceholder = item.pending && !item.body && assistantSegments.length === 0;
 	const shouldShowStandaloneBody = item.role !== "assistant" && (item.body || shouldShowPlaceholder);
 	const shouldShowAssistantBodyFallback = item.role === "assistant" && assistantSegments.length === 0 && Boolean(item.body);
+	const shouldShowAssistantMeta = item.role === "assistant" && Boolean(item.modelLabel || item.modelSource);
 
 	return (
 		<article className={getMessageClassName(item)}>
@@ -131,6 +132,13 @@ function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 					))}
 				</div>
 			)}
+
+			{shouldShowAssistantMeta ? (
+				<footer className="mt-1 border-t border-line-soft pt-3 text-[0.72rem] leading-5 text-muted">
+					{item.modelLabel ? <p>{item.modelLabel}</p> : null}
+					{item.modelSource ? <p className="mt-1 break-words">{item.modelSource}</p> : null}
+				</footer>
+			) : null}
 		</article>
 	);
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LOCAL_CLIENT_ID_QUERY_PARAM, type LocalWebAdminStatus } from "@apreal/shared";
+import { LOCAL_CLIENT_ID_QUERY_PARAM, type LocalWebAdminStatus, type ProvidersResponse } from "@apreal/shared";
 import { Composer } from "./components/Composer";
 import { ScheduledJobsPage } from "./components/ScheduledJobsPage";
 import { SettingsPage } from "./components/SettingsPage";
@@ -17,9 +17,11 @@ import {
 import {
 	deleteScheduledJob as deleteScheduledJobRequest,
 	readLocalAdminStatus,
+	readProviders,
 	readScheduledJobRuns,
 	readScheduledJobs,
 	submitRelayReauthentication,
+	updateDefaultModel as updateDefaultModelRequest,
 	updateScheduledJob as updateScheduledJobRequest,
 } from "./server-admin";
 import { getWebTransportConfig } from "./transport-config";
@@ -125,6 +127,8 @@ function parseServerMessage(rawData: string): ServerMessage | null {
 function cloneTranscript(transcript: TranscriptMessage[]): TranscriptMessage[] {
 	return transcript.map((entry) => ({
 		...entry,
+		modelLabel: entry.modelLabel ?? null,
+		modelSource: entry.modelSource ?? null,
 		toolCalls: entry.toolCalls.map((toolCall) => ({ ...toolCall })),
 		segments: entry.segments.map((segment) => ({ ...segment })),
 	}));
@@ -232,6 +236,8 @@ export function App() {
 	const [activeSessionId, setActiveSessionId] = useState<string | null>(() => readStoredSessionId());
 	const [adminStatus, setAdminStatus] = useState<LocalWebAdminStatus | null>(null);
 	const [adminStatusError, setAdminStatusError] = useState<string | null>(null);
+	const [providers, setProviders] = useState<ProvidersResponse | null>(null);
+	const [providersError, setProvidersError] = useState<string | null>(null);
 	const [scheduledJobs, setScheduledJobs] = useState<ScheduledJobDetails[]>([]);
 	const [scheduledJobsError, setScheduledJobsError] = useState<string | null>(null);
 	const [loadingScheduledJobs, setLoadingScheduledJobs] = useState(false);
@@ -530,6 +536,12 @@ export function App() {
 			const nextStatus = await readLocalAdminStatus(transportConfig.statusUrl);
 			setAdminStatus(nextStatus);
 			setAdminStatusError(null);
+
+			void readProviders().then(
+				(data) => { setProviders(data); setProvidersError(null); },
+				(error: unknown) => { setProvidersError(error instanceof Error ? error.message : "Failed to load providers."); },
+			);
+
 			return nextStatus;
 		};
 
@@ -861,6 +873,12 @@ export function App() {
 		const nextStatus = await readLocalAdminStatus(transportConfig.statusUrl);
 		setAdminStatus(nextStatus);
 		setAdminStatusError(null);
+
+		void readProviders().then(
+			(data) => { setProviders(data); setProvidersError(null); },
+			(error: unknown) => { setProvidersError(error instanceof Error ? error.message : "Failed to load providers."); },
+		);
+
 		return nextStatus;
 	}, []);
 
@@ -960,6 +978,12 @@ export function App() {
 			});
 	}, []);
 
+	const handleSetDefaultModel = useCallback(async (provider: string, modelId: string) => {
+		const nextProviders = await updateDefaultModelRequest({ provider, modelId });
+		setProviders(nextProviders);
+		setProvidersError(null);
+	}, []);
+
 	useEffect(() => {
 		if (route !== "jobs") {
 			return;
@@ -975,6 +999,8 @@ export function App() {
 			<SettingsPage
 				adminStatus={adminStatus}
 				statusError={adminStatusError}
+				providers={providers}
+				providersError={providersError}
 				isSubmitting={submittingPairingCode}
 				submissionMessage={settingsMessage}
 				submissionError={settingsError}
@@ -985,6 +1011,7 @@ export function App() {
 						setAdminStatusError(getErrorMessage(error));
 					});
 				}}
+				onSetDefaultModel={handleSetDefaultModel}
 				onSubmitPairingCode={handleSubmitPairingCode}
 			/>
 		);

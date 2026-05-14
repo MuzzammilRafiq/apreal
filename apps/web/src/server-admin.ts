@@ -1,9 +1,12 @@
 import {
+	ADMIN_PROVIDERS_PATH,
 	ADMIN_RELAY_REAUTHENTICATE_PATH,
 	ADMIN_STATUS_PATH,
 	type LocalWebAdminStatus,
+	type ProvidersResponse,
 	type RelayReauthenticateRequest,
 	type RelayReauthenticateResponse,
+	type SetDefaultModelRequest,
 } from "@apreal/shared";
 import type { ScheduledJobDetails, SessionSummary } from "./chatTypes";
 
@@ -253,6 +256,74 @@ export async function deleteScheduledJob(jobId: string): Promise<void> {
 
 export {
 	ADMIN_JOBS_PATH,
+	ADMIN_PROVIDERS_PATH,
 	ADMIN_RELAY_REAUTHENTICATE_PATH,
 	ADMIN_STATUS_PATH,
 };
+
+function parseProvidersResponse(payload: unknown): ProvidersResponse {
+	if (
+		!isObjectRecord(payload) ||
+		!Array.isArray(payload.providers) ||
+		(payload.defaultProvider !== null && typeof payload.defaultProvider !== "string") ||
+		(payload.defaultModel !== null && typeof payload.defaultModel !== "string")
+	) {
+		throw new Error("Providers response returned an invalid format.");
+	}
+
+	const providers = payload.providers.map((p: unknown) => {
+		if (
+			!isObjectRecord(p) ||
+			typeof p.id !== "string" ||
+			(p.authType !== "oauth" && p.authType !== "api_key") ||
+			!Array.isArray(p.models)
+		) {
+			throw new Error("Providers response returned an invalid format.");
+		}
+
+		const models = p.models.map((m: unknown) => {
+			if (!isObjectRecord(m) || typeof m.id !== "string" || typeof m.name !== "string") {
+				throw new Error("Providers response returned an invalid format.");
+			}
+			return { id: m.id, name: m.name };
+		});
+
+		return { id: p.id, authType: p.authType as "oauth" | "api_key", models };
+	});
+
+	return {
+		providers,
+		defaultProvider: typeof payload.defaultProvider === "string" ? payload.defaultProvider : null,
+		defaultModel: typeof payload.defaultModel === "string" ? payload.defaultModel : null,
+	};
+}
+
+export async function readProviders(): Promise<ProvidersResponse> {
+	const response = await fetch(ADMIN_PROVIDERS_PATH, {
+		method: "GET",
+		headers: { accept: "application/json" },
+	});
+	const payload = await parseJsonResponse(response);
+	if (!response.ok) {
+		throw new Error(getResponseMessage(payload, `Providers request failed with status ${response.status}`));
+	}
+
+	return parseProvidersResponse(payload);
+}
+
+export async function updateDefaultModel(requestBody: SetDefaultModelRequest): Promise<ProvidersResponse> {
+	const response = await fetch(ADMIN_PROVIDERS_PATH, {
+		method: "PATCH",
+		headers: {
+			"content-type": "application/json",
+			accept: "application/json",
+		},
+		body: JSON.stringify(requestBody),
+	});
+	const payload = await parseJsonResponse(response);
+	if (!response.ok) {
+		throw new Error(getResponseMessage(payload, `Default model update failed with status ${response.status}`));
+	}
+
+	return parseProvidersResponse(payload);
+}
