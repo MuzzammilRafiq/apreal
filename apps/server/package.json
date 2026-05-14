@@ -10,8 +10,8 @@
 	},
 	"dependencies": {
 		"@apreal/shared": "workspace:*",
-		"@mariozechner/pi-ai": "^0.67.1",
-		"@mariozechner/pi-coding-agent": "^0.67.1",
+		"@earendil-works/pi-ai": "^0.74.0",
+		"@earendil-works/pi-coding-agent": "^0.74.0",
 		"dotenv": "^17.4.2"
 	},
 	"devDependencies": {
