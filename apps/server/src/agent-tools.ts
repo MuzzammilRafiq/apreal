@@ -1,13 +1,4 @@
-import {
-	createBashTool,
-	createEditTool,
-	createFindTool,
-	createGrepTool,
-	createLsTool,
-	createReadTool,
-	createWriteTool,
-	type ToolDefinition,
-} from "@mariozechner/pi-coding-agent";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createCustomTools } from "./tools/index.ts";
 
 // Built-in Pi tools you can enable in agentToolsConfig.builtInTools.
@@ -32,27 +23,8 @@ export const agentToolsConfig: AgentToolsConfig = {
 	customTools: defaultCustomTools,
 };
 
-function createBuiltInTool(toolName: BuiltInToolName, cwd: string) {
-	switch (toolName) {
-		case "read":
-			return createReadTool(cwd);
-		case "bash":
-			return createBashTool(cwd);
-		case "edit":
-			return createEditTool(cwd);
-		case "write":
-			return createWriteTool(cwd);
-		case "grep":
-			return createGrepTool(cwd);
-		case "find":
-			return createFindTool(cwd);
-		case "ls":
-			return createLsTool(cwd);
-	}
-}
-
-export function createConfiguredBuiltInTools(cwd: string) {
-	return agentToolsConfig.builtInTools.map((toolName) => createBuiltInTool(toolName, cwd));
+export function getConfiguredBuiltInToolNames() {
+	return [...agentToolsConfig.builtInTools];
 }
 
 export function getConfiguredToolNames(customTools: ToolDefinition[] = agentToolsConfig.customTools): string[] {

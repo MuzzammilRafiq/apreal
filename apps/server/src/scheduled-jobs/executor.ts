@@ -1,4 +1,4 @@
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../logger.ts";
 import {
 	createAgentController,
@@ -18,6 +18,7 @@ import {
 	finalizeAssistantMessage,
 	getPendingAssistantMessage,
 	settleSession,
+	setAssistantModelInfo,
 	touchSession,
 	updateAssistantToolCallStatus,
 	upsertAssistantToolCall,
@@ -199,10 +200,12 @@ export function createJobExecutor(deps: ExecutorDeps) {
 			});
 			session.controller = controller;
 			session.model = formatModelLabel(controller.model);
+			setAssistantModelInfo(session, controller.modelInfo.modelLabel, controller.modelInfo.modelSource);
 			session.unsubscribe = controller.subscribe((event) => {
 				handleControllerEvent(session, event, chatStore, clientActions);
 			});
 			touchSession(session);
+			clientActions.broadcastSessionSnapshot(session);
 			clientActions.broadcastSessionSummaryUpdated(session);
 
 			logger.info("starting scheduled job execution", {

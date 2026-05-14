@@ -1,5 +1,5 @@
-import { Type, type Static } from "@mariozechner/pi-ai";
-import { defineTool } from "@mariozechner/pi-coding-agent";
+import { Type, type Static } from "@earendil-works/pi-ai";
+import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { JobStore, Scheduler } from "../scheduled-jobs/index.ts";
 
 const scheduleBackgroundJobParameters = Type.Object({

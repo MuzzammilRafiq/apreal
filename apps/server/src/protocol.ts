@@ -1,7 +1,9 @@
 import type {
 	ClientJobsCommand,
+	ClientProvidersCommand,
 	ScheduledJobUpdateRequest,
 	ServerJobsMessage,
+	ServerProvidersMessage,
 } from "@apreal/shared";
 
 export type ClientAppMessage =
@@ -11,7 +13,8 @@ export type ClientAppMessage =
 	| { type: "load_session"; sessionId: string }
 	| { type: "load_sessions_page"; offset?: number; limit?: number }
 	| { type: "ping" }
-	| ClientJobsCommand;
+	| ClientJobsCommand
+	| ClientProvidersCommand;
 
 export type ServerAppMessage<SessionSummary, TranscriptMessage> =
 	| { type: "connected"; clientId: string; message: string; tools?: string }
@@ -24,7 +27,8 @@ export type ServerAppMessage<SessionSummary, TranscriptMessage> =
 	| { type: "assistant_thinking_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
 	| { type: "error"; message: string; sessionId?: string }
 	| { type: "pong" }
-	| ServerJobsMessage;
+	| ServerJobsMessage
+	| ServerProvidersMessage;
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -117,8 +121,26 @@ export function parseClientAppMessage(rawMessage: string | Buffer | unknown): Cl
 		return { type: "load_jobs" };
 	}
 
+	if (value.type === "load_providers") {
+		return { type: "load_providers" };
+	}
+
 	if (value.type === "load_job_runs" && typeof value.jobId === "string") {
 		return { type: "load_job_runs", jobId: value.jobId };
+	}
+
+	if (value.type === "set_default_model" && typeof value.provider === "string" && typeof value.modelId === "string") {
+		const provider = value.provider.trim();
+		const modelId = value.modelId.trim();
+		if (!provider || !modelId) {
+			return null;
+		}
+
+		return {
+			type: "set_default_model",
+			provider,
+			modelId,
+		};
 	}
 
 	if (value.type === "update_job" && typeof value.jobId === "string") {

@@ -5,18 +5,35 @@ import {
 	SessionManager,
 	SettingsManager,
 	type ToolDefinition,
-} from "@mariozechner/pi-coding-agent";
-import { existsSync, readFileSync } from "node:fs";
+} from "@earendil-works/pi-coding-agent";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
-import { agentToolsConfig, createConfiguredBuiltInTools, getConfiguredToolsLabel } from "./agent-tools.ts";
+import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
+import { agentToolsConfig, getConfiguredBuiltInToolNames, getConfiguredToolsLabel } from "./agent-tools.ts";
 import { createLogger, summarizePrompt } from "./logger.ts";
+import type { ProvidersResponse } from "@apreal/shared";
 
-const OPENROUTER_PROVIDER = "openrouter";
-const OPENROUTER_MINIMAX_MODEL_ID = "minimax/minimax-m2.5";
-const OPENROUTER_ENV_VAR = "OPENROUTER_API_KEY";
 const PI_AGENT_AUTH_PATH = join(homedir(), ".pi", "agent", "auth.json");
+const PI_AGENT_SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
+const PI_LOGIN_GUIDANCE =
+	"Run `pi`, then use `/login` to authenticate a subscription or API-key provider and `/model` to pick the default model for new chats.";
+const LEGACY_ENV_CREDENTIAL_PROVIDERS: Record<string, string> = {
+	ANTHROPIC_API_KEY: "anthropic",
+	AZURE_OPENAI_API_KEY: "azure-openai-responses",
+	CEREBRAS_API_KEY: "cerebras",
+	GEMINI_API_KEY: "google",
+	GROQ_API_KEY: "groq",
+	HF_TOKEN: "huggingface",
+	KIMI_API_KEY: "kimi-coding",
+	MINIMAX_API_KEY: "minimax",
+	MINIMAX_CN_API_KEY: "minimax-cn",
+	MISTRAL_API_KEY: "mistral",
+	OPENAI_API_KEY: "openai",
+	OPENROUTER_API_KEY: "openrouter",
+	OPENCODE_API_KEY: "opencode",
+	XAI_API_KEY: "xai",
+	ZAI_API_KEY: "zai",
+};
 
 export const BUILT_IN_TOOLS_LABEL = getConfiguredToolsLabel();
 
@@ -54,6 +71,11 @@ export type AgentContextUsage = {
 	percent: number | null;
 };
 
+export type AgentModelInfo = {
+	modelLabel: string;
+	modelSource: string;
+};
+
 export type AgentStreamEvent =
 	| { type: "assistant_message_start" }
 	| { type: "text_delta"; delta: string; contentIndex: number }
@@ -76,7 +98,8 @@ export type AgentStreamEvent =
 export interface AgentController {
 	readonly sessionId: string;
 	readonly cwd: string;
-	readonly model: Model<"openai-completions">;
+	readonly model: Model<Api>;
+	readonly modelInfo: AgentModelInfo;
 	isStreaming(): boolean;
 	getContextUsage(): AgentContextUsage | undefined;
 	prompt(input: string): Promise<void>;
@@ -93,8 +116,21 @@ export function getErrorMessage(error: unknown): string {
 	return String(error);
 }
 
-export function formatModelLabel(model: Model<"openai-completions">): string {
+export function formatModelLabel(model: Model<Api>): string {
 	return `${model.provider}:${model.id}`;
+}
+
+function buildAgentModelInfo(
+	model: Model<Api>,
+	modelRegistry: ModelRegistry,
+): AgentModelInfo {
+	const providerLabel = modelRegistry.getProviderDisplayName(model.provider);
+	const authTypeLabel = modelRegistry.isUsingOAuth(model) ? "Subscription" : "API key";
+
+	return {
+		modelLabel: model.name,
+		modelSource: `${model.id} · ${providerLabel} · ${authTypeLabel}`,
+	};
 }
 
 function stringifyToolArguments(argumentsValue: unknown): string {
@@ -260,151 +296,94 @@ function extractAssistantMessageSnapshot(message: AssistantMessage): Extract<Age
 	};
 }
 
-function validateOpenRouterApiKey(rawValue: string | undefined): string | undefined {
-	const value = rawValue?.trim();
-	if (!value) {
-		return value;
-	}
-
-	if (value.startsWith(`${OPENROUTER_ENV_VAR}=`)) {
-		throw new Error(
-			`Invalid OpenRouter API key format. Expected the raw token, but got a shell assignment string (${OPENROUTER_ENV_VAR}=...). Save only the token value in your environment or ~/.pi/agent/auth.json.`,
-		);
-	}
-
-	return value;
-}
-
-function readApiKeyCredential(value: unknown): string | undefined {
-	if (typeof value === "string") {
-		return value;
-	}
-
-	if (!value || typeof value !== "object") {
-		return undefined;
-	}
-
-	const record = value as Record<string, unknown>;
-	if (record.type !== "api_key" || typeof record.key !== "string") {
-		return undefined;
-	}
-
-	return record.key;
-}
-
-function readLegacyOpenRouterApiKeyFromAuthFile(): string | undefined {
-	if (!existsSync(PI_AGENT_AUTH_PATH)) {
-		return undefined;
-	}
-
-	try {
-		const content = readFileSync(PI_AGENT_AUTH_PATH, "utf8");
-		const parsed = JSON.parse(content);
-		if (!parsed || typeof parsed !== "object") {
-			return undefined;
-		}
-
-		const authEntries = parsed as Record<string, unknown>;
-		return readApiKeyCredential(authEntries[OPENROUTER_ENV_VAR]);
-	} catch {
-		return undefined;
-	}
-}
-
 type AgentControllerOptions = {
 	sessionId?: string;
 	transport?: string;
 	customTools?: ToolDefinition[];
 };
 
-type OpenRouterRuntime = {
+type PiRuntime = {
 	authStorage: AuthStorage;
 	modelRegistry: ModelRegistry;
-	model: Model<"openai-completions">;
+	settingsManager: SettingsManager;
 };
 
-let openRouterRuntimePromise: Promise<OpenRouterRuntime> | null = null;
-
-function resolveOpenRouterModel(modelRegistry: ModelRegistry): Model<"openai-completions"> {
-	const model = modelRegistry.find(OPENROUTER_PROVIDER, OPENROUTER_MINIMAX_MODEL_ID);
-	if (!model) {
-		throw new Error(`Configured OpenRouter model was not found in the registry: ${OPENROUTER_PROVIDER}/${OPENROUTER_MINIMAX_MODEL_ID}`);
-	}
-
-	if (model.api !== "openai-completions") {
-		throw new Error(
-			`Configured OpenRouter model uses unsupported API \"${model.api}\" for this server runtime: ${OPENROUTER_PROVIDER}/${OPENROUTER_MINIMAX_MODEL_ID}`,
-		);
-	}
-
-	return model as Model<"openai-completions">;
+function normalizeCredentialProviderId(providerId: string): string {
+	return LEGACY_ENV_CREDENTIAL_PROVIDERS[providerId] ?? providerId;
 }
 
-async function getOpenRouterRuntime(): Promise<OpenRouterRuntime> {
-	if (!openRouterRuntimePromise) {
-		openRouterRuntimePromise = (async () => {
-			const authStorage = AuthStorage.create();
-			const runtimeApiKey = validateOpenRouterApiKey(process.env.OPENROUTER_API_KEY);
-			if (runtimeApiKey) {
-				authStorage.setRuntimeApiKey(OPENROUTER_PROVIDER, runtimeApiKey);
-			}
+function applyLegacyEnvCredentialAliases(authStorage: AuthStorage) {
+	for (const [envVar, provider] of Object.entries(LEGACY_ENV_CREDENTIAL_PROVIDERS)) {
+		if (authStorage.hasAuth(provider)) {
+			continue;
+		}
 
-			const modelRegistry = ModelRegistry.create(authStorage);
-			let openRouterApiKey = validateOpenRouterApiKey(
-				await modelRegistry.getApiKeyForProvider(OPENROUTER_PROVIDER),
-			);
-			if (!openRouterApiKey) {
-				const legacyAuthFileApiKey = validateOpenRouterApiKey(readLegacyOpenRouterApiKeyFromAuthFile());
-				if (legacyAuthFileApiKey) {
-					authStorage.setRuntimeApiKey(OPENROUTER_PROVIDER, legacyAuthFileApiKey);
-					openRouterApiKey = legacyAuthFileApiKey;
-				}
-			}
-			if (!openRouterApiKey) {
-				throw new Error(
-					`Missing OpenRouter credentials. Set ${OPENROUTER_ENV_VAR} or add an \"openrouter\" auth entry to ~/.pi/agent/auth.json. A legacy \"${OPENROUTER_ENV_VAR}\" auth entry is also accepted.`,
-				);
-			}
-
-			return {
-				authStorage,
-				modelRegistry,
-				model: resolveOpenRouterModel(modelRegistry),
-			};
-		})();
-	}
-
-	try {
-		return await openRouterRuntimePromise;
-	} catch (error) {
-		openRouterRuntimePromise = null;
-		throw error;
+		const credential = authStorage.get(envVar);
+		if (credential?.type === "api_key") {
+			authStorage.setRuntimeApiKey(provider, credential.key);
+		}
 	}
 }
 
-async function createOpenRouterSession(cwd: string, customTools: ToolDefinition[] = agentToolsConfig.customTools) {
-	const runtime = await getOpenRouterRuntime();
-	const settingsManager = SettingsManager.inMemory({
-		defaultProvider: OPENROUTER_PROVIDER,
-		defaultModel: runtime.model.id,
-	});
+function getMissingAuthError() {
+	return [
+		"No Pi model credentials are configured for the local server.",
+		PI_LOGIN_GUIDANCE,
+		`Pi auth is read from ${PI_AGENT_AUTH_PATH} and defaults from ${PI_AGENT_SETTINGS_PATH}.`,
+	].join(" ");
+}
 
+function createPiRuntime(cwd: string): PiRuntime {
+	const authStorage = AuthStorage.create();
+	applyLegacyEnvCredentialAliases(authStorage);
+	const modelRegistry = ModelRegistry.create(authStorage);
+	const settingsManager = SettingsManager.create(cwd);
+
+	if (modelRegistry.getAvailable().length === 0) {
+		throw new Error(getMissingAuthError());
+	}
+
+	return {
+		authStorage,
+		modelRegistry,
+		settingsManager,
+	};
+}
+
+async function createPiSession(cwd: string, customTools: ToolDefinition[] = agentToolsConfig.customTools) {
+	const runtime = createPiRuntime(cwd);
 	const result = await createAgentSession({
 		cwd,
 		authStorage: runtime.authStorage,
 		modelRegistry: runtime.modelRegistry,
-		model: runtime.model,
-		settingsManager,
+		settingsManager: runtime.settingsManager,
 		sessionManager: SessionManager.inMemory(),
-		tools: createConfiguredBuiltInTools(cwd),
+		tools: getConfiguredBuiltInToolNames(),
 		customTools,
 	});
+	const model = result.session.model;
+	if (!model) {
+		const configuredProvider = runtime.settingsManager.getDefaultProvider();
+		const configuredModel = runtime.settingsManager.getDefaultModel();
+		const configuredReference = configuredProvider && configuredModel
+			? `${configuredProvider}/${configuredModel}`
+			: null;
+		throw new Error(
+			configuredReference
+				? `The configured Pi default model (${configuredReference}) could not be resolved for this server. Open \`pi\` and pick a valid default with \`/model\`.`
+				: getMissingAuthError(),
+		);
+	}
 
-	return { ...result, model: runtime.model };
+	return {
+		...result,
+		model,
+		modelInfo: buildAgentModelInfo(model, runtime.modelRegistry),
+	};
 }
 
-export async function prewarmAgentRuntime() {
-	await getOpenRouterRuntime();
+export async function prewarmAgentRuntime(cwd = process.cwd()) {
+	createPiRuntime(cwd);
 }
 
 export async function createAgentController(
@@ -416,7 +395,7 @@ export async function createAgentController(
 	const logger = createLogger(`session:${sessionId}`);
 	logger.info("creating agent session", { cwd, transport });
 
-	const { session, model } = await createOpenRouterSession(cwd, options?.customTools);
+	const { session, model, modelInfo } = await createPiSession(cwd, options?.customTools);
 	const listeners = new Set<(event: AgentStreamEvent) => void>();
 	let disposed = false;
 	logger.info("agent session ready", { cwd, model: formatModelLabel(model), transport });
@@ -545,6 +524,7 @@ export async function createAgentController(
 		sessionId,
 		cwd,
 		model,
+		modelInfo,
 		isStreaming: () => !disposed && session.isStreaming,
 		getContextUsage: () => {
 			if (disposed) {
@@ -614,4 +594,84 @@ export async function createAgentController(
 			};
 		},
 	};
+}
+
+function buildProvidersPayloadFromRuntime(runtime: PiRuntime): ProvidersResponse {
+	const availableModels = [...runtime.modelRegistry.getAvailable()].sort((left, right) =>
+		left.provider.localeCompare(right.provider) ||
+		left.name.localeCompare(right.name) ||
+		left.id.localeCompare(right.id),
+	);
+	const modelsByProvider = new Map<string, { id: string; name: string }[]>();
+
+	for (const model of availableModels) {
+		const providerId = String(model.provider);
+		const bucket = modelsByProvider.get(providerId) ?? [];
+		bucket.push({ id: model.id, name: model.name });
+		modelsByProvider.set(providerId, bucket);
+	}
+
+	const configuredProviderIds = [...new Set(runtime.authStorage.list().map(normalizeCredentialProviderId))];
+	const providers = configuredProviderIds.map((id) => {
+		const credential = runtime.authStorage.get(id);
+		return {
+			id,
+			authType: (credential?.type ?? "api_key") as "oauth" | "api_key",
+			models: modelsByProvider.get(id) ?? [],
+		};
+	});
+
+	for (const [providerId, models] of modelsByProvider) {
+		if (!configuredProviderIds.includes(providerId)) {
+			providers.push({ id: providerId, authType: "api_key", models });
+		}
+	}
+
+	providers.sort((left, right) => left.id.localeCompare(right.id));
+
+	return {
+		providers,
+		defaultProvider: runtime.settingsManager.getDefaultProvider() ?? null,
+		defaultModel: runtime.settingsManager.getDefaultModel() ?? null,
+	};
+}
+
+export function buildProvidersPayload(cwd: string): ProvidersResponse {
+	const authStorage = AuthStorage.create();
+	applyLegacyEnvCredentialAliases(authStorage);
+	const modelRegistry = ModelRegistry.create(authStorage);
+	const settingsManager = SettingsManager.create(cwd);
+
+	return buildProvidersPayloadFromRuntime({
+		authStorage,
+		modelRegistry,
+		settingsManager,
+	});
+}
+
+export async function setDefaultProviderModel(
+	cwd: string,
+	provider: string,
+	modelId: string,
+): Promise<ProvidersResponse> {
+	const authStorage = AuthStorage.create();
+	applyLegacyEnvCredentialAliases(authStorage);
+	const modelRegistry = ModelRegistry.create(authStorage);
+	const settingsManager = SettingsManager.create(cwd);
+	const availableModel = modelRegistry.getAvailable().find((model) =>
+		String(model.provider) === provider && model.id === modelId
+	);
+
+	if (!availableModel) {
+		throw new Error(`The selected model (${provider}/${modelId}) is not available for this server.`);
+	}
+
+	settingsManager.setDefaultModelAndProvider(provider, modelId);
+	await settingsManager.flush();
+
+	return buildProvidersPayloadFromRuntime({
+		authStorage,
+		modelRegistry,
+		settingsManager,
+	});
 }

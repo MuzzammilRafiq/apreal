@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS messages (
 	role TEXT NOT NULL,
 	body TEXT NOT NULL DEFAULT '',
 	thinking TEXT NOT NULL DEFAULT '',
+	model_label TEXT,
+	model_source TEXT,
 	pending INTEGER NOT NULL DEFAULT 0,
 	created_at INTEGER NOT NULL,
 	segments_json TEXT NOT NULL DEFAULT '[]',
@@ -54,6 +56,8 @@ type MessageRow = {
 	role: TranscriptMessage["role"];
 	body: string;
 	thinking: string;
+	model_label: string | null;
+	model_source: string | null;
 	pending: number;
 	created_at: number;
 	segments_json: string;
@@ -113,6 +117,17 @@ function ensureChatStoreSchema(database: import("node:sqlite").DatabaseSync) {
 	const hasRevisionColumn = sessionColumns.some((column) => column.name === "revision");
 	if (!hasRevisionColumn) {
 		database.exec("ALTER TABLE sessions ADD COLUMN revision INTEGER NOT NULL DEFAULT 0;");
+	}
+
+	const messageColumns = database.prepare("PRAGMA table_info(messages)").all() as Array<{ name?: unknown }>;
+	const hasModelLabelColumn = messageColumns.some((column) => column.name === "model_label");
+	if (!hasModelLabelColumn) {
+		database.exec("ALTER TABLE messages ADD COLUMN model_label TEXT;");
+	}
+
+	const hasModelSourceColumn = messageColumns.some((column) => column.name === "model_source");
+	if (!hasModelSourceColumn) {
+		database.exec("ALTER TABLE messages ADD COLUMN model_source TEXT;");
 	}
 }
 
@@ -278,7 +293,7 @@ export function createChatStore(dbPath: string): ChatStore {
 		ORDER BY updated_at DESC, created_at DESC
 	`);
 	const loadMessagesStatement = database.prepare(`
-		SELECT id, session_id, role, body, thinking, pending, created_at, segments_json, tool_calls_json
+		SELECT id, session_id, role, body, thinking, model_label, model_source, pending, created_at, segments_json, tool_calls_json
 		FROM messages
 		WHERE session_id = ?
 		ORDER BY created_at ASC, id ASC
@@ -296,8 +311,8 @@ export function createChatStore(dbPath: string): ChatStore {
 	`);
 	const deleteMessagesStatement = database.prepare("DELETE FROM messages WHERE session_id = ?");
 	const insertMessageStatement = database.prepare(`
-		INSERT INTO messages (id, session_id, role, body, thinking, pending, created_at, segments_json, tool_calls_json)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO messages (id, session_id, role, body, thinking, model_label, model_source, pending, created_at, segments_json, tool_calls_json)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`);
 	const deleteSessionStatement = database.prepare("DELETE FROM sessions WHERE id = ?");
 
@@ -328,6 +343,8 @@ export function createChatStore(dbPath: string): ChatStore {
 							role: messageRow.role,
 							body: messageRow.body ?? "",
 							thinking: messageRow.thinking ?? "",
+							modelLabel: messageRow.model_label ?? null,
+							modelSource: messageRow.model_source ?? null,
 							toolCalls,
 							segments,
 							pending: false,
@@ -350,6 +367,8 @@ export function createChatStore(dbPath: string): ChatStore {
 						busy: false,
 						abortRequested: false,
 						model: sessionRow.model ?? null,
+						assistantModelLabel: null,
+						assistantModelSource: null,
 						controller: null,
 						controllerPromise: null,
 						unsubscribe: null,
@@ -392,6 +411,8 @@ export function createChatStore(dbPath: string): ChatStore {
 							message.role,
 							message.body,
 							message.thinking,
+							message.modelLabel,
+							message.modelSource,
 							message.pending ? 1 : 0,
 							message.createdAt,
 							JSON.stringify(message.segments ?? []),

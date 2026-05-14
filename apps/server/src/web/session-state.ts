@@ -6,6 +6,8 @@ export type TranscriptMessage = {
 	role: "user" | "assistant" | "system" | "error";
 	body: string;
 	thinking: string;
+	modelLabel: string | null;
+	modelSource: string | null;
 	toolCalls: TranscriptToolCall[];
 	segments: TranscriptMessageSegment[];
 	pending: boolean;
@@ -58,6 +60,8 @@ export type SharedSessionState = {
 	busy: boolean;
 	abortRequested: boolean;
 	model: string | null;
+	assistantModelLabel: string | null;
+	assistantModelSource: string | null;
 	controller: AgentController | null;
 	controllerPromise: Promise<AgentController> | null;
 	unsubscribe: (() => void) | null;
@@ -104,6 +108,8 @@ function createSessionPreview(transcript: TranscriptMessage[]): string {
 export function cloneTranscript(transcript: TranscriptMessage[]): TranscriptMessage[] {
 	return transcript.map((entry) => ({
 		...entry,
+		modelLabel: entry.modelLabel ?? null,
+		modelSource: entry.modelSource ?? null,
 		toolCalls: entry.toolCalls.map((toolCall) => ({ ...toolCall })),
 		segments: entry.segments.map((segment) => ({ ...segment })),
 	}));
@@ -140,11 +146,16 @@ export function touchSession(session: SharedSessionState) {
 
 export function appendTranscriptMessage(
 	session: SharedSessionState,
-	message: Omit<TranscriptMessage, "createdAt">,
+	message: Omit<TranscriptMessage, "createdAt" | "modelLabel" | "modelSource"> & {
+		modelLabel?: string | null;
+		modelSource?: string | null;
+	},
 ) {
 	session.transcript.push({
 		...message,
 		thinking: message.thinking ?? "",
+		modelLabel: message.modelLabel ?? null,
+		modelSource: message.modelSource ?? null,
 		toolCalls: message.toolCalls ? message.toolCalls.map((toolCall) => ({ ...toolCall })) : [],
 		segments: message.segments ? message.segments.map((segment) => ({ ...segment })) : [],
 		createdAt: Date.now(),
@@ -158,6 +169,8 @@ export function createPendingAssistantMessage(session: SharedSessionState): Tran
 		role: "assistant",
 		body: "",
 		thinking: "",
+		modelLabel: session.assistantModelLabel,
+		modelSource: session.assistantModelSource,
 		toolCalls: [],
 		segments: [],
 		pending: true,
@@ -167,6 +180,37 @@ export function createPendingAssistantMessage(session: SharedSessionState): Tran
 	session.transcript.push(message);
 	touchSession(session);
 	return message;
+}
+
+export function setAssistantModelInfo(
+	session: SharedSessionState,
+	modelLabel: string | null,
+	modelSource: string | null,
+) {
+	session.assistantModelLabel = modelLabel;
+	session.assistantModelSource = modelSource;
+
+	const pendingMessage = getPendingAssistantMessage(session);
+	if (pendingMessage) {
+		pendingMessage.modelLabel = modelLabel;
+		pendingMessage.modelSource = modelSource;
+		touchSession(session);
+		return;
+	}
+
+	for (let index = session.transcript.length - 1; index >= 0; index -= 1) {
+		const message = session.transcript[index];
+		if (!message || message.role !== "assistant") {
+			continue;
+		}
+
+		if (!message.modelLabel && !message.modelSource) {
+			message.modelLabel = modelLabel;
+			message.modelSource = modelSource;
+			touchSession(session);
+		}
+		return;
+	}
 }
 
 export function getPendingAssistantMessage(session: SharedSessionState): TranscriptMessage | null {
@@ -216,6 +260,8 @@ export function createSharedSession(initialPrompt: string): SharedSessionState {
 		busy: false,
 		abortRequested: false,
 		model: null,
+		assistantModelLabel: null,
+		assistantModelSource: null,
 		controller: null,
 		controllerPromise: null,
 		unsubscribe: null,

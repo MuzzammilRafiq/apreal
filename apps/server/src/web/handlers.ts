@@ -1,10 +1,12 @@
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ScheduledJobUpdateRequest } from "@apreal/shared";
 import type { ClientAppMessage } from "../protocol.ts";
 import {
+	buildProvidersPayload,
 	createAgentController,
 	formatModelLabel,
 	getErrorMessage,
+	setDefaultProviderModel,
 	type AgentStreamEvent,
 } from "../session.ts";
 import {
@@ -20,6 +22,7 @@ import {
 	finalizeAssistantMessage,
 	getPendingAssistantMessage,
 	settleSession,
+	setAssistantModelInfo,
 	touchSession,
 	updateAssistantToolCallStatus,
 	upsertAssistantToolCall,
@@ -90,6 +93,21 @@ export function createHandlers(
 			jobId: job.id,
 			runs: listScheduledJobRuns(job.name),
 		});
+	}
+
+	function buildProvidersSnapshot() {
+		return {
+			type: "providers_snapshot" as const,
+			...buildProvidersPayload(cwd),
+		};
+	}
+
+	function sendProvidersSnapshot(clientId: string) {
+		try {
+			clientActions.sendClientPayload(clientId, buildProvidersSnapshot());
+		} catch (error) {
+			clientActions.sendError(clientId, getErrorMessage(error));
+		}
 	}
 
 	function validateScheduledJobChanges(changes: ScheduledJobUpdateRequest): string | null {
@@ -173,6 +191,18 @@ export function createHandlers(
 			type: "job_deleted",
 			jobId: job.id,
 		});
+	}
+
+	async function handleSetDefaultModel(clientId: string, provider: string, modelId: string) {
+		try {
+			const payload = await setDefaultProviderModel(cwd, provider, modelId);
+			clientActions.broadcast({
+				type: "providers_snapshot",
+				...payload,
+			});
+		} catch (error) {
+			clientActions.sendError(clientId, getErrorMessage(error));
+		}
 	}
 
 	function handleControllerEvent(session: SharedSessionState, event: AgentStreamEvent) {
@@ -295,10 +325,12 @@ export function createHandlers(
 			});
 			session.controller = controller;
 			session.model = formatModelLabel(controller.model);
+			setAssistantModelInfo(session, controller.modelInfo.modelLabel, controller.modelInfo.modelSource);
 			session.unsubscribe = controller.subscribe((event) => {
 				handleControllerEvent(session, event);
 			});
 			touchSession(session);
+			clientActions.broadcastSessionSnapshot(session);
 			clientActions.broadcastSessionSummaryUpdated(session);
 			return controller;
 		})();
@@ -527,8 +559,18 @@ export function createHandlers(
 			return;
 		}
 
+		if (message.type === "load_providers") {
+			sendProvidersSnapshot(clientId);
+			return;
+		}
+
 		if (message.type === "load_job_runs") {
 			sendJobRunsSnapshot(clientId, message.jobId);
+			return;
+		}
+
+		if (message.type === "set_default_model") {
+			await handleSetDefaultModel(clientId, message.provider, message.modelId);
 			return;
 		}
 

@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { Type, type Static } from "@mariozechner/pi-ai";
-import { defineTool } from "@mariozechner/pi-coding-agent";
+import { Type, type Static } from "@earendil-works/pi-ai";
+import { defineTool } from "@earendil-works/pi-coding-agent";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 

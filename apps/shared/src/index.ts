@@ -98,6 +98,42 @@ export type RelayReauthenticateRequest = {
 	pairingCode: string;
 };
 
+export const ADMIN_PROVIDERS_PATH = "/api/admin/providers";
+
+export type ProviderModel = {
+	id: string;
+	name: string;
+};
+
+export type ProviderInfo = {
+	id: string;
+	authType: "oauth" | "api_key";
+	models: ProviderModel[];
+};
+
+export type ProvidersResponse = {
+	providers: ProviderInfo[];
+	defaultProvider: string | null;
+	defaultModel: string | null;
+};
+
+export type SetDefaultModelRequest = {
+	provider: string;
+	modelId: string;
+};
+
+export type ClientProvidersCommand =
+	| {
+		type: "load_providers";
+	}
+	| ({
+		type: "set_default_model";
+	} & SetDefaultModelRequest);
+
+export type ServerProvidersMessage = {
+	type: "providers_snapshot";
+} & ProvidersResponse;
+
 export type RelayReauthenticateResponse = {
 	status: LocalWebAdminStatus;
 };

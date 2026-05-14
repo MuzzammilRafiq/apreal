@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { extname, join, resolve, sep } from "node:path";
 import type { Server as HttpServer } from "node:http";
 import {
+	ADMIN_PROVIDERS_PATH,
 	ADMIN_RELAY_REAUTHENTICATE_PATH,
 	ADMIN_STATUS_PATH,
 	CLIENT_EVENT_STREAM_PATH,
@@ -15,6 +16,7 @@ import {
 	type LocalWebAdminStatus,
 	type RelayReauthenticateRequest,
 	type RelayReauthenticateResponse,
+	type SetDefaultModelRequest,
 } from "@apreal/shared";
 import { createChatStore } from "../chat-store.ts";
 import { getConfiguredToolsLabel } from "../agent-tools.ts";
@@ -25,7 +27,7 @@ import {
 } from "../relay-auth.ts";
 import { createCustomTools } from "../tools/index.ts";
 import { createJobExecutor, JobStore, Scheduler } from "../scheduled-jobs/index.ts";
-import { getErrorMessage, prewarmAgentRuntime } from "../session.ts";
+import { buildProvidersPayload, getErrorMessage, prewarmAgentRuntime, setDefaultProviderModel } from "../session.ts";
 import { createClientManager, type Logger } from "./client-manager.ts";
 import { createHandlers } from "./handlers.ts";
 import { startHttpServer } from "./http-server.ts";
@@ -318,7 +320,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		relay.restartRelayTransport();
 	}
 
-	void prewarmAgentRuntime().catch((error) => {
+	void prewarmAgentRuntime(cwd).catch((error) => {
 		logger.warn("agent runtime prewarm failed", {
 			error: getErrorMessage(error),
 		});
@@ -430,6 +432,81 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 					}
 
 					return json(buildStatusPayload(), {
+						headers: createCorsHeaders(),
+					});
+				}
+
+				if (url.pathname === ADMIN_PROVIDERS_PATH) {
+					const localOnlyResponse = assertLocalAdminRequest(request);
+					if (localOnlyResponse) {
+						return localOnlyResponse;
+					}
+
+					if (request.method === "OPTIONS") {
+						return new Response(null, {
+							status: 204,
+							headers: createCorsHeaders(),
+						});
+					}
+
+					if (request.method === "GET") {
+						try {
+							return json(buildProvidersPayload(cwd), { headers: createCorsHeaders() });
+						} catch (error) {
+							return json(
+								{ message: getErrorMessage(error) },
+								{ status: 500, headers: createCorsHeaders() },
+							);
+						}
+					}
+
+					if (request.method === "PATCH") {
+						let payload: unknown;
+						try {
+							payload = await request.json();
+						} catch {
+							return json(
+								{ message: "Request body must be valid JSON." },
+								{ status: 400, headers: createCorsHeaders() },
+							);
+						}
+
+						if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+							return json(
+								{ message: "Request body must be a JSON object." },
+								{ status: 400, headers: createCorsHeaders() },
+							);
+						}
+
+						const { provider, modelId } = payload as Partial<SetDefaultModelRequest>;
+						if (typeof provider !== "string" || provider.trim().length === 0) {
+							return json(
+								{ message: "provider must be a non-empty string." },
+								{ status: 400, headers: createCorsHeaders() },
+							);
+						}
+						if (typeof modelId !== "string" || modelId.trim().length === 0) {
+							return json(
+								{ message: "modelId must be a non-empty string." },
+								{ status: 400, headers: createCorsHeaders() },
+							);
+						}
+
+						try {
+							return json(
+								await setDefaultProviderModel(cwd, provider.trim(), modelId.trim()),
+								{ headers: createCorsHeaders() },
+							);
+						} catch (error) {
+							return json(
+								{ message: getErrorMessage(error) },
+								{ status: 400, headers: createCorsHeaders() },
+							);
+						}
+					}
+
+					return new Response("Method Not Allowed", {
+						status: 405,
 						headers: createCorsHeaders(),
 					});
 				}

@@ -1,4 +1,4 @@
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { JobStore, Scheduler } from "../scheduled-jobs/index.ts";
 import { createDeleteScheduledJobTool } from "./delete-job.ts";
 import { createListScheduledJobsTool } from "./list-jobs.ts";
