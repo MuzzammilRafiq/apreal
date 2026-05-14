@@ -362,6 +362,7 @@ export default function ChatDetailScreen() {
           busy={isBusy}
           canSend={canSend}
           connected={connected}
+          activeSession={activeSession}
         />
       </KeyboardAvoidingView>
     </SafeAreaView>

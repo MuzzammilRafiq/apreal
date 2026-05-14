@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   Pressable,
   StyleSheet,
+  Text,
   TextInput,
   View,
   type TextInputProps,
@@ -9,6 +10,32 @@ import {
 
 import { Colors, Radii } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import type { SessionSummary } from "@/types/chat";
+
+function formatContextCount(value: number): string {
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
+  }
+
+  if (value >= 1_000) {
+    return `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}k`;
+  }
+
+  return value.toString();
+}
+
+function formatCurrentContext(session: SessionSummary | null): string | null {
+  if (!session) {
+    return null;
+  }
+
+  const usage = session.contextUsage;
+  if (!usage || usage.tokens === null) {
+    return null;
+  }
+
+  return `${formatContextCount(usage.tokens)}/${formatContextCount(usage.contextWindow)}`;
+}
 
 type ChatComposerProps = {
   value: string;
@@ -18,6 +45,7 @@ type ChatComposerProps = {
   connected: boolean;
   busy: boolean;
   canSend: boolean;
+  activeSession: SessionSummary | null;
   onSubmitEditing?: TextInputProps["onSubmitEditing"];
 };
 
@@ -29,11 +57,13 @@ export function ChatComposer({
   connected,
   busy,
   canSend,
+  activeSession,
   onSubmitEditing,
 }: ChatComposerProps) {
   const colorScheme = useColorScheme() ?? "light";
   const palette = Colors[colorScheme];
   const buttonDisabled = !connected || (!canSend && !busy);
+  const currentContextLabel = formatCurrentContext(activeSession);
 
   return (
     <View
@@ -42,6 +72,16 @@ export function ChatComposer({
         { paddingBottom: 4 },
       ]}
     >
+      {currentContextLabel ? (
+        <View style={styles.contextRow}>
+          <Text
+            numberOfLines={1}
+            style={[styles.contextValue, { color: palette.mutedText }]}
+          >
+            {currentContextLabel}
+          </Text>
+        </View>
+      ) : null}
       <View
         style={[
           styles.shell,
@@ -94,6 +134,17 @@ const styles = StyleSheet.create({
   wrapper: {
     paddingHorizontal: 12,
     paddingTop: 4,
+  },
+  contextRow: {
+    alignItems: "flex-end",
+    paddingHorizontal: 4,
+    paddingBottom: 6,
+  },
+  contextValue: {
+    fontSize: 12,
+    lineHeight: 16,
+    textAlign: "right",
+    paddingVertical: 0,
   },
   shell: {
     borderWidth: 1,

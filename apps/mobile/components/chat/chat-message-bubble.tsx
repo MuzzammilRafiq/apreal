@@ -117,12 +117,7 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
           ) : null}
 
           {shouldShowAssistantMeta ? (
-            <View
-              style={[
-                styles.assistantMeta,
-                { borderTopColor: palette.border },
-              ]}
-            >
+            <View style={styles.assistantMeta}>
               {message.modelLabel ? (
                 <ThemedText style={styles.assistantMetaPrimary}>
                   {message.modelLabel}
@@ -596,7 +591,7 @@ function createMarkdownStyles(palette: (typeof Colors)["light"]) {
       fontSize: 14,
       lineHeight: 20,
       marginTop: 0,
-      marginBottom: 10,
+      marginBottom: 6,
     },
     text: {
       color: palette.text,
@@ -609,22 +604,22 @@ function createMarkdownStyles(palette: (typeof Colors)["light"]) {
       lineHeight: level === 1 ? 24 : level === 2 ? 22 : 20,
       fontWeight: "700" as const,
       marginTop: 0,
-      marginBottom: 10,
+      marginBottom: 6,
     }),
     blockquote: {
       borderLeftWidth: 3,
       borderLeftColor: palette.border,
       paddingLeft: 12,
       marginLeft: 0,
-      marginBottom: 10,
+      marginBottom: 6,
     },
     list: {
       marginTop: 0,
-      marginBottom: 10,
+      marginBottom: 6,
     },
     listItem: {
       color: palette.text,
-      marginBottom: 6,
+      marginBottom: 4,
     },
     strong: {
       color: palette.text,
@@ -706,22 +701,20 @@ const styles = StyleSheet.create({
   },
   segmentList: {
     width: "100%",
-    gap: 4,
+    gap: 2,
   },
   assistantMeta: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 2,
+    marginTop: 4,
+    gap: 1,
   },
   assistantMetaPrimary: {
     fontSize: 11,
-    lineHeight: 15,
+    lineHeight: 14,
     fontWeight: "700",
   },
   assistantMetaSecondary: {
     fontSize: 11,
-    lineHeight: 15,
+    lineHeight: 14,
   },
   toolCard: {
     borderWidth: 1,
