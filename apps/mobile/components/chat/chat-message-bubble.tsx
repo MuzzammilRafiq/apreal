@@ -51,9 +51,10 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
     message.role === "assistant" &&
     assistantSegments.length === 0 &&
     Boolean(message.body);
+    const assistantModelMeta = message.modelLabel || message.modelSource;
   const shouldShowAssistantMeta =
     message.role === "assistant" &&
-    Boolean(message.modelLabel || message.modelSource);
+      Boolean(assistantModelMeta);
 
   return (
     <View style={[styles.row, isUser ? styles.userRow : styles.assistantRow]}>
@@ -118,21 +119,14 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
 
           {shouldShowAssistantMeta ? (
             <View style={styles.assistantMeta}>
-              {message.modelLabel ? (
-                <ThemedText style={styles.assistantMetaPrimary}>
-                  {message.modelLabel}
-                </ThemedText>
-              ) : null}
-              {message.modelSource ? (
-                <ThemedText
-                  style={[
-                    styles.assistantMetaSecondary,
-                    { color: palette.mutedText },
-                  ]}
-                >
-                  {message.modelSource}
-                </ThemedText>
-              ) : null}
+              <ThemedText
+                style={[
+                  styles.assistantMetaPrimary,
+                  !message.modelLabel ? { color: palette.mutedText } : null,
+                ]}
+              >
+                {assistantModelMeta}
+              </ThemedText>
             </View>
           ) : null}
         </View>
