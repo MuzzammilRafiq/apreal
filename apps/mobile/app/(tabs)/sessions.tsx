@@ -75,7 +75,7 @@ export default function SessionsScreen() {
   if (!isHydrated) {
     return (
       <SafeAreaView
-        edges={["top", "bottom"]}
+        edges={["top"]}
         style={[styles.safeArea, { backgroundColor: palette.background }]}
       >
         <View style={styles.centeredState}>
@@ -87,7 +87,7 @@ export default function SessionsScreen() {
 
   return (
     <SafeAreaView
-      edges={["top", "bottom"]}
+      edges={["top"]}
       style={[styles.safeArea, { backgroundColor: palette.background }]}
     >
       <View style={styles.screen}>
@@ -446,7 +446,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingBottom: 0,
     gap: 16,
   },
   statusCard: {
