@@ -16,31 +16,17 @@ export default function ServerSettingsScreen() {
   const palette = Colors[colorScheme];
   const router = useRouter();
   const {
-    connected,
-    pairingReady,
-    pairingState,
-    lastError,
-    clearError,
     providers,
     providersLoaded,
     loadingProviders,
     refreshProviders,
   } = useChatClient();
 
-  const pairingTitle = pairingReady ? "Device paired" : "Waiting for pairing";
-  const pairingBody = pairingReady
-    ? "This device is already paired. Future relay connections will keep using the stored client identity."
-    : "Paste this code into the agent server. Chat stays locked until the relay marks this phone as paired.";
-
   useEffect(() => {
-    if (!pairingReady) {
-      return;
-    }
-
     void refreshProviders().catch(() => {
       // The provider load error is surfaced through shared screen state.
     });
-  }, [pairingReady, refreshProviders]);
+  }, [refreshProviders]);
 
   const searchableModels = useMemo(() => getSearchableModels(providers), [providers]);
 
@@ -71,7 +57,7 @@ export default function ServerSettingsScreen() {
           <ThemedText
             style={[styles.headerSubtitle, { color: palette.mutedText }]}
           >
-            Relay pairing and model defaults
+            Model defaults
           </ThemedText>
         </View>
       </View>
@@ -89,118 +75,23 @@ export default function ServerSettingsScreen() {
             },
           ]}
         >
-          <View style={styles.statusRow}>
-            <ThemedText type="defaultSemiBold">{pairingTitle}</ThemedText>
-            <View
-              style={[
-                styles.statusPill,
-                {
-                  backgroundColor: connected
-                    ? palette.toolCompletedBackground
-                    : palette.toolFailedBackground,
-                },
-              ]}
-            >
-              <ThemedText
-                style={{
-                  color: connected
-                    ? palette.statusConnected
-                    : palette.statusDisconnected,
-                  fontSize: 12,
-                  lineHeight: 16,
-                  fontWeight: "700",
-                }}
-              >
-                {connected ? "Connected" : "Disconnected"}
-              </ThemedText>
-            </View>
-          </View>
-
-          <ThemedText style={[styles.pairingCode, { color: palette.text }]}>
-            {pairingReady ? "Paired" : pairingState?.pairingCode ?? "Issuing..."}
-          </ThemedText>
-          <ThemedText style={[styles.copy, { color: palette.mutedText }]}>
-            {pairingBody}
-          </ThemedText>
-        </View>
-
-        {lastError ? (
-          <View
-            style={[
-              styles.card,
-              {
-                backgroundColor: palette.dangerBackground,
-                borderColor: palette.border,
-              },
-            ]}
-          >
-            <View style={styles.errorRow}>
-              <ThemedText
-                style={[styles.errorText, { color: palette.dangerText }]}
-              >
-                {lastError}
-              </ThemedText>
-              <Pressable onPress={clearError} style={styles.dismissButton}>
-                <Ionicons name="close" size={18} color={palette.dangerText} />
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
-
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: palette.cardBackground,
-              borderColor: palette.border,
-            },
-          ]}
-        >
-          <ThemedText type="defaultSemiBold">Pairing flow</ThemedText>
-          <ThemedText style={[styles.copy, { color: palette.mutedText }]}>
-            1. Wait for this screen to show a pairing code.
-          </ThemedText>
-          <ThemedText style={[styles.copy, { color: palette.mutedText }]}>
-            2. Copy that code into the agent server once.
-          </ThemedText>
-          <ThemedText style={[styles.copy, { color: palette.mutedText }]}>
-            3. Keep this app open until the relay reports the device as paired.
-          </ThemedText>
-          <ThemedText style={[styles.copy, { color: palette.mutedText }]}>
-            4. After pairing, this device reconnects with its stored relay identity.
-          </ThemedText>
-        </View>
-
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: palette.cardBackground,
-              borderColor: palette.border,
-            },
-          ]}
-        >
           <View style={styles.sectionHeaderRow}>
             <ThemedText type="defaultSemiBold">Agent login and models</ThemedText>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Reload models"
               onPress={() => {
-                if (!pairingReady) {
-                  return;
-                }
-
                 void refreshProviders().catch(() => {
                   // The provider load error is surfaced through shared screen state.
                 });
               }}
-              disabled={loadingProviders || !pairingReady}
+              disabled={loadingProviders}
               style={[
                 styles.inlineButton,
                 {
                   borderColor: palette.border,
                   backgroundColor: palette.cardBackground,
-                  opacity: loadingProviders || !pairingReady ? 0.6 : 1,
+                  opacity: loadingProviders ? 0.6 : 1,
                 },
               ]}
             >
@@ -218,178 +109,170 @@ export default function ServerSettingsScreen() {
             app should use for new chats.
           </ThemedText>
 
-          {!pairingReady ? (
-            <ThemedText style={[styles.copy, { color: palette.mutedText }]}>
-              Pair this device first to browse and change the default model.
-            </ThemedText>
-          ) : (
-            <>
-              <View
-                style={[
-                  styles.featuredModelCard,
-                  {
-                    backgroundColor: palette.surface,
-                    borderColor: palette.border,
-                  },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.featuredModelIcon,
-                    {
-                      backgroundColor: palette.cardPressed,
-                      borderColor: palette.border,
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name={
-                      loadingProviders && !providersLoaded
-                        ? "hourglass-outline"
-                        : currentDefaultModel
-                          ? "checkmark-circle"
-                          : "sparkles-outline"
-                    }
-                    size={20}
-                    color={palette.text}
-                  />
-                </View>
+          <View
+            style={[
+              styles.featuredModelCard,
+              {
+                backgroundColor: palette.surface,
+                borderColor: palette.border,
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.featuredModelIcon,
+                {
+                  backgroundColor: palette.cardPressed,
+                  borderColor: palette.border,
+                },
+              ]}
+            >
+              <Ionicons
+                name={
+                  loadingProviders && !providersLoaded
+                    ? "hourglass-outline"
+                    : currentDefaultModel
+                      ? "checkmark-circle"
+                      : "sparkles-outline"
+                }
+                size={20}
+                color={palette.text}
+              />
+            </View>
 
-                <View style={styles.featuredModelCopy}>
-                  {loadingProviders && !providersLoaded ? (
-                    <>
-                      <ThemedText
-                        type="defaultSemiBold"
-                        style={styles.featuredModelTitle}
-                      >
-                        Fetching available models...
-                      </ThemedText>
-                      <ThemedText
-                        style={[styles.featuredModelBody, { color: palette.mutedText }]}
-                      >
-                        The paired server is loading provider state and available model options.
-                      </ThemedText>
-                    </>
-                  ) : (
-                    <>
-                      <View style={styles.featuredModelHeader}>
-                        <ThemedText
-                          type="defaultSemiBold"
-                          style={styles.featuredModelTitle}
-                        >
-                          {currentDefaultModel?.modelName ?? "Choose a model for new chats"}
-                        </ThemedText>
-
-                        {currentDefaultModel ? (
-                          <View style={styles.modelHeaderMeta}>
-                            <View
-                              style={[
-                                styles.modelTag,
-                                {
-                                  backgroundColor: palette.cardPressed,
-                                  borderColor: palette.border,
-                                },
-                              ]}
-                            >
-                              <ThemedText
-                                style={[styles.modelTagText, { color: palette.text }]}
-                              >
-                                {currentDefaultModel.providerLabel}
-                              </ThemedText>
-                            </View>
-                            <View
-                              style={[
-                                styles.modelTag,
-                                {
-                                  backgroundColor: palette.cardPressed,
-                                  borderColor: palette.border,
-                                },
-                              ]}
-                            >
-                              <ThemedText
-                                style={[styles.modelTagText, { color: palette.text }]}
-                              >
-                                {currentDefaultModel.authType === "oauth"
-                                  ? "Subscription"
-                                  : "API key"}
-                              </ThemedText>
-                            </View>
-                            <View
-                              style={[
-                                styles.currentBadge,
-                                {
-                                  backgroundColor: palette.cardPressed,
-                                  borderColor: palette.border,
-                                },
-                              ]}
-                            >
-                              <ThemedText
-                                style={[
-                                  styles.currentBadgeText,
-                                  { color: palette.text },
-                                ]}
-                              >
-                                Current
-                              </ThemedText>
-                            </View>
-                          </View>
-                        ) : null}
-                      </View>
-
-                      <ThemedText
-                        style={[styles.featuredModelMeta, { color: palette.mutedText }]}
-                      >
-                        {currentDefaultModel?.modelId ?? "No default model selected yet."}
-                      </ThemedText>
-
-                      {!currentDefaultModel ? (
-                        <ThemedText
-                          style={[styles.featuredModelBody, { color: palette.mutedText }]}
-                        >
-                          Open the full model list to browse all available models and pick one.
-                        </ThemedText>
-                      ) : null}
-                    </>
-                  )}
-                </View>
-              </View>
-
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="View all models"
-                onPress={() => router.push("/settings/models")}
-                style={({ pressed }) => [
-                  styles.modelBrowseButton,
-                  {
-                    backgroundColor: pressed ? palette.cardPressed : palette.surface,
-                    borderColor: palette.border,
-                  },
-                ]}
-              >
-                <View style={styles.modelBrowseCopy}>
-                  <ThemedText type="defaultSemiBold" style={styles.modelBrowseTitle}>
-                    View all models
+            <View style={styles.featuredModelCopy}>
+              {loadingProviders && !providersLoaded ? (
+                <>
+                  <ThemedText
+                    type="defaultSemiBold"
+                    style={styles.featuredModelTitle}
+                  >
+                    Fetching available models...
                   </ThemedText>
                   <ThemedText
-                    style={[styles.modelBrowseMeta, { color: palette.mutedText }]}
+                    style={[styles.featuredModelBody, { color: palette.mutedText }]}
                   >
-                    {!providersLoaded && loadingProviders
-                      ? "Loading available models..."
-                      : totalModels === 0
-                        ? "No models available yet"
-                        : `${totalModels} model${totalModels === 1 ? "" : "s"} available`}
+                    The paired server is loading provider state and available model options.
                   </ThemedText>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={palette.text} />
-              </Pressable>
+                </>
+              ) : (
+                <>
+                  <View style={styles.featuredModelHeader}>
+                    <ThemedText
+                      type="defaultSemiBold"
+                      style={styles.featuredModelTitle}
+                    >
+                      {currentDefaultModel?.modelName ?? "Choose a model for new chats"}
+                    </ThemedText>
 
-              {providersLoaded && providers && providers.providers.length === 0 ? (
-                <ThemedText style={[styles.copy, { color: palette.mutedText }]}>
-                  No providers are configured yet.
-                </ThemedText>
-              ) : null}
-            </>
-          )}
+                    {currentDefaultModel ? (
+                      <View style={styles.modelHeaderMeta}>
+                        <View
+                          style={[
+                            styles.modelTag,
+                            {
+                              backgroundColor: palette.cardPressed,
+                              borderColor: palette.border,
+                            },
+                          ]}
+                        >
+                          <ThemedText
+                            style={[styles.modelTagText, { color: palette.text }]}
+                          >
+                            {currentDefaultModel.providerLabel}
+                          </ThemedText>
+                        </View>
+                        <View
+                          style={[
+                            styles.modelTag,
+                            {
+                              backgroundColor: palette.cardPressed,
+                              borderColor: palette.border,
+                            },
+                          ]}
+                        >
+                          <ThemedText
+                            style={[styles.modelTagText, { color: palette.text }]}
+                          >
+                            {currentDefaultModel.authType === "oauth"
+                              ? "Subscription"
+                              : "API key"}
+                          </ThemedText>
+                        </View>
+                        <View
+                          style={[
+                            styles.currentBadge,
+                            {
+                              backgroundColor: palette.cardPressed,
+                              borderColor: palette.border,
+                            },
+                          ]}
+                        >
+                          <ThemedText
+                            style={[
+                              styles.currentBadgeText,
+                              { color: palette.text },
+                            ]}
+                          >
+                            Current
+                          </ThemedText>
+                        </View>
+                      </View>
+                    ) : null}
+                  </View>
+
+                  <ThemedText
+                    style={[styles.featuredModelMeta, { color: palette.mutedText }]}
+                  >
+                    {currentDefaultModel?.modelId ?? "No default model selected yet."}
+                  </ThemedText>
+
+                  {!currentDefaultModel ? (
+                    <ThemedText
+                      style={[styles.featuredModelBody, { color: palette.mutedText }]}
+                    >
+                      Open the full model list to browse all available models and pick one.
+                    </ThemedText>
+                  ) : null}
+                </>
+              )}
+            </View>
+          </View>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="View all models"
+            onPress={() => router.push("/settings/models")}
+            style={({ pressed }) => [
+              styles.modelBrowseButton,
+              {
+                backgroundColor: pressed ? palette.cardPressed : palette.surface,
+                borderColor: palette.border,
+              },
+            ]}
+          >
+            <View style={styles.modelBrowseCopy}>
+              <ThemedText type="defaultSemiBold" style={styles.modelBrowseTitle}>
+                View all models
+              </ThemedText>
+              <ThemedText
+                style={[styles.modelBrowseMeta, { color: palette.mutedText }]}
+              >
+                {!providersLoaded && loadingProviders
+                  ? "Loading available models..."
+                  : totalModels === 0
+                    ? "No models available yet"
+                    : `${totalModels} model${totalModels === 1 ? "" : "s"} available`}
+              </ThemedText>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={palette.text} />
+          </Pressable>
+
+          {providersLoaded && providers && providers.providers.length === 0 ? (
+            <ThemedText style={[styles.copy, { color: palette.mutedText }]}>
+              No providers are configured yet.
+            </ThemedText>
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -431,28 +314,11 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 12,
   },
-  statusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
   sectionHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
-  },
-  statusPill: {
-    borderRadius: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  pairingCode: {
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: "700",
-    letterSpacing: 0.4,
   },
   copy: {
     fontSize: 14,
@@ -665,22 +531,5 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
     fontWeight: "700",
-  },
-  errorRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  errorText: {
-    flex: 1,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  dismissButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 4,
-    alignItems: "center",
-    justifyContent: "center",
   },
 });
