@@ -9,7 +9,7 @@ import {
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
-import { agentToolsConfig, getConfiguredBuiltInToolNames, getConfiguredToolsLabel } from "./agent-tools.ts";
+import { agentToolsConfig, getConfiguredToolNames, getConfiguredToolsLabel } from "./agent-tools.ts";
 import { createLogger, summarizePrompt } from "./logger.ts";
 import type { ProvidersResponse } from "@apreal/shared";
 
@@ -358,7 +358,7 @@ async function createPiSession(cwd: string, customTools: ToolDefinition[] = agen
 		modelRegistry: runtime.modelRegistry,
 		settingsManager: runtime.settingsManager,
 		sessionManager: SessionManager.inMemory(),
-		tools: getConfiguredBuiltInToolNames(),
+		tools: getConfiguredToolNames(customTools),
 		customTools,
 	});
 	const model = result.session.model;
