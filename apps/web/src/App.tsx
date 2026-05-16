@@ -985,7 +985,7 @@ export function App() {
 	}, []);
 
 	useEffect(() => {
-		if (route !== "jobs") {
+		if (route !== "jobs" && route !== "settings") {
 			return;
 		}
 
@@ -1004,6 +1004,14 @@ export function App() {
 				isSubmitting={submittingPairingCode}
 				submissionMessage={settingsMessage}
 				submissionError={settingsError}
+				jobs={scheduledJobs}
+				jobRuns={scheduledJobRuns}
+				sessionCache={sessionCache}
+				jobsError={scheduledJobsError}
+				jobRunsError={scheduledJobRunsError}
+				isLoadingJobs={loadingScheduledJobs}
+				isLoadingJobRuns={loadingScheduledJobRuns}
+				connectionError={connectionError}
 				onBack={() => handleRouteChange("chat")}
 				onRefresh={() => {
 					void refreshAdminStatus().catch((error) => {
@@ -1011,6 +1019,12 @@ export function App() {
 						setAdminStatusError(getErrorMessage(error));
 					});
 				}}
+				onRefreshJobs={handleRefreshJobs}
+				onRefreshJobRuns={handleRefreshJobRuns}
+				onUpdateJobInterval={updateScheduledJob}
+				onToggleJobEnabled={toggleScheduledJobEnabled}
+				onDeleteJob={deleteScheduledJob}
+				onEnsureRunLoaded={ensureSessionLoaded}
 				onSetDefaultModel={handleSetDefaultModel}
 				onSubmitPairingCode={handleSubmitPairingCode}
 			/>

@@ -58,7 +58,7 @@ export const Sidebar = memo(function Sidebar({
 					className="mt-3 w-full border border-white/10 bg-sidebar-panel px-4 py-3 text-left text-[0.84rem] font-medium text-sidebar-muted transition duration-150 hover:border-white/20 hover:bg-white/6 hover:text-sidebar-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
 					onClick={onOpenSettings}
 				>
-					Open server settings
+					More
 				</button>
 			</div>
 			<div className="max-[720px]:max-h-[34svh] flex-1 overflow-y-auto px-4.5 pt-4 pb-6">
