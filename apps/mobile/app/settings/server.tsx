@@ -9,7 +9,7 @@ import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useChatClient } from "@/providers/chat-client-provider";
 
-import { getSearchableModels } from "./model-utils";
+import { getSearchableModels } from "@/lib/settings-model-utils";
 
 export default function ServerSettingsScreen() {
   const colorScheme = useColorScheme() ?? "light";

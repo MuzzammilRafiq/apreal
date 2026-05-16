@@ -9,7 +9,10 @@ import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useChatClient } from "@/providers/chat-client-provider";
 
-import { getSearchableModels, normalizeSearchValue } from "./model-utils";
+import {
+  getSearchableModels,
+  normalizeSearchValue,
+} from "@/lib/settings-model-utils";
 
 export default function ModelListScreen() {
   const colorScheme = useColorScheme() ?? "light";
