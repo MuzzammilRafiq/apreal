@@ -78,6 +78,7 @@ pnpm typecheck
 ## Runtime Notes
 
 - Agent provider login is handled by the Pi CLI on the laptop. Run `pi`, then use `/login` and `/model` to choose the provider/subscription and default model for new chats.
+- The server exposes a persistent `memory` tool with granular memory blocks and items. Use `write`, `read`, `update`, and `forget` on either a whole memory block or a single memory item. Give each item a short description and prefer splitting large content into multiple granular items. `always` memories load only compact summaries into future turns so the prompt stays lean.
 - `LOG_LEVEL` supports `debug`, `info`, `warn`, and `error`.
 - The browser talks only to the relay host for auth plus chat transport.
 - The browser talks only to the relay host. The Pi server keeps an outbound authenticated stream open to the relay, and browser messages are forwarded over that live channel.

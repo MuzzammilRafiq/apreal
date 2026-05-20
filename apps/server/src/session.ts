@@ -1,6 +1,7 @@
 import {
 	AuthStorage,
 	createAgentSession,
+	DefaultResourceLoader,
 	ModelRegistry,
 	SessionManager,
 	SettingsManager,
@@ -11,8 +12,10 @@ import { join } from "node:path";
 import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
 import { agentToolsConfig, getConfiguredToolNames, getConfiguredToolsLabel } from "./agent-tools.ts";
 import { createLogger, summarizePrompt } from "./logger.ts";
+import { getDefaultMemoryStore } from "./memory-store.ts";
 import type { ProvidersResponse } from "@apreal/shared";
 
+const PI_AGENT_DIR = join(homedir(), ".pi", "agent");
 const PI_AGENT_AUTH_PATH = join(homedir(), ".pi", "agent", "auth.json");
 const PI_AGENT_SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
 const PI_LOGIN_GUIDANCE =
@@ -231,6 +234,26 @@ export function formatToolExecutionSummary(name: string, args: unknown): string 
 
 			return truncateToolSummary(stringifyToolArguments(record));
 		}
+		case "memory": {
+			const action = readStringField(record, ["action"]);
+			const memoryType = readStringField(record, ["memoryType"]);
+			const query = readStringField(record, ["query"]);
+			const memoryId = readStringField(record, ["memoryId", "id"]);
+			if (action === "search" && query) {
+				return truncateToolSummary(`${action}: ${query}`);
+			}
+			if (action && memoryType) {
+				return truncateToolSummary(`${action}: ${memoryType}`);
+			}
+			if (action && memoryId) {
+				return truncateToolSummary(`${action}: ${memoryId}`);
+			}
+			if (action) {
+				return truncateToolSummary(action);
+			}
+
+			return truncateToolSummary(stringifyToolArguments(record));
+		}
 		default: {
 			if (path) {
 				return truncateToolSummary(path);
@@ -333,6 +356,40 @@ function getMissingAuthError() {
 	].join(" ");
 }
 
+async function createResourceLoader(cwd: string, settingsManager: SettingsManager) {
+	const memoryStore = getDefaultMemoryStore();
+	const resourceLoader = new DefaultResourceLoader({
+		cwd,
+		agentDir: PI_AGENT_DIR,
+		settingsManager,
+		agentsFilesOverride: (base) => {
+			const persistentMemory = memoryStore.renderAlwaysLoadedContext();
+			if (!persistentMemory) {
+				return base;
+			}
+
+			return {
+				agentsFiles: [
+					...base.agentsFiles.filter((file) => file.path !== persistentMemory.path),
+					persistentMemory,
+				],
+			};
+		},
+		appendSystemPromptOverride: (base) => [
+			...base,
+			[
+				"## Persistent Memory Tool",
+				"- Use the `memory` tool when the user asks you to remember, read, update, or forget durable information.",
+				"- Save durable facts as small, granular memory items grouped inside memory blocks.",
+				"- Give each memory item a short description and prefer granular items; split oversized content into multiple items when practical.",
+				"- `always` memories only load compact summaries into future turns; read full item content on demand with the tool.",
+			].join("\n"),
+		],
+	});
+	await resourceLoader.reload();
+	return resourceLoader;
+}
+
 function createPiRuntime(cwd: string): PiRuntime {
 	const authStorage = AuthStorage.create();
 	applyLegacyEnvCredentialAliases(authStorage);
@@ -352,10 +409,12 @@ function createPiRuntime(cwd: string): PiRuntime {
 
 async function createPiSession(cwd: string, customTools: ToolDefinition[] = agentToolsConfig.customTools) {
 	const runtime = createPiRuntime(cwd);
+	const resourceLoader = await createResourceLoader(cwd, runtime.settingsManager);
 	const result = await createAgentSession({
 		cwd,
 		authStorage: runtime.authStorage,
 		modelRegistry: runtime.modelRegistry,
+		resourceLoader,
 		settingsManager: runtime.settingsManager,
 		sessionManager: SessionManager.inMemory(),
 		tools: getConfiguredToolNames(customTools),
@@ -554,6 +613,7 @@ export async function createAgentController(
 				preview: summarizePrompt(input),
 			});
 
+			await session.reload();
 			await session.prompt(input);
 			logger.info("prompt finished", {
 				durationMs: Math.round(performance.now() - startedAt),
