@@ -40,33 +40,44 @@ export const Sidebar = memo(function Sidebar({
 	onLoadMoreSessions,
 }: SidebarProps) {
 	return (
-		<aside className="flex h-full min-h-0 flex-col border-b border-white/10 bg-sidebar-bg text-sidebar-ink min-[721px]:border-r min-[721px]:border-b-0">
-			<div className="border-b border-white/10 px-6 pt-7 pb-6 max-[860px]:px-5">
+		<aside className="z-30 flex h-full min-h-0 flex-col border-b border-white/6 bg-[#111111] text-[#f3f4f6] min-[721px]:border-r min-[721px]:border-b-0">
+			{/* Header Actions */}
+			<div className="border-b border-white/6 px-4 py-4.5">
 				<button
 					type="button"
 					id="new-chat-button"
 					className={[
-						"mt-1 w-full border border-white/15 bg-sidebar-surface px-4 py-3.5 text-left text-[0.92rem] font-medium text-sidebar-ink transition duration-150 hover:border-white/25 hover:bg-white/8 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring enabled:active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40",
-						!activeSessionId && !pendingDraft ? "border-white/25 bg-white/8" : "",
+						"flex w-full items-center justify-center gap-2 rounded-md border border-white/12 bg-white px-3.5 py-2.5 text-center text-[0.88rem] font-semibold text-black transition-colors duration-150 hover:bg-neutral-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-40",
+						!activeSessionId && !pendingDraft ? "border-white" : "",
 					].join(" ")}
 					onClick={onStartNewChat}
 				>
+					<svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2">
+						<path d="M10 4.5v11M4.5 10h11" strokeLinecap="round" strokeLinejoin="round" />
+					</svg>
 					Start new chat
 				</button>
 				<button
 					type="button"
-					className="mt-3 w-full border border-white/10 bg-sidebar-panel px-4 py-3 text-left text-[0.84rem] font-medium text-sidebar-muted transition duration-150 hover:border-white/20 hover:bg-white/6 hover:text-sidebar-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+					className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-md border border-white/10 bg-white/4 px-3.5 py-2.5 text-center text-[0.8rem] font-semibold text-[#b5b5b5] transition-colors duration-150 hover:border-white/16 hover:bg-white/8 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
 					onClick={onOpenSettings}
 				>
-					More
+					<svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2">
+						<path d="M3.333 10h13.334M3.333 5h13.334M3.333 15h13.334" strokeLinecap="round" strokeLinejoin="round" />
+					</svg>
+					Dashboard & Settings
 				</button>
 			</div>
-			<div className="max-[720px]:max-h-[34svh] flex-1 overflow-y-auto px-4.5 pt-4 pb-6">
-				<div id="session-list" className="flex flex-col" aria-label="Chat sessions">
+
+			{/* Session List */}
+			<div className="max-[720px]:max-h-[34svh] flex-1 overflow-y-auto px-2.5 pt-3 pb-4 scrollbar-thin">
+				<div id="session-list" className="flex flex-col gap-1" aria-label="Chat sessions">
 					{sessions.length === 0 ? (
-						<p className="px-3 py-4 leading-[1.7] text-sidebar-muted">
-							No saved sessions yet. Start a new chat and your first prompt will turn into a reusable thread here.
-						</p>
+						<div className="rounded-md bg-white/2 px-3 py-4 text-center">
+							<p className="text-[0.84rem] leading-[1.6] text-[#9ca3af]">
+								No saved sessions yet. Start a new chat and your first prompt will turn into a thread here.
+							</p>
+						</div>
 					) : (
 						sessions.map((session) => {
 							const isScheduledSession = session.title.startsWith("[Scheduled:");
@@ -79,26 +90,43 @@ export const Sidebar = memo(function Sidebar({
 									aria-pressed={session.id === activeSessionId}
 									onClick={() => onActivateSession(session.id)}
 								>
-									<div className="flex items-center justify-between gap-3">
-										<div className="flex min-w-0 flex-1 items-center gap-2">
+									<div className="flex items-start justify-between gap-2.5">
+										<div className="flex min-w-0 flex-1 items-start gap-2">
 											{isScheduledSession ? (
 												<span
-													className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#d6a248]/60 bg-[#d6a248]/12 text-[#e6bf6d]"
+												className="mt-0.5 flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-md border border-white/15 bg-white/6 text-white"
 													aria-label="Scheduled session"
 												>
-													<svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+													<svg viewBox="0 0 20 20" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2.2">
 														<circle cx="10" cy="10" r="6" />
 														<path d="M10 6.5v4l2.5 1.5" strokeLinecap="round" strokeLinejoin="round" />
 													</svg>
 												</span>
-											) : null}
-											<p className="min-w-0 flex-1 text-[0.94rem] font-medium leading-[1.4] text-sidebar-ink">
+											) : (
+												<span
+													className={`mt-0.5 flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-md border text-xs ${
+														session.id === activeSessionId
+															? "border-white/20 bg-white/12 text-white"
+															: "border-white/10 bg-white/4 text-[#9ca3af]"
+													}`}
+												>
+													<svg viewBox="0 0 24 24" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2.5">
+														<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" strokeLinecap="round" strokeLinejoin="round" />
+													</svg>
+												</span>
+											)}
+											<p className="min-w-0 flex-1 truncate text-[0.84rem] font-medium leading-[1.35] tracking-tight">
 												{session.title}
 											</p>
 										</div>
-										<span className="shrink-0 font-mono text-[0.72rem] text-sidebar-muted">
+									</div>
+									<div className="mt-2 flex items-center justify-between gap-2.5 px-0.5">
+										<span className="truncate text-[0.7rem] font-medium text-[#9ca3af]">
+											{session.model || "Awaiting model response"}
+										</span>
+										<span className="shrink-0 rounded-sm bg-white/5 px-1.5 py-0.5 font-mono text-[0.66rem] text-[#9ca3af]">
 											{session.messageCount > 0
-												? `${session.messageCount} msgs · ${session.busy ? "Running" : formatRelativeTime(session.updatedAt)}`
+												? `${session.messageCount} msg${session.messageCount === 1 ? "" : "s"} · ${session.busy ? "Running" : formatRelativeTime(session.updatedAt)}`
 												: (session.busy ? "Running" : formatRelativeTime(session.updatedAt))}
 										</span>
 									</div>
@@ -110,37 +138,51 @@ export const Sidebar = memo(function Sidebar({
 					{canLoadMoreSessions ? (
 						<button
 							type="button"
-							className="mt-4 border border-white/12 bg-sidebar-panel px-3 py-3 text-left text-[0.82rem] text-sidebar-muted transition duration-150 hover:border-white/20 hover:bg-white/6 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50"
+						className="mt-2.5 rounded-md border border-white/10 bg-white/3 px-3 py-2.5 text-center text-[0.78rem] font-semibold text-[#9ca3af] transition duration-150 hover:border-white/14 hover:bg-white/6 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-50"
 							onClick={onLoadMoreSessions}
 							disabled={loadingMoreSessions}
 						>
-							{loadingMoreSessions ? "Loading more sessions..." : "Load 50 more sessions"}
+							{loadingMoreSessions ? "Loading sessions..." : "Load 50 more sessions"}
 						</button>
 					) : null}
 				</div>
 			</div>
-			<div className="border-t border-white/10 bg-sidebar-panel px-6 pt-4.5 pb-5.5 max-[860px]:px-5">
-				<p className="font-mono text-[0.72rem] font-medium uppercase tracking-[0.12em] text-sidebar-muted">
-					State
+
+			{/* Sidebar Footer with system statuses */}
+			<div className="border-t border-white/6 bg-[#0d0d0d] px-4 py-4">
+				<p className="font-mono text-[0.66rem] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">
+					System Status
 				</p>
-				<div className="mt-2 flex items-center gap-2 text-[0.82rem] text-sidebar-muted">
-					<span className={`h-2.5 w-2.5 rounded-full ${serverReady ? "bg-[#56c271]" : "bg-[#d15a4f]"}`} />
-					<span>{serverReady ? "Local server online" : "Waiting for local server"}</span>
+				<div className="mt-3 space-y-2">
+					<div className="flex items-center gap-2 text-[0.76rem] text-[#9ca3af]">
+						<span className="relative flex h-2 w-2 shrink-0">
+							<span className={`relative inline-flex h-2 w-2 rounded-full ${serverReady ? "bg-white" : "bg-neutral-500"}`} />
+						</span>
+						<span className="font-medium">{serverReady ? "Local server online" : "Waiting for local server"}</span>
+					</div>
+					<div className="flex items-center gap-2 text-[0.76rem] text-[#9ca3af]">
+						<span className="relative flex h-2 w-2 shrink-0">
+							<span className={`relative inline-flex h-2 w-2 rounded-full ${relayReady ? "bg-white" : "bg-neutral-500"}`} />
+						</span>
+						<span className="font-medium">{relayReady ? "Relay auth ready" : "Relay auth missing"}</span>
+					</div>
+					<div className="flex items-center gap-2 text-[0.76rem] text-[#9ca3af]">
+						<span className="relative flex h-2 w-2 shrink-0">
+							<span className={`relative inline-flex h-2 w-2 rounded-full ${relayTransportConnected ? "bg-white" : "bg-neutral-500"}`} />
+						</span>
+						<span className="font-medium">{relayTransportConnected ? "Relay transport connected" : "Relay transport idle"}</span>
+					</div>
 				</div>
-				<div className="mt-1.5 flex items-center gap-2 text-[0.82rem] text-sidebar-muted">
-					<span className={`h-2.5 w-2.5 rounded-full ${relayReady ? "bg-[#56c271]" : "bg-[#d15a4f]"}`} />
-					<span>{relayReady ? "Relay auth ready" : "Relay auth missing"}</span>
+
+				<div className="mt-3.5 border-t border-white/6 pt-3">
+					<p id="sidebar-status" className="flex items-center justify-between text-[0.78rem] font-semibold text-white">
+						<span>{serverReady ? (connected ? "Connected" : streamRequested ? "Reconnecting..." : "Ready") : "Waiting"}</span>
+						<span className="rounded-sm bg-white/5 px-1.5 py-0.5 font-mono text-[0.68rem] text-[#9ca3af]">{sessionState}</span>
+					</p>
+					<p className="mt-1.5 text-[0.72rem] text-[#9ca3af]">
+						{totalSessions} stored thread{totalSessions === 1 ? "" : "s"}
+					</p>
 				</div>
-				<div className="mt-1.5 flex items-center gap-2 text-[0.82rem] text-sidebar-muted">
-					<span className={`h-2.5 w-2.5 rounded-full ${relayTransportConnected ? "bg-[#56c271]" : "bg-[#d6a248]"}`} />
-					<span>{relayTransportConnected ? "Relay transport connected" : "Relay transport idle"}</span>
-				</div>
-				<p id="sidebar-status" className="mt-2 text-base font-medium">
-					{serverReady ? (connected ? "Connected" : streamRequested ? "Disconnected - reconnecting..." : "Ready to connect") : "Waiting for local server"} · {sessionState}
-				</p>
-				<p className="mt-2 text-[0.8rem] leading-6 text-sidebar-muted">
-					{totalSessions} stored {totalSessions === 1 ? "session" : "sessions"}
-				</p>
 			</div>
 		</aside>
 	);

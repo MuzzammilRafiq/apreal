@@ -28,9 +28,9 @@ function formatTimestamp(value: number | null): string {
 
 function formatInterval(intervalMs: number): string {
 	const minutes = Math.round(intervalMs / 60_000);
-	if (minutes < 60) return `${minutes} min`;
+	if (minutes < 60) return `${minutes}m`;
 	const hours = minutes / 60;
-	return Number.isInteger(hours) ? `${hours} hr` : `${hours.toFixed(1)} hr`;
+	return Number.isInteger(hours) ? `${hours}h` : `${hours.toFixed(1)}h`;
 }
 
 function formatNextRunRelative(nextRunAt: number): { label: string; overdue: boolean } {
@@ -62,26 +62,26 @@ function getRunStatusTone(run: SessionSummary): "running" | "saved" {
 
 function renderStatusBadge(label: string, tone: "active" | "paused" | "error" | "running" | "saved" | "neutral") {
 	const colors: Record<string, string> = {
-		active: "border-accent-line bg-accent-soft text-accent",
-		paused: "border-line bg-ink-soft text-muted",
-		error: "border-danger-line bg-danger-soft text-danger",
-		running: "border-accent-line bg-accent-soft text-accent",
-		saved: "border-line bg-surface-muted text-muted",
-		neutral: "border-line bg-ink-soft text-muted",
+		active: "border-slate-300 bg-white text-slate-800",
+		paused: "border-slate-300 bg-slate-100 text-slate-500",
+		error: "border-slate-400 bg-slate-200 text-slate-800",
+		running: "border-slate-900 bg-slate-900 text-white",
+		saved: "border-slate-300 bg-slate-100 text-slate-600",
+		neutral: "border-slate-300 bg-slate-100 text-slate-500",
 	};
 
 	return (
-		<span className={`inline-flex items-center gap-1.5 border px-2.5 py-1 font-mono text-[0.69rem] uppercase tracking-[0.12em] ${colors[tone]}`}>
-			{tone === "running" ? <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent animate-pulse" /> : null}
+		<span className={`inline-flex items-center gap-1.5 border rounded-md px-2 py-0.5 font-mono text-[0.64rem] font-bold uppercase tracking-[0.1em] ${colors[tone]}`}>
+			{tone === "running" ? <span className="inline-block h-1.5 w-1.5 rounded-full bg-white" /> : null}
 			{label}
 		</span>
 	);
 }
 
 const ACCENT_BORDER: Record<string, string> = {
-	active: "border-l-[3px] border-l-accent",
-	paused: "border-l-[3px] border-l-line",
-	error: "border-l-[3px] border-l-danger",
+	active: "border-l-2 border-l-slate-900",
+	paused: "border-l-2 border-l-slate-300",
+	error: "border-l-2 border-l-slate-500",
 };
 
 export function JobsPanel({
@@ -182,7 +182,7 @@ export function JobsPanel({
 		setActionMessage(null);
 		try {
 			await onUpdateJobInterval(selectedJob.id, minutes);
-			setActionMessage("Schedule updated.");
+			setActionMessage("Schedule updated successfully.");
 		} catch (error) {
 			setActionError(error instanceof Error ? error.message : String(error));
 		} finally {
@@ -207,14 +207,14 @@ export function JobsPanel({
 
 	async function handleDeleteJob() {
 		if (!selectedJob) return;
-		if (!window.confirm(`Delete the scheduled job "${selectedJob.name}"? This cannot be undone.`)) return;
+		if (!window.confirm(`Delete scheduled job "${selectedJob.name}"? This cannot be undone.`)) return;
 
 		setIsMutating(true);
 		setActionError(null);
 		setActionMessage(null);
 		try {
 			await onDeleteJob(selectedJob.id);
-			setActionMessage("Job deleted.");
+			setActionMessage("Job deleted successfully.");
 		} catch (error) {
 			setActionError(error instanceof Error ? error.message : String(error));
 		} finally {
@@ -224,8 +224,8 @@ export function JobsPanel({
 
 	const runEmptyState = !selectedRun
 		? selectedJob && isLoadingJobRuns
-				? { title: "Loading runs...", body: `Fetching executions for ${selectedJob.name}.` }
-				: { title: selectedJob ? "No runs yet" : "Select a job", body: selectedJob ? "This job has not executed yet." : "Pick a job to inspect its executions." }
+				? { title: "Loading history...", body: `Fetching executions for ${selectedJob.name}.` }
+				: { title: selectedJob ? "No executions yet" : "Select a job", body: selectedJob ? "This job has not been executed yet." : "Pick a job from the left panel to inspect its executions." }
 		: !selectedRunTranscriptLoaded
 				? { title: "Loading transcript...", body: "The execution history is being loaded from the local server." }
 				: null;
@@ -237,41 +237,28 @@ export function JobsPanel({
 	const runningRuns = jobRuns.filter((r) => r.busy).length;
 
 	return (
-		<div className="flex flex-col gap-5">
-			{/* ---- Server status strip ---- */}
-			{adminStatus ? (
-				<div className="flex items-center gap-3 border border-line bg-surface px-4 py-3 text-sm">
-					<span className="inline-flex items-center gap-1.5 font-mono text-[0.69rem] uppercase tracking-[0.1em] text-muted">
-						<span className="inline-block h-2 w-2 rounded-full bg-accent" />
-						Server :{adminStatus.port}
-					</span>
-					<span className="text-line-strong">·</span>
-					<span className="font-mono text-[0.69rem] uppercase tracking-[0.1em] text-muted">
-						{adminStatus.relayReady ? "Relay paired" : "Awaiting relay"}
-					</span>
-				</div>
-			) : null}
-
+		<div className="flex flex-col gap-4">
 			{/* ---- Main grid ---- */}
-			<div className="grid gap-5 min-[1180px]:grid-cols-[minmax(280px,0.78fr)_minmax(0,1.22fr)]">
+			<div className="grid gap-4 min-[1180px]:grid-cols-[minmax(260px,0.78fr)_minmax(0,1.22fr)] items-start">
 				{/* ======== LEFT: Job List ======== */}
-				<section className="flex min-h-0 flex-col border border-line bg-surface">
-					<div className="border-b border-line px-5 py-4">
-						<h2 className="text-base font-semibold">All jobs</h2>
+				<section className="flex min-h-0 flex-col rounded-lg border border-slate-200 bg-white overflow-hidden">
+					<div className="border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+						<h2 className="text-[0.95rem] font-bold text-slate-950">Active Recurring Schedules</h2>
+						{jobs.length > 0 && <span className="text-[0.68rem] text-slate-500 font-semibold font-mono bg-slate-100 px-2 py-0.5 rounded-sm">{jobs.length} Active</span>}
 					</div>
 
 					{jobsError ? (
-						<div className="m-4 border border-danger-line bg-danger-soft px-4 py-3 text-sm leading-6 text-danger">{jobsError}</div>
+						<div className="m-3 rounded-md border border-slate-300 bg-slate-100 px-3 py-2.5 text-xs font-semibold leading-5 text-slate-800">{jobsError}</div>
 					) : null}
 
-					<div className="flex-1 overflow-y-auto px-3 py-3">
+					<div className="flex-1 overflow-y-auto px-3 py-3.5 scrollbar-thin">
 						{jobs.length === 0 && !isLoadingJobs ? (
-							<div className="border border-line bg-surface-strong px-4 py-5 text-sm leading-6 text-muted">
-								<p className="font-medium text-ink">No scheduled jobs</p>
-								<p className="mt-1">Ask the agent to create a recurring job to see it here.</p>
+							<div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-sm leading-[1.5]">
+								<p className="font-bold text-slate-800">No scheduled jobs</p>
+								<p className="mt-1 text-slate-400 font-medium">Ask Pi inside chat to create a recurring scheduled job to monitor anything.</p>
 							</div>
 						) : (
-							<div className="space-y-2">
+							<div className="space-y-2.5">
 								{jobs.map((job) => {
 									const isSelected = job.id === selectedJob?.id;
 									const tone = getJobStatusTone(job);
@@ -282,27 +269,29 @@ export function JobsPanel({
 											key={job.id}
 											type="button"
 											onClick={() => setSelectedJobId(job.id)}
-											className={`flex w-full flex-col border px-3.5 py-3.5 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring ${ACCENT_BORDER[tone]} ${
-												isSelected
-													? "border-ink bg-ink text-sidebar-ink"
-													: "border-line bg-surface-strong text-ink hover:border-line-strong"
-											}`}
+									className={`flex w-full flex-col rounded-md border p-3 text-left transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer ${ACCENT_BORDER[tone]} ${
+										isSelected
+											? "border-slate-900 bg-[#171717] text-white"
+											: "border-slate-150 bg-[#f8fafc]/60 text-[#0f172a] hover:border-slate-200 hover:bg-slate-50"
+									}`}
 										>
-											<div className="flex items-start justify-between gap-2">
-												<p className={`min-w-0 flex-1 truncate text-sm font-semibold ${isSelected ? "text-sidebar-ink" : "text-ink"}`}>
+											<div className="flex items-start justify-between gap-3 w-full">
+											<p className={`min-w-0 flex-1 truncate text-[0.84rem] font-bold ${isSelected ? "text-white" : "text-slate-900"}`}>
 													{job.name}
 												</p>
 												{job.enabled
 													? renderStatusBadge(relative.overdue ? "Overdue" : "Active", relative.overdue ? "error" : "active")
 													: renderStatusBadge("Paused", "paused")}
 											</div>
-											<p className={`mt-1.5 line-clamp-2 text-[0.8rem] leading-5 ${isSelected ? "text-white/60" : "text-muted"}`}>
+											<p className={`mt-2 line-clamp-2 text-[0.76rem] leading-[1.45] font-medium ${isSelected ? "text-slate-300" : "text-slate-500"}`}>
 												{job.prompt}
 											</p>
-											<div className={`mt-2.5 flex items-center gap-3 font-mono text-[0.69rem] tracking-[0.08em] ${isSelected ? "text-white/48" : "text-muted"}`}>
-												<span>{formatInterval(job.intervalMs)}</span>
-												<span className={relative.overdue && job.enabled ? "text-danger" : ""}>
-													{relative.label}
+											<div className={`mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[0.64rem] font-bold tracking-wider ${isSelected ? "text-slate-400" : "text-slate-400"}`}>
+												<span className="flex items-center gap-1 bg-white/5 px-1.5 py-0.5 rounded-sm border border-white/5">
+													Interval: {formatInterval(job.intervalMs)}
+												</span>
+												<span className={`flex items-center gap-1 ${relative.overdue && job.enabled ? "text-slate-200" : ""}`}>
+													Next: {relative.label}
 												</span>
 												<span>{job.runCount} run{job.runCount !== 1 ? "s" : ""}</span>
 											</div>
@@ -315,155 +304,155 @@ export function JobsPanel({
 				</section>
 
 				{/* ======== RIGHT: Inspector + Runs + Transcript ======== */}
-				<section className="flex min-h-0 flex-col gap-5">
+				<section className="flex min-h-0 flex-col gap-4">
 					{/* ---- Inspector ---- */}
-					<div className="border border-line bg-surface">
-						<div className="border-b border-line px-5 py-4">
+					<div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+						<div className="border-b border-slate-200 px-4 py-3">
 							<div className="flex items-center justify-between gap-3">
-								<h2 className="text-base font-semibold">Inspector</h2>
-								{selectedJob ? renderStatusBadge(selectedJobTone === "active" ? "Active" : selectedJobTone === "error" ? "Error" : "Paused", selectedJobTone) : renderStatusBadge("No selection", "neutral")}
+								<h2 className="text-[0.95rem] font-bold text-slate-950">Job Configuration Inspector</h2>
+								{selectedJob ? renderStatusBadge(selectedJobTone === "active" ? "Active Schedule" : selectedJobTone === "error" ? "Handshake Error" : "Paused", selectedJobTone) : renderStatusBadge("No Selection", "neutral")}
 							</div>
 						</div>
 
 						{actionMessage ? (
-							<div className="mx-5 mt-4 border border-accent-line bg-accent-soft px-4 py-3 text-sm leading-6 text-accent">{actionMessage}</div>
+							<div className="mx-4 mt-3 rounded-md border border-slate-300 bg-white px-3 py-2.5 text-xs font-semibold leading-5 text-slate-700">{actionMessage}</div>
 						) : null}
 						{actionError ? (
-							<div className="mx-5 mt-4 border border-danger-line bg-danger-soft px-4 py-3 text-sm leading-6 text-danger">{actionError}</div>
+							<div className="mx-4 mt-3 rounded-md border border-slate-300 bg-slate-100 px-3 py-2.5 text-xs font-semibold leading-5 text-slate-800">{actionError}</div>
 						) : null}
 
 						{selectedJob ? (
-							<div className="px-5 py-5">
-								<div className="grid grid-cols-2 gap-3 min-[700px]:grid-cols-4">
-									<div className="border border-line bg-surface-strong px-3 py-3">
-										<p className="font-mono text-[0.65rem] uppercase tracking-[0.14em] text-muted">Interval</p>
-										<p className="mt-1.5 text-base font-semibold text-ink">{formatInterval(selectedJob.intervalMs)}</p>
+							<div className="px-4 py-4">
+								<div className="grid grid-cols-2 gap-2.5 min-[700px]:grid-cols-4">
+									<div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+										<p className="font-mono text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate-400">Interval Cycle</p>
+										<p className="mt-1.5 text-base font-bold text-slate-900 font-mono">{formatInterval(selectedJob.intervalMs)}</p>
 									</div>
-									<div className="border border-line bg-surface-strong px-3 py-3">
-										<p className="font-mono text-[0.65rem] uppercase tracking-[0.14em] text-muted">Total runs</p>
-										<p className="mt-1.5 text-base font-semibold text-ink">{selectedJob.runCount}</p>
+									<div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+										<p className="font-mono text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate-400">Total Run Count</p>
+										<p className="mt-1.5 text-base font-bold text-slate-900 font-mono">{selectedJob.runCount}</p>
 									</div>
-									<div className="border border-line bg-surface-strong px-3 py-3">
-										<p className="font-mono text-[0.65rem] uppercase tracking-[0.14em] text-muted">Next run</p>
-										<p className={`mt-1.5 text-base font-semibold ${nextRunRelative?.overdue ? "text-danger" : "text-ink"}`}>
+									<div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+										<p className="font-mono text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate-400">Next Scheduled Run</p>
+										<p className={`mt-1.5 text-sm font-bold font-mono ${nextRunRelative?.overdue ? "text-slate-900" : "text-slate-800"}`}>
 											{nextRunRelative?.label ?? "—"}
 										</p>
-										<p className="mt-0.5 text-[0.72rem] text-muted">{formatTimestamp(selectedJob.nextRunAt)}</p>
+										<p className="mt-1 text-[0.7rem] text-slate-400 font-medium font-mono">{formatTimestamp(selectedJob.nextRunAt)}</p>
 									</div>
-									<div className="border border-line bg-surface-strong px-3 py-3">
-										<p className="font-mono text-[0.65rem] uppercase tracking-[0.14em] text-muted">Last run</p>
-										<p className="mt-1.5 text-sm text-ink">{formatTimestamp(selectedJob.lastRunAt)}</p>
+									<div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+										<p className="font-mono text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate-400">Last Execution</p>
+										<p className="mt-1.5 text-xs font-bold text-slate-900 font-mono">{formatTimestamp(selectedJob.lastRunAt)}</p>
 									</div>
 								</div>
 
-								<div className="mt-4 border border-line bg-surface-strong px-4 py-4">
-									<p className="font-mono text-[0.65rem] uppercase tracking-[0.14em] text-muted">Prompt</p>
-									<p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-ink">{selectedJob.prompt}</p>
+								<div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3.5">
+									<p className="font-mono text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate-400">Target Prompt Directive</p>
+									<p className="mt-2 whitespace-pre-wrap break-words text-sm leading-[1.6] font-medium text-slate-800">{selectedJob.prompt}</p>
 								</div>
 
-								<form className="mt-4 flex items-end gap-3" onSubmit={handleSaveInterval}>
+								<form className="mt-3 flex items-end gap-2.5" onSubmit={handleSaveInterval}>
 									<label className="min-w-0 flex-1">
-										<span className="font-mono text-[0.65rem] uppercase tracking-[0.14em] text-muted">Cycle (minutes)</span>
+										<span className="font-mono text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate-400">Frequency Interval (minutes)</span>
 										<input
 											type="number"
 											min={5}
 											step={1}
 											value={intervalMinutes}
 											onChange={(event) => setIntervalMinutes(event.target.value)}
-											className="mt-1.5 block w-full border border-line bg-surface-strong px-3 py-2.5 font-mono text-sm tracking-[0.04em] text-ink outline-none transition focus:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+											className="mt-1.5 block w-full rounded-md border border-slate-300 bg-[#f8f8f8] px-3 py-2.5 font-mono text-sm font-bold text-[#171717] outline-none transition focus:border-slate-500 focus:bg-white"
 										/>
 									</label>
 									<button
 										type="submit"
-										className="border border-ink bg-ink px-4 py-2.5 text-sm font-medium text-sidebar-ink transition hover:bg-ink-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-45"
+										className="rounded-md border border-black bg-black px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer"
 										disabled={isMutating || intervalMinutes.trim().length === 0}
 									>
-										{isMutating ? "Saving..." : "Update"}
+										{isMutating ? "Syncing..." : "Update Schedule"}
 									</button>
 								</form>
 
-								<div className="mt-4 flex flex-wrap gap-3">
+								<div className="mt-3.5 flex flex-wrap gap-2.5">
 									<button
 										type="button"
-										className={`border px-4 py-2.5 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-45 ${
-											selectedJob.enabled
-												? "border-danger-line bg-danger-soft text-danger hover:bg-danger/12"
-												: "border-accent-line bg-accent-soft text-accent hover:bg-accent/16"
-										}`}
+									className={`rounded-md border px-4 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer ${
+										selectedJob.enabled
+											? "border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
+											: "border-slate-900 bg-slate-900 text-white hover:bg-black"
+									}`}
 										onClick={() => { void handleToggleEnabled(); }}
 										disabled={isMutating}
 									>
-										{selectedJob.enabled ? "Pause job" : "Resume job"}
+										{selectedJob.enabled ? "Pause schedule" : "Resume schedule"}
 									</button>
 									<button
 										type="button"
-										className="border border-line bg-surface-strong px-4 py-2.5 text-sm font-medium text-muted transition hover:border-danger-line hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-45"
+									className="rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer"
 										onClick={() => { void handleDeleteJob(); }}
 										disabled={isMutating}
 									>
-										Delete
+										Delete job
 									</button>
 								</div>
 
 								{selectedJob.lastError ? (
-									<div className="mt-4 border border-danger-line bg-danger-soft px-4 py-3.5 text-sm leading-6">
-										<p className="font-mono text-[0.65rem] uppercase tracking-[0.14em] text-danger">Last execution error</p>
-										<p className="mt-1.5 break-words text-danger">{selectedJob.lastError}</p>
+									<div className="mt-3 rounded-md border border-slate-300 bg-slate-100 p-3.5 text-[0.84rem] leading-[1.5]">
+										<p className="font-mono text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate-700">Last Execution Error</p>
+										<p className="mt-2 break-all text-slate-800 font-semibold">{selectedJob.lastError}</p>
 									</div>
 								) : null}
 
-								<div className="mt-4 flex items-center gap-4 border border-line bg-ink-soft px-4 py-3 text-sm text-muted">
-									<span className="font-mono text-[0.65rem] uppercase tracking-[0.14em]">Max catchup: {selectedJob.maxCatchup}</span>
-									<span className="text-line" aria-hidden="true">|</span>
-									<span>Job ID: <span className="font-mono text-[0.72rem] text-ink">{selectedJob.id.slice(0, 8)}...</span></span>
-									<span className="text-line" aria-hidden="true">|</span>
-									<span>Updated {formatTimestamp(selectedJob.updatedAt)}</span>
+								<div className="mt-3.5 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs text-slate-500 font-medium">
+									<span className="font-mono text-[0.62rem] font-bold uppercase tracking-[0.14em]">Catchup: {selectedJob.maxCatchup}</span>
+									<span className="text-slate-300" aria-hidden="true">|</span>
+									<span>System ID: <span className="font-mono text-[0.72rem] text-slate-800 bg-white border border-slate-200 px-1.5 py-0.5 rounded-sm">{selectedJob.id.slice(0, 8)}...</span></span>
+									<span className="text-slate-300" aria-hidden="true">|</span>
+									<span>Updated: {formatTimestamp(selectedJob.updatedAt)}</span>
 								</div>
 							</div>
 						) : (
-							<div className="px-5 py-8 text-center text-sm leading-6 text-muted">
-								<p className="font-medium text-ink">No job selected</p>
-								<p className="mt-1">Select a scheduled job from the list to inspect its configuration.</p>
+							<div className="px-4 py-6 text-center text-sm leading-[1.5] text-slate-500 font-semibold border-t border-slate-200">
+								<p className="text-slate-800">No recurring job selected</p>
+								<p className="mt-1 font-medium">Select a job from the lists to inspect settings and state logs.</p>
 							</div>
 						)}
 					</div>
 
 					{/* ---- Run History ---- */}
-					<div className="border border-line bg-surface">
-						<div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+					<div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+						<div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
 							<div>
-								<h2 className="text-base font-semibold">Run history</h2>
+								<h2 className="text-[0.95rem] font-bold text-slate-950">Run History Log</h2>
 								{selectedJob && totalRuns > 0 ? (
-									<p className="mt-0.5 font-mono text-[0.69rem] text-muted">
-										{totalRuns} run{totalRuns !== 1 ? "s" : ""}{runningRuns > 0 ? ` · ${runningRuns} running` : ""}
+									<p className="mt-1 font-mono text-[0.69rem] font-bold text-slate-400">
+										{totalRuns} Total Run{totalRuns !== 1 ? "s" : ""}{runningRuns > 0 ? ` · ${runningRuns} actively running` : ""}
 									</p>
 								) : null}
 							</div>
-							<div className="flex items-center gap-2">
-								{totalRuns > 0 ? renderStatusBadge(`${totalRuns}`, "neutral") : null}
+							<div className="flex items-center gap-2 shrink-0">
+								{totalRuns > 0 ? renderStatusBadge(`${totalRuns} total`, "neutral") : null}
 								<button
 									type="button"
-									className="border border-line bg-surface-strong px-2.5 py-1.5 text-sm font-medium text-ink transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+									className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-[#171717] transition hover:bg-slate-100 cursor-pointer"
 									onClick={() => { if (selectedJob) onRefreshJobRuns(selectedJob.id); }}
 									disabled={isLoadingJobRuns || !selectedJob}
 								>
-									{isLoadingJobRuns ? "Refreshing..." : "Refresh"}
+									{isLoadingJobRuns ? "Syncing..." : "Sync Runs"}
 								</button>
 							</div>
 						</div>
 
 						{jobRunsError ? (
-							<div className="m-4 border border-danger-line bg-danger-soft px-4 py-3 text-sm leading-6 text-danger">{jobRunsError}</div>
+							<div className="m-3 rounded-md border border-slate-300 bg-slate-100 px-3 py-2.5 text-xs font-semibold leading-5 text-slate-800">{jobRunsError}</div>
 						) : null}
 
-						<div className="max-h-[20rem] overflow-y-auto px-3 py-3">
+						<div className="max-h-[20rem] overflow-y-auto px-3 py-3.5 scrollbar-thin">
 							{jobRuns.length === 0 && !isLoadingJobRuns ? (
-								<div className="border border-line bg-surface-strong px-4 py-5 text-sm leading-6 text-muted">
-									<p className="font-medium text-ink">No runs recorded</p>
-									<p className="mt-1">{selectedJob ? "This job has not executed yet." : "Select a job to see its execution history."}</p>
+								<div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-sm leading-[1.5] text-slate-500 font-semibold">
+									<p className="text-slate-800">No recorded executions</p>
+									<p className="mt-1 font-medium">{selectedJob ? "This scheduled job has not run yet." : "Select a recurring job to view recorded transcripts."}</p>
 								</div>
 							) : (
-								<div className="space-y-2">
+								<div className="space-y-1.5">
 									{jobRuns.map((run) => {
 										const isSelected = run.id === selectedRun?.id;
 										const tone = getRunStatusTone(run);
@@ -472,23 +461,23 @@ export function JobsPanel({
 											<button
 												key={run.id}
 												type="button"
-												className={`flex w-full items-center gap-3 border px-3.5 py-3 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring ${
-													isSelected
-														? "border-ink bg-ink text-sidebar-ink"
-														: "border-line bg-surface-strong text-ink hover:border-line-strong"
-												}`}
+										className={`flex w-full items-center gap-2.5 rounded-md border px-3 py-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer ${
+											isSelected
+												? "border-slate-900 bg-[#171717] text-white"
+												: "border-slate-150 bg-[#f8fafc]/60 text-[#0f172a] hover:border-slate-200 hover:bg-slate-50"
+										}`}
 												onClick={() => setSelectedRunId(run.id)}
 											>
-												<span className={`mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full ${tone === "running" ? "bg-accent animate-pulse" : "bg-muted"}`} />
+												<span className={`mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full ${tone === "running" ? "bg-white" : "bg-slate-400"}`} />
 												<div className="min-w-0 flex-1">
-													<p className={`truncate text-sm font-medium ${isSelected ? "text-sidebar-ink" : "text-ink"}`}>
-														{run.busy ? "Run in progress" : `Run ${formatTimestamp(run.createdAt)}`}
+													<p className={`truncate text-sm font-extrabold ${isSelected ? "text-white" : "text-slate-950"}`}>
+														{run.busy ? "Active execution run..." : `Execution run ${formatTimestamp(run.createdAt)}`}
 													</p>
-													<p className={`mt-0.5 text-[0.72rem] leading-5 font-mono tracking-[0.04em] ${isSelected ? "text-white/48" : "text-muted"}`}>
-														{tone === "running" ? "Running" : "Saved"} · {run.messageCount} msg{run.messageCount !== 1 ? "s" : ""} · {formatTimestamp(run.updatedAt)}
+													<p className={`mt-1.5 text-[0.72rem] leading-tight font-mono tracking-wider font-semibold ${isSelected ? "text-slate-400" : "text-slate-400"}`}>
+														{tone === "running" ? "Active" : "Saved"} · {run.messageCount} msg{run.messageCount !== 1 ? "s" : ""} · Sync {formatTimestamp(run.updatedAt)}
 													</p>
 												</div>
-												<svg className={`h-4 w-4 shrink-0 ${isSelected ? "text-white/60" : "text-faint"}`} fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth={1.5}>
+												<svg className={`h-4 w-4 shrink-0 transition-transform ${isSelected ? "text-white translate-x-0.5" : "text-slate-400"}`} fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth={2.2}>
 													<path strokeLinecap="round" strokeLinejoin="round" d="M6 4l4 4-4 4" />
 												</svg>
 											</button>
@@ -500,17 +489,17 @@ export function JobsPanel({
 					</div>
 
 					{/* ---- Transcript Viewer ---- */}
-					<div className="flex min-h-[24rem] flex-1 flex-col overflow-hidden border border-line bg-surface">
-						<div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+					<div className="flex min-h-[24rem] flex-1 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white">
+						<div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
 							<div>
-								<h2 className="text-base font-semibold">Transcript</h2>
+								<h2 className="text-[0.95rem] font-bold text-slate-950">Execution Transcript Log</h2>
 								{selectedRun ? (
-									<p className="mt-0.5 font-mono text-[0.69rem] text-muted">
-										{selectedRun.messageCount} message{selectedRun.messageCount !== 1 ? "s" : ""} · {selectedRun.busy ? "In progress" : "Completed"}
+									<p className="mt-1 font-mono text-[0.69rem] font-bold text-slate-400">
+										{selectedRun.messageCount} message{selectedRun.messageCount !== 1 ? "s" : ""} · {selectedRun.busy ? "Actively writing" : "Execution completed"}
 									</p>
 								) : null}
 							</div>
-							{selectedRun ? renderStatusBadge(selectedRun.busy ? "Running" : "Saved", selectedRun.busy ? "running" : "saved") : renderStatusBadge("No run selected", "neutral")}
+							{selectedRun ? renderStatusBadge(selectedRun.busy ? "Running" : "Saved Log", selectedRun.busy ? "running" : "saved") : renderStatusBadge("No execution trace selected", "neutral")}
 						</div>
 						<TranscriptPanel
 							transcriptRef={transcriptRef}

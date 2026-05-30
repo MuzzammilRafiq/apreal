@@ -20,7 +20,7 @@ function formatCurrentContext(session: SessionSummary | null): string | null {
 
   const usage = session.contextUsage;
   if (!usage) {
-    return session.model ? "Unavailable until the next response" : "Waiting for the first response";
+    return session.model ? "Unavailable until next response" : "Waiting for first response";
   }
 
   if (usage.tokens === null) {
@@ -43,7 +43,7 @@ type ComposerProps = {
   onAbort: () => void;
 };
 
-	export const Composer = memo(function Composer({
+export const Composer = memo(function Composer({
   connected,
   serverReady,
   streamRequested,
@@ -54,7 +54,8 @@ type ComposerProps = {
   onSend,
   onAbort,
 }: ComposerProps) {
-	const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [isFocused, setIsFocused] = useState(false);
   const canSend = serverReady && !activeSession?.busy && prompt.trim().length > 0;
   const currentContextLabel = formatCurrentContext(activeSession);
 
@@ -101,15 +102,29 @@ type ComposerProps = {
     }
   }
 
-  return (
-    <div className="pointer-events-auto mx-auto flex w-full max-w-310 flex-col gap-2 border border-line/70 bg-chat-overlay px-3 py-3 shadow-[0_22px_60px_rgba(23,21,18,0.14)] backdrop-blur-xl">
-      {currentContextLabel ? (
-        <div className="flex items-center justify-between gap-3 px-3 pt-1 text-[0.74rem] leading-6 text-muted">
-          <span className="font-mono uppercase tracking-[0.12em] text-faint">Current context</span>
-          <span className="text-right text-ink/80">{currentContextLabel}</span>
+	return (
+		<div
+			className={[
+				"pointer-events-auto mx-auto flex w-full max-w-[52rem] flex-col gap-1.5 rounded-lg border bg-white/92 px-3 py-2.5 transition-colors duration-150 backdrop-blur-md",
+				isFocused
+					? "border-slate-400 bg-white"
+					: "border-slate-300/90",
+			].join(" ")}
+		>
+			{currentContextLabel ? (
+				<div className="flex items-center justify-between gap-2 px-1 pb-1.5 border-b border-slate-200">
+					<span className="flex items-center gap-1.5 font-mono text-[0.66rem] font-semibold uppercase tracking-[0.12em] text-slate-500">
+						<svg viewBox="0 0 24 24" className="h-3 w-3 text-slate-500" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+            </svg>
+            Current Context
+          </span>
+					<span className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-right font-mono text-[0.68rem] font-medium text-slate-600">
+            {currentContextLabel}
+          </span>
         </div>
       ) : null}
-      <div className="flex items-end gap-3">
+			<div className="flex items-end gap-2.5">
         <textarea
           ref={promptInputRef}
           id="prompt-input"
@@ -117,6 +132,8 @@ type ComposerProps = {
           rows={1}
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
           onKeyDown={(event) => {
             if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
               event.preventDefault();
@@ -126,24 +143,29 @@ type ComposerProps = {
           disabled={!serverReady}
           onInput={resizePromptInput}
           placeholder={
-        !serverReady
-          ? "Start the local server to begin chatting"
+            !serverReady
+              ? "Start the local server to begin chatting..."
               : !connected
                 ? streamRequested
                   ? `Connecting to the ${connectionLabel}...`
-            : `Opening the ${connectionLabel} stream...`
-              : activeSessionId
-                ? "Continue this session with the next task, follow-up, or code request"
-                : "Describe what you want Pi to inspect, fix, or build"
+                  : `Opening the ${connectionLabel} stream...`
+                : activeSessionId
+                  ? "Continue this session with the next task, follow-up, or code request..."
+                  : "Describe what you want Pi to inspect, fix, or build..."
           }
-          className="min-h-[calc(1.75em+1.5rem)] max-h-[calc(12.25em+1.5rem)] flex-1 resize-none overflow-hidden border-none bg-transparent px-3 py-3 text-[1.05rem] leading-[1.75] text-ink outline-none placeholder:text-faint focus-visible:outline-none"
-        />
-        <button
-          type="button"
-			id={activeSession?.busy ? "abort-button" : "send-button"}
-			className="flex h-13 w-13 shrink-0 items-center justify-center border border-transparent bg-ink text-sidebar-ink shadow-[0_10px_24px_rgba(23,21,18,0.18)] transition duration-150 hover:bg-ink-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-[0.34]"
-      disabled={!serverReady || (!canSend && !activeSession?.busy)}
-			aria-label={activeSession?.busy ? "Stop run" : "Send prompt"}
+				className="min-h-[calc(1.65em+1rem)] max-h-[calc(11.55em+1rem)] flex-1 resize-none overflow-hidden border-none bg-transparent px-1.5 py-1.5 text-[0.94rem] leading-[1.6] text-slate-900 outline-none placeholder:text-slate-400 focus-visible:outline-none"
+			/>
+			<button
+				type="button"
+				id={activeSession?.busy ? "abort-button" : "send-button"}
+				className={[
+					"flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-transparent transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-30",
+					activeSession?.busy
+						? "bg-slate-700 text-white hover:bg-black"
+						: "bg-black text-white hover:bg-slate-800",
+				].join(" ")}
+          disabled={!serverReady || (!canSend && !activeSession?.busy)}
+          aria-label={activeSession?.busy ? "Stop run" : "Send prompt"}
           onClick={() => {
             if (activeSession?.busy) {
               onAbort();
@@ -156,18 +178,18 @@ type ComposerProps = {
           {activeSession?.busy ? (
             <span
               aria-hidden="true"
-              className="h-4 w-4 rounded-sm border-2 border-current"
+					className="h-3 w-3 rounded-[2px] border-2 border-white"
             />
           ) : (
             <svg
               aria-hidden="true"
               viewBox="0 0 20 20"
-              className="h-5 w-5"
+					className="h-4 w-4"
               fill="none"
               stroke="currentColor"
-              strokeWidth="1.9"
+              strokeWidth="2.5"
             >
-              <path d="M10 3.5V16.5" strokeLinecap="round" />
+              <path d="M10 3.5V16.5" strokeLinecap="round" strokeLinejoin="round" />
               <path
                 d="M5 8.5L10 3.5L15 8.5"
                 strokeLinecap="round"

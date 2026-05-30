@@ -40,62 +40,67 @@ export function ScheduledJobsPage({
 	onEnsureRunLoaded,
 }: ScheduledJobsPageProps) {
 	return (
-		<main className="min-h-svh bg-canvas text-ink">
-			<div className="mx-auto flex min-h-svh w-full max-w-7xl flex-col px-4 py-5 min-[860px]:px-6 min-[1180px]:px-8">
+		<main className="min-h-svh bg-[#f3f3f3] text-[#171717] selection:bg-black/10 selection:text-black">
+			<div className="mx-auto flex min-h-svh w-full max-w-7xl flex-col px-4 py-6 min-[860px]:px-5 min-[1180px]:px-6">
 				{/* ---- Header ---- */}
-				<header className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-5">
+				<header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
 					<div>
-						<div className="flex items-center gap-3">
-							<p className="font-mono text-[0.72rem] uppercase tracking-[0.16em] text-muted">Job Dashboard</p>
+						<div className="flex items-center gap-2.5">
+							<p className="font-mono text-[0.72rem] uppercase tracking-[0.16em] text-[#64748b] font-bold">Job Dashboard</p>
 							{jobs.length > 0 ? (
-								<span className="inline-flex items-center gap-1.5 border border-line bg-ink-soft px-2.5 py-1 font-mono text-[0.69rem] uppercase tracking-[0.12em] text-muted">
-									{jobs.length} job{jobs.length !== 1 ? "s" : ""}
+								<span className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2 py-0.5 font-mono text-[0.67rem] font-semibold text-slate-700">
+									{jobs.length} job{jobs.length !== 1 ? "s" : ""} active
 								</span>
 							) : null}
 						</div>
-						<h1 className="mt-2 text-[1.75rem] font-semibold tracking-[-0.03em] leading-tight">Scheduled jobs</h1>
-						<p className="mt-1.5 max-w-xl text-sm leading-6 text-muted">
-							Manage schedules, inspect run history, and review execution transcripts.
+						<h1 className="mt-1.5 text-[1.6rem] font-bold tracking-tight leading-none text-slate-900">Scheduled automated tasks</h1>
+						<p className="mt-2 max-w-xl text-[0.84rem] leading-[1.55] text-[#525252] font-medium">
+							Manage recurring background schedules, inspect active run logs, and review deep history execution transcripts.
 						</p>
 					</div>
-					<div className="flex items-center gap-2">
+					<div className="flex items-center gap-2.5 shrink-0">
 						<button
 							type="button"
-							className="inline-flex items-center gap-2 border border-line bg-surface px-3.5 py-2.5 text-sm font-medium text-ink transition hover:border-line-strong hover:bg-surface-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+							className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-[#171717] transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer"
 							onClick={onRefreshJobs}
 						>
-							<svg className={`h-4 w-4 ${isLoadingJobs ? "animate-spin" : ""}`} fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth={1.5}>
-								<path strokeLinecap="round" strokeLinejoin="round" d="M2.5 8a5.5 5.5 0 0 1 10.22-2.17M13.5 8a5.5 5.5 0 0 1-10.22 2.17M8 2.5v2M8 11.5v2" />
+							<svg className={`h-4 w-4 ${isLoadingJobs ? "animate-spin text-slate-700" : "text-[#525252]"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+								<path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8h-4.21" />
 							</svg>
-							{isLoadingJobs ? "Refreshing..." : "Refresh"}
+							{isLoadingJobs ? "Syncing..." : "Sync Jobs"}
 						</button>
 						<button
 							type="button"
-							className="border border-ink bg-ink px-4 py-2.5 text-sm font-medium text-sidebar-ink transition hover:bg-ink-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+							className="inline-flex items-center gap-2 rounded-md border border-black bg-black px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer"
 							onClick={onBack}
 						>
+							<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+								<path strokeLinecap="round" strokeLinejoin="round" d="M19 12H5M12 19l-7-7 7-7" />
+							</svg>
 							Back to chat
 						</button>
 					</div>
 				</header>
 
-				<JobsPanel
-					adminStatus={adminStatus}
-					jobs={jobs}
-					jobRuns={jobRuns}
-					sessionCache={sessionCache}
-					jobsError={jobsError}
-					jobRunsError={jobRunsError}
-					isLoadingJobs={isLoadingJobs}
-					isLoadingJobRuns={isLoadingJobRuns}
-					connectionError={connectionError}
-					onRefreshJobs={onRefreshJobs}
-					onRefreshJobRuns={onRefreshJobRuns}
-					onUpdateJobInterval={onUpdateJobInterval}
-					onToggleJobEnabled={onToggleJobEnabled}
-					onDeleteJob={onDeleteJob}
-					onEnsureRunLoaded={onEnsureRunLoaded}
-				/>
+				<div className="mt-4">
+					<JobsPanel
+						adminStatus={adminStatus}
+						jobs={jobs}
+						jobRuns={jobRuns}
+						sessionCache={sessionCache}
+						jobsError={jobsError}
+						jobRunsError={jobRunsError}
+						isLoadingJobs={isLoadingJobs}
+						isLoadingJobRuns={isLoadingJobRuns}
+						connectionError={connectionError}
+						onRefreshJobs={onRefreshJobs}
+						onRefreshJobRuns={onRefreshJobRuns}
+						onUpdateJobInterval={onUpdateJobInterval}
+						onToggleJobEnabled={onToggleJobEnabled}
+						onDeleteJob={onDeleteJob}
+						onEnsureRunLoaded={onEnsureRunLoaded}
+					/>
+				</div>
 			</div>
 		</main>
 	);

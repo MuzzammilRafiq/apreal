@@ -1,6 +1,5 @@
 import type { SessionSummary, TranscriptMessage, TranscriptToolCall } from "./chatTypes";
 
-
 export function formatRelativeTime(timestamp: number): string {
 	const date = new Date(timestamp);
 	const now = new Date();
@@ -18,7 +17,7 @@ export function formatToolStatus(status: TranscriptToolCall["status"]): string {
 			return "Failed";
 		default:
 			return "Completed";
-}
+	}
 }
 
 export function formatSessionState(session: SessionSummary | null, pendingDraft: boolean): string {
@@ -31,69 +30,69 @@ export function formatSessionState(session: SessionSummary | null, pendingDraft:
 
 export function getSessionCardClassName(isActive: boolean): string {
 	return [
-		"flex w-full cursor-pointer flex-col bg-transparent px-3 py-1.5 text-left text-sidebar-ink transition-colors duration-150 hover:bg-sidebar-active focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring",
+		"flex w-full cursor-pointer flex-col rounded-lg px-3 py-2.5 text-left text-sidebar-ink transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring",
 		isActive
-			? "bg-sidebar-active"
-			: "",
+			? "bg-[#1d1d1f]"
+			: "hover:bg-white/4",
 	].join(" ");
 }
 
 export function getMessageClassName(message: TranscriptMessage): string {
-	const baseClassName = "flex w-full flex-col gap-2.5 animate-message-enter max-[860px]:max-w-full min-[861px]:max-w-[80%]";
+	const baseClassName = "flex w-full flex-col gap-2.5 animate-message-enter max-[860px]:max-w-full min-[861px]:max-w-[85%]";
 
-	switch (message.role) {
-		case "user":
-			return `${baseClassName} ml-auto items-end`;
-		case "assistant":
-			return `${baseClassName} mr-auto border-b border-line-soft pb-[22px]`;
-		case "system":
-			return `${baseClassName} mx-auto max-w-full text-center`;
-		case "error":
-			return `${baseClassName} mr-auto border-l-2 border-danger bg-danger-soft px-[18px] py-4 max-[520px]:px-[15px] max-[520px]:py-[14px]`;
-		default:
-			return baseClassName;
-	}
+		switch (message.role) {
+			case "user":
+				return `${baseClassName} ml-auto items-end`;
+			case "assistant":
+				return `${baseClassName} mr-auto border-b border-line-soft pb-5`;
+			case "system":
+				return `${baseClassName} mx-auto max-w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3.5 text-center`;
+			case "error":
+				return `${baseClassName} mr-auto rounded-lg border border-slate-300 bg-slate-100 px-4 py-3.5`;
+			default:
+				return baseClassName;
+		}
 }
 
 export function getMessageRoleClassName(role: TranscriptMessage["role"]): string {
-	const baseClassName = "font-mono text-[0.72rem] font-medium uppercase tracking-[0.12em]";
+	const baseClassName = "font-mono text-[0.72rem] font-semibold uppercase tracking-[0.12em]";
 
 	switch (role) {
 		case "system":
 			return "hidden";
 		case "error":
-			return `${baseClassName} text-danger`;
+			return `${baseClassName} text-red-600`;
 		default:
 			return `${baseClassName} text-faint`;
 	}
 }
 
 export function getMessageBodyClassName(role: TranscriptMessage["role"], pending: boolean): string {
-	const pendingClassName = pending ? " opacity-[0.62]" : "";
+	const pendingClassName = pending ? " opacity-75" : "";
 
 	switch (role) {
 		case "user":
-			return `w-fit max-w-full whitespace-pre-wrap break-words bg-ink px-[18px] py-4 text-base leading-[1.78] text-sidebar-ink max-[520px]:px-[15px] max-[520px]:py-[14px]${pendingClassName}`;
+			return `w-fit max-w-full whitespace-pre-wrap break-words rounded-lg rounded-tr-sm bg-[#171717] px-4 py-2.5 text-[0.95rem] leading-[1.6] text-white transition-colors duration-150 hover:bg-black max-[520px]:px-3.5 max-[520px]:py-2.5${pendingClassName}`;
 		case "system":
-			return `whitespace-pre-wrap break-words text-[0.84rem] text-muted${pendingClassName}`;
+			return `whitespace-pre-wrap break-words text-[0.84rem] font-medium text-muted${pendingClassName}`;
 		case "assistant":
-			return `w-full break-words text-base leading-[1.78] text-ink${pendingClassName}`;
+			return `w-full break-words text-[0.95rem] leading-[1.7] text-ink${pendingClassName}`;
 		case "error":
-			return `whitespace-pre-wrap break-words text-base leading-[1.78] text-ink${pendingClassName}`;
+			return `whitespace-pre-wrap break-words text-[0.92rem] leading-[1.65] font-medium text-slate-800${pendingClassName}`;
 		default:
-			return `whitespace-pre-wrap break-words text-base leading-[1.78]${pendingClassName}`;
+			return `whitespace-pre-wrap break-words text-[0.95rem] leading-[1.65]${pendingClassName}`;
 	}
 }
 
 export function getToolStatusClassName(status: TranscriptToolCall["status"]): string {
-	const baseClassName = "rounded-full border px-[7px] py-[3px] font-mono text-[0.68rem] uppercase tracking-[0.08em]";
+	const baseClassName = "flex shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[0.65rem] font-semibold uppercase tracking-[0.08em]";
 
 	switch (status) {
 		case "running":
-			return `${baseClassName} border-accent-line bg-accent-soft text-accent`;
+			return `${baseClassName} border-slate-300 bg-slate-100 text-slate-700`;
 		case "failed":
-			return `${baseClassName} border-danger-line bg-danger-soft text-danger`;
+			return `${baseClassName} border-slate-400 bg-slate-200 text-slate-800`;
 		default:
-			return `${baseClassName} border-line bg-ink-soft text-muted`;
+			return `${baseClassName} border-slate-300 bg-white text-slate-700`;
 	}
 }

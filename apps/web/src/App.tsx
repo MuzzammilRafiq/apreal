@@ -1055,7 +1055,7 @@ export function App() {
 	}
 
 	return (
-		<main className="grid h-svh w-full overflow-hidden grid-cols-1 font-ui text-ink min-[721px]:grid-cols-[270px_minmax(0,1fr)] min-[1221px]:grid-cols-[320px_minmax(0,1fr)]">
+		<main className="grid h-svh w-full overflow-hidden grid-cols-1 font-ui text-ink min-[721px]:grid-cols-[240px_minmax(0,1fr)] min-[1221px]:grid-cols-[280px_minmax(0,1fr)]">
 			<Sidebar
 				connected={connected}
 				serverReady={serverReady}
@@ -1083,7 +1083,7 @@ export function App() {
 					emptyState={emptyState}
 					connectionError={connectionError}
 				/>
-				<div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-4 max-[860px]:px-3">
+				<div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-3 pb-3 max-[860px]:px-2.5">
 					<Composer
 						connected={connected}
 						serverReady={serverReady}

@@ -41,7 +41,7 @@ function AssistantMarkdownMessage({ content, pending }: { content: string; pendi
 		<div
 			className={[
 				getMessageBodyClassName("assistant", pending),
-				"markdown-content [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+				"markdown-content [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 selection:bg-black/10 selection:text-black",
 			].join(" ")}
 		>
 			<ReactMarkdown
@@ -72,10 +72,19 @@ function AssistantSegmentBlock({ item, segment, isLiveThinking }: { item: Transc
 
 	if (segment.type === "tool_call") {
 		return (
-			<section className="mt-0.5 flex w-full flex-col gap-3 border border-line-soft bg-tool-surface px-4.5 py-4">
-				<p className="font-mono text-[0.72rem] uppercase tracking-[0.12em] text-faint">Tool call</p>
-				<div className="flex items-center justify-between gap-3">
-					<p className="font-mono text-[0.84rem] text-ink">{segment.name}</p>
+			<section className="mt-1 flex w-full flex-col gap-2.5 rounded-lg border border-slate-200 bg-slate-50 p-3">
+				<div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+					<span className="flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-sm bg-slate-200 text-slate-700">
+						<svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5">
+							<path d="M16 18l6-6-6-6M8 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+						</svg>
+					</span>
+					<p className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.14em] text-slate-500">Tool Execution</p>
+				</div>
+				<div className="flex items-center justify-between gap-2.5">
+					<p className="truncate rounded-sm border border-slate-200 bg-white px-2 py-0.5 font-mono text-[0.8rem] font-medium text-slate-800">
+						{segment.name}
+					</p>
 					<span className={getToolStatusClassName(segment.status)}>{formatToolStatus(segment.status)}</span>
 				</div>
 			</section>
@@ -84,13 +93,22 @@ function AssistantSegmentBlock({ item, segment, isLiveThinking }: { item: Transc
 
 	return (
 		<details
-			className="mt-3 w-full border border-thinking-border bg-thinking-surface px-4 py-3.5 text-muted open:bg-thinking-surface-open"
+			className="mt-2.5 w-full rounded-lg border border-slate-200 bg-[#f5f5f5] p-3 text-[#525252] transition-colors duration-150 open:bg-[#ededed]"
 			open={isLiveThinking}
 		>
-			<summary className="cursor-pointer list-none font-mono text-[0.74rem] uppercase tracking-[0.12em] text-thinking-label [&::-webkit-details-marker]:hidden">
-				{isLiveThinking ? "Thinking trace (live)" : "Thinking trace"}
+			<summary className="flex cursor-pointer list-none items-center justify-between font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-500 select-none [&::-webkit-details-marker]:hidden">
+				<span className="flex items-center gap-2">
+					<span className="flex h-4.5 w-4.5 items-center justify-center rounded-sm bg-slate-200 text-slate-600">
+						<svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5">
+							<circle cx="12" cy="12" r="10" />
+							<path d="M12 16v-4M12 8h.01" strokeLinecap="round" strokeLinejoin="round" />
+						</svg>
+					</span>
+					{isLiveThinking ? "Thinking Process (Live)" : "Thinking Process"}
+				</span>
+				<span className="shrink-0 text-[0.64rem] font-medium text-slate-500">Toggle</span>
 			</summary>
-			<pre className="mt-3 whitespace-pre-wrap wrap-break-word font-mono text-[0.82rem] leading-[1.7] text-thinking-body">
+			<pre className="mt-2.5 whitespace-pre-wrap break-words rounded-md border border-slate-200 bg-white p-2.5 font-mono text-[0.78rem] leading-[1.6] text-[#525252]">
 				{segment.content}
 			</pre>
 		</details>
@@ -114,7 +132,13 @@ function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 				<p className={getMessageBodyClassName(item.role, item.pending)}>{item.body || "Thinking..."}</p>
 			)}
 			{item.role === "assistant" && shouldShowPlaceholder && (
-				<p className={getMessageBodyClassName(item.role, item.pending)}>Thinking...</p>
+				<div className="flex items-center gap-2 py-1 font-medium text-slate-500">
+					<svg className="h-4 w-4 animate-spin text-slate-600" fill="none" viewBox="0 0 24 24">
+						<circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+						<path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.002 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+					</svg>
+					<span className="text-sm">Thinking...</span>
+				</div>
 			)}
 
 			{shouldShowAssistantBodyFallback && (
@@ -135,8 +159,11 @@ function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 			)}
 
 			{shouldShowAssistantMeta ? (
-				<footer className="mt-1 border-t border-line-soft pt-3 text-[0.72rem] leading-5 text-muted">
-					<p className="break-words">{assistantModelMeta}</p>
+				<footer className="mt-1 flex items-center gap-1.5 border-t border-slate-200 pt-2.5 font-mono text-[0.68rem] font-medium leading-5 text-slate-500">
+					<svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2.5">
+						<path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 4a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm-7 11.2a7.99 7.99 0 0 0 14 0" strokeLinecap="round" />
+					</svg>
+					<p className="break-all">{assistantModelMeta}</p>
 				</footer>
 			) : null}
 		</article>
@@ -145,27 +172,40 @@ function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 
 export function TranscriptPanel({ transcriptRef, activeTranscript, emptyState, connectionError }: TranscriptPanelProps) {
 	return (
-		<div className="min-h-0 min-w-0 flex-1 bg-stage">
+		<div className="min-h-0 min-w-0 flex-1 bg-stage/20">
 			<div
 				ref={transcriptRef}
 				id="transcript"
-				className="flex h-full flex-col gap-6.5 overflow-y-auto px-8 pt-8.5 pb-44 max-[860px]:px-5 max-[860px]:pb-48"
+				className="flex h-full flex-col gap-6 overflow-y-auto px-6 pt-6 pb-32 max-[860px]:px-4 max-[860px]:pb-36"
 				aria-live="polite"
 			>
 				{connectionError ? (
 					<div
 						role="alert"
-						className="mr-auto w-full max-w-3xl border-l-2 border-danger bg-danger-soft px-4.5 py-4 text-base leading-[1.78] text-ink max-[520px]:px-3.75 max-[520px]:py-3.5"
-					>
-						{connectionError}
+					className="mr-auto flex w-full max-w-3xl items-start gap-3 rounded-lg border border-slate-300 bg-slate-100 px-4 py-3 text-[0.9rem] font-medium leading-[1.6] text-slate-800"
+				>
+						<svg viewBox="0 0 24 24" className="mt-0.5 h-4.5 w-4.5 shrink-0 text-slate-600" fill="none" stroke="currentColor" strokeWidth="2.2">
+							<circle cx="12" cy="12" r="10" />
+							<path d="M12 8v4M12 16h.01" strokeLinecap="round" strokeLinejoin="round" />
+						</svg>
+						<span>{connectionError}</span>
 					</div>
 				) : null}
 				{emptyState ? (
-					<div className="my-auto flex max-w-xl flex-col gap-3.5 py-[8vh]">
-						<p className="text-[clamp(2rem,4vw,3.4rem)] font-bold leading-[0.98] tracking-[-0.07em]">
-							{emptyState.title}
-						</p>
-						<p className="max-w-lg text-base leading-[1.8] text-muted">{emptyState.body}</p>
+					<div className="mx-auto my-auto flex max-w-xl flex-col items-center justify-center gap-4 px-4 py-[10vh] text-center">
+						<div className="flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-white">
+							<svg viewBox="0 0 24 24" className="h-6 w-6 text-slate-700" fill="none" stroke="currentColor" strokeWidth="2.2">
+								<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" strokeLinecap="round" strokeLinejoin="round" />
+							</svg>
+						</div>
+						<div>
+							<h1 className="text-[clamp(1.55rem,3.5vw,2.1rem)] font-bold leading-tight tracking-tight text-slate-900">
+								{emptyState.title}
+							</h1>
+							<p className="mx-auto mt-2 max-w-md text-[0.92rem] font-medium leading-[1.65] text-slate-500">
+								{emptyState.body}
+							</p>
+						</div>
 					</div>
 				) : (
 					activeTranscript.map((item) => <TranscriptMessageCard key={item.id} item={item} />)
