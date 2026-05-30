@@ -104,9 +104,9 @@ export default function ServerSettingsScreen() {
           </View>
 
           <ThemedText style={[styles.copy, { color: palette.mutedText }]}>
-            Provider sign-in stays on the paired computer. Use the Pi CLI there,
-            then run /login and /model to choose the subscription or model this
-            app should use for new chats.
+            Provider sign-in stays on the paired computer inside Apreal
+            settings. Choose the subscription and default model there for new
+            chats.
           </ThemedText>
 
           <View

@@ -7,19 +7,19 @@ import {
 	SettingsManager,
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
 import { agentToolsConfig, getConfiguredToolNames, getConfiguredToolsLabel } from "./agent-tools.ts";
+import { getAprealAgentDir, getAprealAgentPath } from "./agent-dir.ts";
 import { createLogger, summarizePrompt } from "./logger.ts";
 import { getDefaultMemoryStore } from "./memory-store.ts";
 import type { ProvidersResponse } from "@apreal/shared";
 
-const PI_AGENT_DIR = join(homedir(), ".pi", "agent");
-const PI_AGENT_AUTH_PATH = join(homedir(), ".pi", "agent", "auth.json");
-const PI_AGENT_SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
+const APREAL_AGENT_DIR = getAprealAgentDir();
+const APREAL_AGENT_AUTH_PATH = getAprealAgentPath("auth.json");
+const APREAL_AGENT_MODELS_PATH = getAprealAgentPath("models.json");
+const APREAL_AGENT_SETTINGS_PATH = getAprealAgentPath("settings.json");
 const PI_LOGIN_GUIDANCE =
-	"Run `pi`, then use `/login` to authenticate a subscription or API-key provider and `/model` to pick the default model for new chats.";
+	"Sign in from Apreal settings, then pick the default model for new chats.";
 const LEGACY_ENV_CREDENTIAL_PROVIDERS: Record<string, string> = {
 	ANTHROPIC_API_KEY: "anthropic",
 	AZURE_OPENAI_API_KEY: "azure-openai-responses",
@@ -350,9 +350,9 @@ function applyLegacyEnvCredentialAliases(authStorage: AuthStorage) {
 
 function getMissingAuthError() {
 	return [
-		"No Pi model credentials are configured for the local server.",
+		"No Apreal model credentials are configured for the local server.",
 		PI_LOGIN_GUIDANCE,
-		`Pi auth is read from ${PI_AGENT_AUTH_PATH} and defaults from ${PI_AGENT_SETTINGS_PATH}.`,
+		`Apreal auth is read from ${APREAL_AGENT_AUTH_PATH} and defaults from ${APREAL_AGENT_SETTINGS_PATH}.`,
 	].join(" ");
 }
 
@@ -360,7 +360,7 @@ async function createResourceLoader(cwd: string, settingsManager: SettingsManage
 	const memoryStore = getDefaultMemoryStore();
 	const resourceLoader = new DefaultResourceLoader({
 		cwd,
-		agentDir: PI_AGENT_DIR,
+		agentDir: APREAL_AGENT_DIR,
 		settingsManager,
 		agentsFilesOverride: (base) => {
 			const persistentMemory = memoryStore.renderAlwaysLoadedContext();
@@ -391,10 +391,10 @@ async function createResourceLoader(cwd: string, settingsManager: SettingsManage
 }
 
 function createPiRuntime(cwd: string): PiRuntime {
-	const authStorage = AuthStorage.create();
+	const authStorage = AuthStorage.create(APREAL_AGENT_AUTH_PATH);
 	applyLegacyEnvCredentialAliases(authStorage);
-	const modelRegistry = ModelRegistry.create(authStorage);
-	const settingsManager = SettingsManager.create(cwd);
+	const modelRegistry = ModelRegistry.create(authStorage, APREAL_AGENT_MODELS_PATH);
+	const settingsManager = SettingsManager.create(cwd, APREAL_AGENT_DIR);
 
 	if (modelRegistry.getAvailable().length === 0) {
 		throw new Error(getMissingAuthError());
@@ -412,6 +412,7 @@ async function createPiSession(cwd: string, customTools: ToolDefinition[] = agen
 	const resourceLoader = await createResourceLoader(cwd, runtime.settingsManager);
 	const result = await createAgentSession({
 		cwd,
+		agentDir: APREAL_AGENT_DIR,
 		authStorage: runtime.authStorage,
 		modelRegistry: runtime.modelRegistry,
 		resourceLoader,
@@ -697,10 +698,10 @@ function buildProvidersPayloadFromRuntime(runtime: PiRuntime): ProvidersResponse
 }
 
 export function buildProvidersPayload(cwd: string): ProvidersResponse {
-	const authStorage = AuthStorage.create();
+	const authStorage = AuthStorage.create(APREAL_AGENT_AUTH_PATH);
 	applyLegacyEnvCredentialAliases(authStorage);
-	const modelRegistry = ModelRegistry.create(authStorage);
-	const settingsManager = SettingsManager.create(cwd);
+	const modelRegistry = ModelRegistry.create(authStorage, APREAL_AGENT_MODELS_PATH);
+	const settingsManager = SettingsManager.create(cwd, APREAL_AGENT_DIR);
 
 	return buildProvidersPayloadFromRuntime({
 		authStorage,
@@ -714,10 +715,10 @@ export async function setDefaultProviderModel(
 	provider: string,
 	modelId: string,
 ): Promise<ProvidersResponse> {
-	const authStorage = AuthStorage.create();
+	const authStorage = AuthStorage.create(APREAL_AGENT_AUTH_PATH);
 	applyLegacyEnvCredentialAliases(authStorage);
-	const modelRegistry = ModelRegistry.create(authStorage);
-	const settingsManager = SettingsManager.create(cwd);
+	const modelRegistry = ModelRegistry.create(authStorage, APREAL_AGENT_MODELS_PATH);
+	const settingsManager = SettingsManager.create(cwd, APREAL_AGENT_DIR);
 	const availableModel = modelRegistry.getAvailable().find((model) =>
 		String(model.provider) === provider && model.id === modelId
 	);

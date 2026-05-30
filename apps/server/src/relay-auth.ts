@@ -1,6 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import {
 	normalizeRelayPairingCode,
 	RELAY_AGENT_AUTH_PATH,
@@ -9,8 +8,9 @@ import {
 	type RelayAgentAuthResponse,
 	type RelayPrincipalType,
 } from "@apreal/shared";
+import { getAprealAgentPath } from "./agent-dir.ts";
 
-const PI_AGENT_RELAY_AUTH_PATH = join(homedir(), ".pi", "agent", "relay-auth.json");
+const APREAL_AGENT_RELAY_AUTH_PATH = getAprealAgentPath("relay-auth.json");
 
 type LoggerLike = {
 	info(message: string, fields?: Record<string, unknown>): void;
@@ -34,12 +34,12 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function readStoredRelayAgentAuth(): StoredRelayAgentAuth | null {
-	if (!existsSync(PI_AGENT_RELAY_AUTH_PATH)) {
+	if (!existsSync(APREAL_AGENT_RELAY_AUTH_PATH)) {
 		return null;
 	}
 
 	try {
-		const content = readFileSync(PI_AGENT_RELAY_AUTH_PATH, "utf8");
+		const content = readFileSync(APREAL_AGENT_RELAY_AUTH_PATH, "utf8");
 		const parsed: unknown = JSON.parse(content);
 		if (!isObjectRecord(parsed)) {
 			return null;
@@ -69,8 +69,8 @@ function readStoredRelayAgentAuth(): StoredRelayAgentAuth | null {
 }
 
 function writeStoredRelayAgentAuth(auth: StoredRelayAgentAuth) {
-	mkdirSync(dirname(PI_AGENT_RELAY_AUTH_PATH), { recursive: true });
-	writeFileSync(PI_AGENT_RELAY_AUTH_PATH, `${JSON.stringify(auth, null, 2)}\n`, "utf8");
+	mkdirSync(dirname(APREAL_AGENT_RELAY_AUTH_PATH), { recursive: true });
+	writeFileSync(APREAL_AGENT_RELAY_AUTH_PATH, `${JSON.stringify(auth, null, 2)}\n`, "utf8");
 }
 
 function createAgentIdentity(existing: StoredRelayAgentAuth | null, relayUrl: string): StoredRelayAgentAuth {
@@ -201,7 +201,7 @@ export async function ensureRelayAgentAuth(
 	logger.info("stored relay agent auth", {
 		agentId: nextAuth.agentId,
 		targetId: nextAuth.targetId,
-		path: PI_AGENT_RELAY_AUTH_PATH,
+		path: APREAL_AGENT_RELAY_AUTH_PATH,
 	});
 	return nextAuth;
 }
@@ -236,7 +236,7 @@ export async function reauthenticateRelayAgent(
 	logger.info("re-authenticated relay agent", {
 		agentId: nextAuth.agentId,
 		targetId: nextAuth.targetId,
-		path: PI_AGENT_RELAY_AUTH_PATH,
+		path: APREAL_AGENT_RELAY_AUTH_PATH,
 	});
 	return nextAuth;
 }

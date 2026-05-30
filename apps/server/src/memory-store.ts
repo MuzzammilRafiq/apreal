@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { getAprealServerDatabasePath } from "./agent-dir.ts";
 import { createLogger, summarizePrompt } from "./logger.ts";
 
 const logger = createLogger("memory-store");
@@ -376,7 +376,7 @@ function renderAlwaysLoadedMemoryContext(memories: StoredMemory[]): { path: stri
 }
 
 export function getDefaultServerDatabasePath(): string {
-	return join(homedir(), ".pi", "agent", "sessions.db");
+	return getAprealServerDatabasePath();
 }
 
 let defaultMemoryStore: MemoryStore | null = null;

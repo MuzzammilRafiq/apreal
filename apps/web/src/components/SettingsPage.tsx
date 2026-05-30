@@ -279,7 +279,7 @@ export function SettingsPage({
 							{activeSection === "jobs" && "Scheduled automated tasks"}
 						</h1>
 						<p className="mt-2 max-w-2xl text-[0.84rem] leading-[1.55] text-[#525252] font-medium">
-							{activeSection === "server" && "Control your local server process and monitor direct browser-to-server operations. Keep in mind that provider auth stays secured inside your Pi CLI."}
+							{activeSection === "server" && "Control your local server process and monitor direct browser-to-server operations. Provider auth stays secured inside your local Apreal directory."}
 							{activeSection === "relay" && "Pair and authorize web transport layers to securely access remote server functions from external clients."}
 							{activeSection === "models" && "Search available provider models on your machine and lock down the default model used for initiating new conversations."}
 							{activeSection === "jobs" && "Configure recurring jobs, fine-tune execution intervals, view active state monitors, and review deep history traces."}
@@ -557,7 +557,7 @@ export function SettingsPage({
 									<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Agent Provisioning</p>
 									<h2 className="mt-1 text-base font-bold text-slate-900">Set default intelligence model</h2>
 									<p className="mt-2 text-sm leading-[1.5] text-[#525252] font-medium">
-										Pi handles local subscriptions and credentials securely on your computer. Use <code className="rounded-sm bg-slate-100 px-1.5 py-0.5 font-mono text-slate-800 font-semibold">pi /login</code> in your terminal to sign in, and update your default model below.
+										Apreal stores local subscriptions and credentials securely on your computer under <code className="rounded-sm bg-slate-100 px-1.5 py-0.5 font-mono text-slate-800 font-semibold">~/.apreal</code>. Sign in here, then update your default model below.
 									</p>
 
 									{providersError ? (
@@ -698,7 +698,7 @@ export function SettingsPage({
 														<p className="mt-3 text-[0.8rem] text-slate-400 font-semibold">
 															{provider.models.length > 0
 																? `${provider.models.length} model${provider.models.length === 1 ? "" : "s"} indexed.`
-																: "No available models listed. Check your login status inside Pi CLI."}
+																: "No available models listed. Check your Apreal login status."}
 														</p>
 													</li>
 												);

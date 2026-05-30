@@ -1,6 +1,5 @@
 import { createInterface } from "node:readline";
 import { access, readFile, stat } from "node:fs/promises";
-import { homedir } from "node:os";
 import { extname, join, resolve, sep } from "node:path";
 import type { Server as HttpServer } from "node:http";
 import {
@@ -20,6 +19,7 @@ import {
 } from "@apreal/shared";
 import { createChatStore } from "../chat-store.ts";
 import { getConfiguredToolsLabel } from "../agent-tools.ts";
+import { getAprealServerDatabasePath } from "../agent-dir.ts";
 import { createLogger } from "../logger.ts";
 import {
 	ensureRelayAgentAuth,
@@ -248,7 +248,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 
 	const clients = new Map<string, ClientConnection>();
 	const sessions = new Map<string, import("./session-state.ts").SharedSessionState>();
-	const dbPath = join(homedir(), ".pi", "agent", "sessions.db");
+	const dbPath = getAprealServerDatabasePath();
 	const chatStore = createChatStore(dbPath);
 	const jobStore = new JobStore(dbPath);
 	for (const [sessionId, session] of chatStore.loadSessions()) {
