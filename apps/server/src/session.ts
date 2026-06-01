@@ -12,7 +12,7 @@ import { agentToolsConfig, getConfiguredToolNames, getConfiguredToolsLabel } fro
 import { getAprealAgentDir, getAprealAgentPath } from "./agent-dir.ts";
 import { createLogger, summarizePrompt } from "./logger.ts";
 import { getDefaultMemoryStore } from "./memory-store.ts";
-import type { ProviderLoginState, ProvidersResponse } from "@apreal/shared";
+import type { AvailableSkill, ProviderLoginState, ProvidersResponse } from "@apreal/shared";
 
 const APREAL_AGENT_DIR = getAprealAgentDir();
 const APREAL_AGENT_AUTH_PATH = getAprealAgentPath("auth.json");
@@ -388,6 +388,55 @@ async function createResourceLoader(cwd: string, settingsManager: SettingsManage
 	});
 	await resourceLoader.reload();
 	return resourceLoader;
+}
+
+function getAvailableSkillSource(
+	sourceInfo: { scope: "user" | "project" | "temporary"; origin: "package" | "top-level" },
+): AvailableSkill["source"] {
+	if (sourceInfo.origin === "package") {
+		return "extension";
+	}
+	if (sourceInfo.scope === "project") {
+		return "project";
+	}
+	if (sourceInfo.scope === "user") {
+		return "user";
+	}
+	if (sourceInfo.scope === "temporary") {
+		return "temporary";
+	}
+	return "path";
+}
+
+function getAvailableSkillSourceLabel(source: AvailableSkill["source"]): string {
+	switch (source) {
+		case "project":
+			return "Project";
+		case "user":
+			return "User";
+		case "extension":
+			return "Extension";
+		case "temporary":
+			return "Temporary";
+		case "path":
+		default:
+			return "Path";
+	}
+}
+
+export async function getAvailableSkills(cwd: string): Promise<AvailableSkill[]> {
+	const settingsManager = SettingsManager.create(cwd, APREAL_AGENT_DIR);
+	const resourceLoader = await createResourceLoader(cwd, settingsManager);
+	return resourceLoader.getSkills().skills.map((skill) => {
+		const source = getAvailableSkillSource(skill.sourceInfo);
+		return {
+			name: skill.name,
+			description: skill.description,
+			source,
+			sourceLabel: getAvailableSkillSourceLabel(source),
+			location: skill.filePath,
+		};
+	});
 }
 
 function createPiRuntime(cwd: string): PiRuntime {

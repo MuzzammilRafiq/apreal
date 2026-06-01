@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { LocalWebAdminStatus, ProvidersResponse } from "@apreal/shared";
+import type { AvailableSkill, AvailableTool, LocalWebAdminStatus, ProvidersResponse } from "@apreal/shared";
 import type { ScheduledJobDetails, SessionCacheEntry, SessionSummary } from "../chatTypes";
 import { JobsPanel } from "./JobsPanel";
 
@@ -120,19 +120,49 @@ function renderStatusPill(label: string, tone: "neutral" | "success" | "danger")
 	);
 }
 
-type SettingsSection = "connection" | "models" | "jobs";
+type SettingsSection = "connection" | "models" | "skills" | "tools" | "jobs";
 
 const SECTIONS: { id: SettingsSection; label: string }[] = [
 	{ id: "connection", label: "Connection" },
 	{ id: "models", label: "Model control" },
+	{ id: "skills", label: "Skills" },
+	{ id: "tools", label: "Tools" },
 	{ id: "jobs", label: "Schedules & jobs" },
 ];
 
 const SECTION_TITLES: Record<SettingsSection, string> = {
 	connection: "Connection",
 	models: "Model configuration",
+	skills: "Available skills",
+	tools: "Available tools",
 	jobs: "Scheduled automated tasks",
 };
+
+function getToolToneClassName(kind: AvailableTool["kind"]): string {
+	return kind === "built_in"
+		? "border-slate-300 bg-white text-slate-700"
+		: "border-emerald-300 bg-emerald-50 text-emerald-800";
+}
+
+function getToolKindLabel(kind: AvailableTool["kind"]): string {
+	return kind === "built_in" ? "Default" : "Custom";
+}
+
+function getSkillToneClassName(source: AvailableSkill["source"]): string {
+	switch (source) {
+		case "project":
+			return "border-sky-300 bg-sky-50 text-sky-800";
+		case "extension":
+			return "border-amber-300 bg-amber-50 text-amber-800";
+		case "temporary":
+			return "border-fuchsia-300 bg-fuchsia-50 text-fuchsia-800";
+		case "path":
+			return "border-slate-300 bg-white text-slate-700";
+		case "user":
+		default:
+			return "border-emerald-300 bg-emerald-50 text-emerald-800";
+	}
+}
 
 function SectionIcon({ section }: { section: SettingsSection }) {
 	if (section === "connection") {
@@ -149,6 +179,21 @@ function SectionIcon({ section }: { section: SettingsSection }) {
 			<svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
 				<circle cx="12" cy="12" r="10" />
 				<path d="M12 6v6l4 2" strokeLinecap="round" strokeLinejoin="round" />
+			</svg>
+		);
+	}
+	if (section === "skills") {
+		return (
+			<svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+				<path d="M8 7.5h8M8 12h6M8 16.5h8" strokeLinecap="round" strokeLinejoin="round" />
+				<path d="M4.5 7.5h.01M4.5 12h.01M4.5 16.5h.01" strokeLinecap="round" strokeLinejoin="round" />
+			</svg>
+		);
+	}
+	if (section === "tools") {
+		return (
+			<svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+				<path d="M14.7 6.3a4 4 0 0 0-5.4 5.88L4 17.5V20h2.5l5.32-5.3a4 4 0 0 0 5.88-5.4l-2.65 2.64-2.35-2.34L14.7 6.3Z" strokeLinecap="round" strokeLinejoin="round" />
 			</svg>
 		);
 	}
@@ -376,6 +421,8 @@ export function SettingsPage({
 	const isOnline = Boolean(adminStatus);
 	const relayReady = Boolean(adminStatus?.relayReady);
 	const activeSectionTitle = SECTION_TITLES[activeSection];
+	const availableSkills = adminStatus?.availableSkills ?? [];
+	const availableTools = adminStatus?.availableTools ?? [];
 
 	return (
 		<main className="min-h-svh bg-[#f3f3f1] text-[#171717] selection:bg-black/10 selection:text-black">
@@ -945,6 +992,119 @@ export function SettingsPage({
 									{!providers && !providersError ? (
 										<p className="mt-4 text-sm text-slate-400 font-semibold text-center">Reading system models...</p>
 									) : null}
+								</div>
+							</div>
+						)}
+
+						{activeSection === "skills" && (
+							<div className="space-y-4">
+								<div className="border border-black/8 bg-white p-5">
+									<div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4">
+										<div>
+											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Pi SDK skills</p>
+											<h2 className="mt-1 text-base font-bold text-slate-900">Current skill inventory</h2>
+										</div>
+										{renderStatusPill(`${availableSkills.length} loaded`, availableSkills.length > 0 ? "success" : "neutral")}
+									</div>
+
+									<p className="mt-4 text-[0.84rem] leading-[1.6] text-slate-600">
+										These are the currently discoverable Pi skills for this Apreal workspace and agent environment.
+									</p>
+
+									{availableSkills.length === 0 ? (
+										<p className="mt-4 border border-dashed border-slate-300 py-5 text-center text-sm font-semibold text-slate-500">
+											No skills are currently available.
+										</p>
+									) : (
+										<div className="mt-5 grid gap-3 min-[980px]:grid-cols-2">
+											{availableSkills.map((skill) => (
+												<article key={`${skill.name}:${skill.location}`} className="border border-slate-200 bg-slate-50 p-4">
+													<div className="flex items-start justify-between gap-3">
+														<div className="min-w-0">
+															<h3 className="text-[0.96rem] font-bold text-slate-900">{skill.name}</h3>
+															<p className="mt-2 text-[0.82rem] leading-[1.55] text-slate-600">
+																{skill.description}
+															</p>
+														</div>
+														<span className={`shrink-0 border px-2 py-0.5 font-mono text-[0.63rem] font-semibold uppercase tracking-[0.1em] ${getSkillToneClassName(skill.source)}`}>
+															{skill.sourceLabel}
+														</span>
+													</div>
+													<div className="mt-4 border-t border-slate-200 pt-3">
+														<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Source path</p>
+														<p className="mt-1 break-all text-[0.76rem] leading-[1.55] text-slate-700 font-mono">
+															{skill.location}
+														</p>
+													</div>
+												</article>
+											))}
+										</div>
+									)}
+								</div>
+							</div>
+						)}
+
+						{activeSection === "tools" && (
+							<div className="space-y-4">
+								<div className="border border-black/8 bg-white p-5">
+									<div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4">
+										<div>
+											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Pi SDK tools</p>
+											<h2 className="mt-1 text-base font-bold text-slate-900">Current tool inventory</h2>
+										</div>
+										{renderStatusPill(`${availableTools.length} enabled`, availableTools.length > 0 ? "success" : "neutral")}
+									</div>
+
+									<div className="mt-4 grid gap-3 min-[720px]:grid-cols-3">
+										<div className="border border-slate-200 bg-slate-50 px-3.5 py-3">
+											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Default tools</p>
+											<p className="mt-2 text-base font-bold text-slate-900">
+												{availableTools.filter((tool) => tool.kind === "built_in").length}
+											</p>
+										</div>
+										<div className="border border-slate-200 bg-slate-50 px-3.5 py-3">
+											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Custom tools</p>
+											<p className="mt-2 text-base font-bold text-slate-900">
+												{availableTools.filter((tool) => tool.kind === "custom").length}
+											</p>
+										</div>
+										<div className="border border-slate-200 bg-slate-50 px-3.5 py-3">
+											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Workspace state</p>
+											<p className="mt-2 text-base font-bold text-slate-900">
+												{adminStatus ? "Live inventory" : "Unavailable"}
+											</p>
+										</div>
+									</div>
+
+									{availableTools.length === 0 ? (
+										<p className="mt-4 border border-dashed border-slate-300 py-5 text-center text-sm font-semibold text-slate-500">
+											No tools are currently enabled.
+										</p>
+									) : (
+										<div className="mt-5 overflow-hidden border border-slate-200 bg-[#fafaf8]">
+											{availableTools.map((tool, index) => (
+												<div
+													key={tool.name}
+													className={`grid gap-3 px-4 py-3.5 min-[760px]:grid-cols-[minmax(0,1fr)_auto] min-[760px]:items-start ${
+														index > 0 ? "border-t border-slate-200" : ""
+													}`}
+												>
+													<div className="min-w-0">
+														<p className="text-[0.94rem] font-bold text-slate-900">{tool.label}</p>
+														<p className="mt-1 font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-slate-400">
+															Tool name: {tool.name}
+														</p>
+														<p className="mt-2 text-[0.82rem] leading-[1.55] text-slate-600">
+															{tool.description}
+														</p>
+													</div>
+													<span className={`shrink-0 border px-2 py-0.5 font-mono text-[0.63rem] font-semibold uppercase tracking-[0.1em] ${getToolToneClassName(tool.kind)}`}>
+														{getToolKindLabel(tool.kind)}
+													</span>
+												</div>
+											))}
+										</div>
+									)}
 								</div>
 							</div>
 						)}

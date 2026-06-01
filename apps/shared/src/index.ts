@@ -16,6 +16,25 @@ export const LOCAL_CLIENT_ID_QUERY_PARAM = "clientId";
 
 export type RelayPrincipalType = (typeof RELAY_PRINCIPAL_TYPES)[number];
 
+export type AvailableToolKind = "built_in" | "custom";
+
+export type AvailableTool = {
+	name: string;
+	label: string;
+	description: string;
+	kind: AvailableToolKind;
+};
+
+export type AvailableSkillSource = "project" | "user" | "extension" | "path" | "temporary";
+
+export type AvailableSkill = {
+	name: string;
+	description: string;
+	source: AvailableSkillSource;
+	sourceLabel: string;
+	location: string;
+};
+
 export type RelayAuthTarget = {
 	id: string;
 	type: RelayPrincipalType;
@@ -94,6 +113,8 @@ export type LocalWebAdminStatus = {
 	reauthRunning: boolean;
 	webUiReady: boolean;
 	webUiPath: string;
+	availableTools: AvailableTool[];
+	availableSkills: AvailableSkill[];
 };
 
 export type RelayReauthenticateRequest = {

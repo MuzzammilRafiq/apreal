@@ -57,50 +57,56 @@ export const Sidebar = memo(function Sidebar({
 
 			{/* Session List */}
 			<div className="max-[720px]:max-h-[34svh] flex-1 overflow-y-auto px-2.5 pt-3 pb-4 scrollbar-thin">
-				<div id="session-list" className="flex flex-col gap-1" aria-label="Chat sessions">
-					{sessions.length === 0 ? (
-						<div className="rounded-md bg-white/2 px-3 py-4 text-center">
-							<p className="text-[0.84rem] leading-[1.6] text-[#9ca3af]">
-								No saved sessions yet. Start a new chat and your first prompt will turn into a thread here.
-							</p>
-						</div>
-					) : (
-						sessions.map((session) => {
-							const messageLabel = `${session.messageCount} message${session.messageCount === 1 ? "" : "s"}`;
+				<div>
+					<div className="mb-2 flex items-center justify-between px-0.5">
+						<h2 className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[#9ca3af]">Chats</h2>
+						<span className="text-[0.68rem] font-medium text-[#7e7e7e]">{sessions.length}</span>
+					</div>
+					<div id="session-list" className="flex flex-col gap-1" aria-label="Chat sessions">
+						{sessions.length === 0 ? (
+							<div className="rounded-md bg-white/2 px-3 py-4 text-center">
+								<p className="text-[0.84rem] leading-[1.6] text-[#9ca3af]">
+									No saved sessions yet. Start a new chat and your first prompt will turn into a thread here.
+								</p>
+							</div>
+						) : (
+							sessions.map((session) => {
+								const messageLabel = `${session.messageCount} message${session.messageCount === 1 ? "" : "s"}`;
 
-							return (
-								<button
-									key={session.id}
-									type="button"
-									className={getSessionCardClassName(session.id === activeSessionId)}
-									aria-pressed={session.id === activeSessionId}
-									onClick={() => onActivateSession(session.id)}
-								>
-									<div className="flex items-start justify-between gap-2.5">
-										<p className="min-w-0 flex-1 truncate text-[0.84rem] font-medium leading-[1.35] tracking-tight">
-											{session.title}
-										</p>
-									</div>
-									<div className="mt-2 flex items-center justify-between gap-3 px-0.5 text-[0.7rem] font-medium text-[#9ca3af]">
-										<span>{messageLabel}</span>
-										<span className="shrink-0 font-mono text-[0.66rem] uppercase tracking-[0.08em] text-[#8c8c8c]">
-											{formatRelativeTime(session.updatedAt)}
-										</span>
-									</div>
-								</button>
-							);
-						})
-					)}
-					{canLoadMoreSessions ? (
-						<button
-							type="button"
-							className="mt-2.5 rounded-md border border-white/10 bg-white/3 px-3 py-2.5 text-center text-[0.78rem] font-semibold text-[#9ca3af] transition duration-150 hover:border-white/14 hover:bg-white/6 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-50"
-							onClick={onLoadMoreSessions}
-							disabled={loadingMoreSessions}
-						>
-							{loadingMoreSessions ? "Loading sessions..." : "Load 50 more sessions"}
-						</button>
-					) : null}
+								return (
+									<button
+										key={session.id}
+										type="button"
+										className={getSessionCardClassName(session.id === activeSessionId)}
+										aria-pressed={session.id === activeSessionId}
+										onClick={() => onActivateSession(session.id)}
+									>
+										<div className="flex items-start justify-between gap-2.5">
+											<p className="min-w-0 flex-1 truncate text-[0.84rem] font-medium leading-[1.35] tracking-tight">
+												{session.title}
+											</p>
+										</div>
+										<div className="mt-2 flex items-center justify-between gap-3 px-0.5 text-[0.7rem] font-medium text-[#9ca3af]">
+											<span>{messageLabel}</span>
+											<span className="shrink-0 font-mono text-[0.66rem] uppercase tracking-[0.08em] text-[#8c8c8c]">
+												{formatRelativeTime(session.updatedAt)}
+											</span>
+										</div>
+									</button>
+								);
+							})
+						)}
+						{canLoadMoreSessions ? (
+							<button
+								type="button"
+								className="mt-2.5 rounded-md border border-white/10 bg-white/3 px-3 py-2.5 text-center text-[0.78rem] font-semibold text-[#9ca3af] transition duration-150 hover:border-white/14 hover:bg-white/6 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-50"
+								onClick={onLoadMoreSessions}
+								disabled={loadingMoreSessions}
+							>
+								{loadingMoreSessions ? "Loading sessions..." : "Load 50 more sessions"}
+							</button>
+						) : null}
+					</div>
 				</div>
 			</div>
 		</aside>

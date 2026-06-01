@@ -26,7 +26,7 @@ import {
 	type SetDefaultModelRequest,
 } from "@apreal/shared";
 import { createChatStore } from "../chat-store.ts";
-import { getConfiguredToolsLabel } from "../agent-tools.ts";
+import { getConfiguredToolInventory, getConfiguredToolsLabel } from "../agent-tools.ts";
 import { getAprealAgentPath, getAprealServerDatabasePath } from "../agent-dir.ts";
 import { createLogger } from "../logger.ts";
 import {
@@ -35,7 +35,7 @@ import {
 } from "../relay-auth.ts";
 import { createCustomTools } from "../tools/index.ts";
 import { createJobExecutor, JobStore, Scheduler } from "../scheduled-jobs/index.ts";
-import { buildProvidersPayload, getErrorMessage, prewarmAgentRuntime, setDefaultProviderModel } from "../session.ts";
+import { buildProvidersPayload, getAvailableSkills, getErrorMessage, prewarmAgentRuntime, setDefaultProviderModel } from "../session.ts";
 import { createClientManager, type Logger } from "./client-manager.ts";
 import { createHandlers } from "./handlers.ts";
 import { startHttpServer } from "./http-server.ts";
@@ -338,6 +338,46 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	);
 	const handleHttpClientMessage = clientManager.createHttpClientMessageHandler(handlers.handleClientMessage);
 	const webUiReady = await fileExists(WEB_INDEX_PATH);
+	let inventorySnapshot: Pick<LocalWebAdminStatus, "availableTools" | "availableSkills"> = {
+		availableTools: getConfiguredToolInventory(customTools),
+		availableSkills: [],
+	};
+	let inventorySnapshotExpiresAt = 0;
+	let inventorySnapshotPromise: Promise<typeof inventorySnapshot> | null = null;
+
+	const readInventorySnapshot = async () => {
+		const now = Date.now();
+		if (now < inventorySnapshotExpiresAt) {
+			return inventorySnapshot;
+		}
+
+		if (inventorySnapshotPromise) {
+			return inventorySnapshotPromise;
+		}
+
+		inventorySnapshotPromise = (async () => {
+			let availableSkills = inventorySnapshot.availableSkills;
+			try {
+				availableSkills = await getAvailableSkills(cwd);
+			} catch (error) {
+				logger.warn("failed to load skill inventory for web status", {
+					error: getErrorMessage(error),
+				});
+			}
+
+			const nextSnapshot = {
+				availableTools: getConfiguredToolInventory(customTools),
+				availableSkills,
+			};
+			inventorySnapshot = nextSnapshot;
+			inventorySnapshotExpiresAt = Date.now() + 10_000;
+			return nextSnapshot;
+		})().finally(() => {
+			inventorySnapshotPromise = null;
+		});
+
+		return inventorySnapshotPromise;
+	};
 
 	const commandInput = createInterface({
 		input: process.stdin,
@@ -380,24 +420,29 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 
 	let server: HttpServer;
 	let listeningPort = port;
-	const buildStatusPayload = (): LocalWebAdminStatus => ({
-		service: "web-server",
-		status: "ok",
-		transport: "http-sse+relay",
-		clients: clients.size,
-		sessions: sessions.size,
-		port: listeningPort,
-		cwd,
-		relayUrl,
-		relayReady: Boolean(relayState.auth),
-		relayTransportConnected: relayState.transportConnected,
-		relayStartupError: relayState.startupError,
-		agentId: relayState.auth?.agentId ?? null,
-		reauthPending: relayState.reauthPending,
-		reauthRunning: relayState.reauthRunning,
-		webUiReady,
-		webUiPath: WEB_DIST_DIR,
-	});
+	const buildStatusPayload = async (): Promise<LocalWebAdminStatus> => {
+		const inventory = await readInventorySnapshot();
+		return {
+			service: "web-server",
+			status: "ok",
+			transport: "http-sse+relay",
+			clients: clients.size,
+			sessions: sessions.size,
+			port: listeningPort,
+			cwd,
+			relayUrl,
+			relayReady: Boolean(relayState.auth),
+			relayTransportConnected: relayState.transportConnected,
+			relayStartupError: relayState.startupError,
+			agentId: relayState.auth?.agentId ?? null,
+			reauthPending: relayState.reauthPending,
+			reauthRunning: relayState.reauthRunning,
+			webUiReady,
+			webUiPath: WEB_DIST_DIR,
+			availableTools: inventory.availableTools,
+			availableSkills: inventory.availableSkills,
+		};
+	};
 
 	const assertLocalAdminRequest = (request: Request): Response | null => {
 		if (isLoopbackClientRequest(request)) {
@@ -597,7 +642,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 						});
 					}
 
-					return json(buildStatusPayload(), {
+					return json(await buildStatusPayload(), {
 						headers: createCorsHeaders(),
 					});
 				}
@@ -1017,7 +1062,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 					try {
 						await relay.reauthenticateWithPairingCode(pairingCode);
 						const response: RelayReauthenticateResponse = {
-							status: buildStatusPayload(),
+							status: await buildStatusPayload(),
 						};
 						return json(response, {
 							headers: createCorsHeaders(),
@@ -1031,7 +1076,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 				}
 
 				if (url.pathname === "/health") {
-					return json(buildStatusPayload());
+					return json(await buildStatusPayload());
 				}
 
 				if (!url.pathname.startsWith("/api/")) {

@@ -4,6 +4,8 @@ import {
 	ADMIN_PROVIDERS_PATH,
 	ADMIN_RELAY_REAUTHENTICATE_PATH,
 	ADMIN_STATUS_PATH,
+	type AvailableSkill,
+	type AvailableTool,
 	type LocalWebAdminStatus,
 	type ProviderApiKeyRequest,
 	type ProviderApiKeyResponse,
@@ -41,6 +43,39 @@ async function parseJsonResponse(response: Response): Promise<unknown> {
 	}
 }
 
+function parseAvailableTool(payload: unknown): AvailableTool {
+	if (
+		!isObjectRecord(payload) ||
+		typeof payload.name !== "string" ||
+		typeof payload.label !== "string" ||
+		typeof payload.description !== "string" ||
+		(payload.kind !== "built_in" && payload.kind !== "custom")
+	) {
+		throw new Error("Server status returned an invalid response.");
+	}
+
+	return payload as AvailableTool;
+}
+
+function parseAvailableSkill(payload: unknown): AvailableSkill {
+	if (
+		!isObjectRecord(payload) ||
+		typeof payload.name !== "string" ||
+		typeof payload.description !== "string" ||
+		typeof payload.sourceLabel !== "string" ||
+		typeof payload.location !== "string" ||
+		(payload.source !== "project" &&
+			payload.source !== "user" &&
+			payload.source !== "extension" &&
+			payload.source !== "path" &&
+			payload.source !== "temporary")
+	) {
+		throw new Error("Server status returned an invalid response.");
+	}
+
+	return payload as AvailableSkill;
+}
+
 function parseStatus(payload: unknown): LocalWebAdminStatus {
 	if (!isObjectRecord(payload)) {
 		throw new Error("Server status returned an invalid response.");
@@ -56,12 +91,18 @@ function parseStatus(payload: unknown): LocalWebAdminStatus {
 		typeof payload.reauthPending !== "boolean" ||
 		typeof payload.reauthRunning !== "boolean" ||
 		typeof payload.webUiReady !== "boolean" ||
-		typeof payload.webUiPath !== "string"
+		typeof payload.webUiPath !== "string" ||
+		!Array.isArray(payload.availableTools) ||
+		!Array.isArray(payload.availableSkills)
 	) {
 		throw new Error("Server status returned an invalid response.");
 	}
 
-	return payload as LocalWebAdminStatus;
+	return {
+		...payload,
+		availableTools: payload.availableTools.map(parseAvailableTool),
+		availableSkills: payload.availableSkills.map(parseAvailableSkill),
+	} as LocalWebAdminStatus;
 }
 
 function parseScheduledJobs(payload: unknown): ScheduledJobDetails[] {
