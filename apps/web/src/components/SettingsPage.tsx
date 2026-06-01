@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { LocalWebAdminStatus, ProvidersResponse } from "@apreal/shared";
 import type { ScheduledJobDetails, SessionCacheEntry, SessionSummary } from "../chatTypes";
 import { JobsPanel } from "./JobsPanel";
@@ -200,6 +200,12 @@ export function SettingsPage({
 	const [providerAuthError, setProviderAuthError] = useState<string | null>(null);
 	const [apiKeyDrafts, setApiKeyDrafts] = useState<Record<string, string>>({});
 	const [apiKeyEditorProviderId, setApiKeyEditorProviderId] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (submissionMessage) {
+			setPairingCode("");
+		}
+	}, [submissionMessage]);
 
 	const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
