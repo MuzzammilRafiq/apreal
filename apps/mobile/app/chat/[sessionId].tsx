@@ -6,7 +6,6 @@ import {
     KeyboardAvoidingView,
     Platform,
     Pressable,
-    ScrollView,
     StyleSheet,
     View,
     type NativeSyntheticEvent,
@@ -15,7 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ChatComposer } from "@/components/chat/chat-composer";
-import { ChatMessageBubble } from "@/components/chat/chat-message-bubble";
+import { ChatTranscript } from "@/components/chat/chat-transcript";
 import { ThemedText } from "@/components/themed-text";
 import { Colors, Radii } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
@@ -63,7 +62,6 @@ export default function ChatDetailScreen() {
     sessions,
   } = useChatClient();
 
-  const scrollViewRef = useRef<ScrollView>(null);
   const syncedRouteRef = useRef<string | null>(null);
   const [prompt, setPrompt] = useState("");
 
@@ -112,14 +110,6 @@ export default function ChatDetailScreen() {
     router,
     sessions,
   ]);
-
-  useEffect(() => {
-    const scrollTimeout = setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 0);
-
-    return () => clearTimeout(scrollTimeout);
-  }, [activeTranscript, pendingDraft, resolvedSessionId]);
 
   if (!resolvedSessionId || !isHydrated) {
     return (
@@ -326,32 +316,12 @@ export default function ChatDetailScreen() {
           </View>
         ) : null}
 
-        <ScrollView
-          ref={scrollViewRef}
-          style={styles.transcript}
-          contentContainerStyle={styles.transcriptContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {emptyState ? (
-            <View style={styles.emptyState}>
-              <ThemedText type="title" style={styles.emptyTitle}>
-                {emptyState.title}
-              </ThemedText>
-              <ThemedText
-                style={[styles.emptyBody, { color: palette.mutedText }]}
-              >
-                {emptyState.body}
-              </ThemedText>
-            </View>
-          ) : (
-            <View style={styles.messageList}>
-              {activeTranscript.map((message) => (
-                <ChatMessageBubble key={message.id} message={message} />
-              ))}
-            </View>
-          )}
-        </ScrollView>
+        <ChatTranscript
+          messages={activeTranscript}
+          emptyState={emptyState}
+          palette={palette}
+          sessionKey={resolvedSessionId}
+        />
 
         <ChatComposer
           value={prompt}
@@ -454,31 +424,5 @@ const styles = StyleSheet.create({
   },
   dismissButton: {
     padding: 2,
-  },
-  transcript: {
-    flex: 1,
-  },
-  transcriptContent: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 8,
-    flexGrow: 1,
-  },
-  messageList: {
-    gap: 8,
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: "center",
-    paddingBottom: 56,
-  },
-  emptyTitle: {
-    fontSize: 30,
-    lineHeight: 32,
-  },
-  emptyBody: {
-    marginTop: 10,
-    fontSize: 15,
-    lineHeight: 22,
   },
 });

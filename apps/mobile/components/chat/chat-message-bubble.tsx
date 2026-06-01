@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Linking,
   Pressable,
@@ -32,7 +32,9 @@ type ChatMessageBubbleProps = {
   message: TranscriptMessage;
 };
 
-export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
+export const ChatMessageBubble = memo(function ChatMessageBubble({
+  message,
+}: ChatMessageBubbleProps) {
   const colorScheme = useColorScheme() ?? "light";
   const palette = Colors[colorScheme];
   const isUser = message.role === "user";
@@ -51,10 +53,9 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
     message.role === "assistant" &&
     assistantSegments.length === 0 &&
     Boolean(message.body);
-    const assistantModelMeta = message.modelLabel || message.modelSource;
+  const assistantModelMeta = message.modelLabel || message.modelSource;
   const shouldShowAssistantMeta =
-    message.role === "assistant" &&
-      Boolean(assistantModelMeta);
+    message.role === "assistant" && Boolean(assistantModelMeta);
 
   return (
     <View style={[styles.row, isUser ? styles.userRow : styles.assistantRow]}>
@@ -133,7 +134,7 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
       )}
     </View>
   );
-}
+});
 
 function formatToolStatus(status: TranscriptToolCall["status"]) {
   switch (status) {
