@@ -1,8 +1,16 @@
 import {
+	ADMIN_PROVIDER_API_KEY_PATH,
+	ADMIN_PROVIDER_LOGIN_PATH,
 	ADMIN_PROVIDERS_PATH,
 	ADMIN_RELAY_REAUTHENTICATE_PATH,
 	ADMIN_STATUS_PATH,
 	type LocalWebAdminStatus,
+	type ProviderApiKeyRequest,
+	type ProviderApiKeyResponse,
+	type ProviderLoginRequest,
+	type ProviderLoginResponse,
+	type ProviderLoginState,
+	type ProviderLoginStatus,
 	type ProvidersResponse,
 	type RelayReauthenticateRequest,
 	type RelayReauthenticateResponse,
@@ -255,11 +263,36 @@ export async function deleteScheduledJob(jobId: string): Promise<void> {
 }
 
 export {
+	ADMIN_PROVIDER_API_KEY_PATH,
+	ADMIN_PROVIDER_LOGIN_PATH,
 	ADMIN_JOBS_PATH,
 	ADMIN_PROVIDERS_PATH,
 	ADMIN_RELAY_REAUTHENTICATE_PATH,
 	ADMIN_STATUS_PATH,
 };
+
+function isProviderLoginStatus(value: unknown): value is ProviderLoginStatus {
+	return value === "idle" || value === "pending" || value === "succeeded" || value === "failed";
+}
+
+function parseProviderLoginState(payload: unknown): ProviderLoginState {
+	if (
+		!isObjectRecord(payload) ||
+		!isProviderLoginStatus(payload.status) ||
+		(payload.authUrl !== null && typeof payload.authUrl !== "string") ||
+		(payload.error !== null && typeof payload.error !== "string") ||
+		(payload.updatedAt !== null && typeof payload.updatedAt !== "number")
+	) {
+		throw new Error("Provider login state returned an invalid format.");
+	}
+
+	return {
+		status: payload.status,
+		authUrl: payload.authUrl,
+		error: payload.error,
+		updatedAt: payload.updatedAt,
+	};
+}
 
 function parseProvidersResponse(payload: unknown): ProvidersResponse {
 	if (
@@ -276,6 +309,9 @@ function parseProvidersResponse(payload: unknown): ProvidersResponse {
 			!isObjectRecord(p) ||
 			typeof p.id !== "string" ||
 			(p.authType !== "oauth" && p.authType !== "api_key") ||
+			typeof p.supportsOAuth !== "boolean" ||
+			typeof p.supportsApiKey !== "boolean" ||
+			!("loginState" in p) ||
 			!Array.isArray(p.models)
 		) {
 			throw new Error("Providers response returned an invalid format.");
@@ -288,7 +324,14 @@ function parseProvidersResponse(payload: unknown): ProvidersResponse {
 			return { id: m.id, name: m.name };
 		});
 
-		return { id: p.id, authType: p.authType as "oauth" | "api_key", models };
+		return {
+			id: p.id,
+			authType: p.authType as "oauth" | "api_key",
+			supportsOAuth: p.supportsOAuth,
+			supportsApiKey: p.supportsApiKey,
+			loginState: parseProviderLoginState(p.loginState),
+			models,
+		};
 	});
 
 	return {
@@ -326,4 +369,55 @@ export async function updateDefaultModel(requestBody: SetDefaultModelRequest): P
 	}
 
 	return parseProvidersResponse(payload);
+}
+
+export async function startProviderLogin(provider: string): Promise<ProviderLoginResponse> {
+	const requestBody: ProviderLoginRequest = { provider };
+	const response = await fetch(ADMIN_PROVIDER_LOGIN_PATH, {
+		method: "POST",
+		headers: {
+			"content-type": "application/json",
+			accept: "application/json",
+		},
+		body: JSON.stringify(requestBody),
+	});
+	const payload = await parseJsonResponse(response);
+	if (!response.ok) {
+		throw new Error(getResponseMessage(payload, `Provider login failed with status ${response.status}`));
+	}
+
+	if (!isObjectRecord(payload) || typeof payload.provider !== "string" || !("loginState" in payload)) {
+		throw new Error("Provider login returned an invalid response.");
+	}
+
+	return {
+		...parseProvidersResponse(payload),
+		provider: payload.provider,
+		loginState: parseProviderLoginState(payload.loginState),
+	};
+}
+
+export async function saveProviderApiKey(provider: string, apiKey: string): Promise<ProviderApiKeyResponse> {
+	const requestBody: ProviderApiKeyRequest = { provider, apiKey };
+	const response = await fetch(ADMIN_PROVIDER_API_KEY_PATH, {
+		method: "POST",
+		headers: {
+			"content-type": "application/json",
+			accept: "application/json",
+		},
+		body: JSON.stringify(requestBody),
+	});
+	const payload = await parseJsonResponse(response);
+	if (!response.ok) {
+		throw new Error(getResponseMessage(payload, `Saving API key failed with status ${response.status}`));
+	}
+
+	if (!isObjectRecord(payload) || typeof payload.provider !== "string") {
+		throw new Error("Provider API key save returned an invalid response.");
+	}
+
+	return {
+		...parseProvidersResponse(payload),
+		provider: payload.provider,
+	};
 }

@@ -3,18 +3,11 @@ import type { SessionSummary } from "../chatTypes";
 import { formatRelativeTime, getSessionCardClassName } from "../chatView";
 
 type SidebarProps = {
-	connected: boolean;
-	serverReady: boolean;
-	relayReady: boolean;
-	relayTransportConnected: boolean;
-	streamRequested: boolean;
 	pendingDraft: boolean;
 	sessions: SessionSummary[];
-	totalSessions: number;
 	loadingMoreSessions: boolean;
 	canLoadMoreSessions: boolean;
 	activeSessionId: string | null;
-	sessionState: string;
 	onStartNewChat: () => void;
 	onOpenSettings: () => void;
 	onActivateSession: (sessionId: string) => void;
@@ -22,18 +15,11 @@ type SidebarProps = {
 };
 
 export const Sidebar = memo(function Sidebar({
-	connected,
-	serverReady,
-	relayReady,
-	relayTransportConnected,
-	streamRequested,
 	pendingDraft,
 	sessions,
-	totalSessions,
 	loadingMoreSessions,
 	canLoadMoreSessions,
 	activeSessionId,
-	sessionState,
 	onStartNewChat,
 	onOpenSettings,
 	onActivateSession,
@@ -80,7 +66,7 @@ export const Sidebar = memo(function Sidebar({
 						</div>
 					) : (
 						sessions.map((session) => {
-							const isScheduledSession = session.title.startsWith("[Scheduled:");
+							const messageLabel = `${session.messageCount} message${session.messageCount === 1 ? "" : "s"}`;
 
 							return (
 								<button
@@ -91,46 +77,16 @@ export const Sidebar = memo(function Sidebar({
 									onClick={() => onActivateSession(session.id)}
 								>
 									<div className="flex items-start justify-between gap-2.5">
-										<div className="flex min-w-0 flex-1 items-start gap-2">
-											{isScheduledSession ? (
-												<span
-												className="mt-0.5 flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-md border border-white/15 bg-white/6 text-white"
-													aria-label="Scheduled session"
-												>
-													<svg viewBox="0 0 20 20" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2.2">
-														<circle cx="10" cy="10" r="6" />
-														<path d="M10 6.5v4l2.5 1.5" strokeLinecap="round" strokeLinejoin="round" />
-													</svg>
-												</span>
-											) : (
-												<span
-													className={`mt-0.5 flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-md border text-xs ${
-														session.id === activeSessionId
-															? "border-white/20 bg-white/12 text-white"
-															: "border-white/10 bg-white/4 text-[#9ca3af]"
-													}`}
-												>
-													<svg viewBox="0 0 24 24" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2.5">
-														<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" strokeLinecap="round" strokeLinejoin="round" />
-													</svg>
-												</span>
-											)}
-											<p className="min-w-0 flex-1 truncate text-[0.84rem] font-medium leading-[1.35] tracking-tight">
-												{session.title}
-											</p>
-										</div>
+										<p className="min-w-0 flex-1 truncate text-[0.84rem] font-medium leading-[1.35] tracking-tight">
+											{session.title}
+										</p>
 									</div>
-									<div className="mt-2 flex items-center justify-between gap-2.5 px-0.5">
-										<span className="truncate text-[0.7rem] font-medium text-[#9ca3af]">
-											{session.model || "Awaiting model response"}
-										</span>
-										<span className="shrink-0 rounded-sm bg-white/5 px-1.5 py-0.5 font-mono text-[0.66rem] text-[#9ca3af]">
-											{session.messageCount > 0
-												? `${session.messageCount} msg${session.messageCount === 1 ? "" : "s"} · ${session.busy ? "Running" : formatRelativeTime(session.updatedAt)}`
-												: (session.busy ? "Running" : formatRelativeTime(session.updatedAt))}
+									<div className="mt-2 flex items-center justify-between gap-3 px-0.5 text-[0.7rem] font-medium text-[#9ca3af]">
+										<span>{messageLabel}</span>
+										<span className="shrink-0 font-mono text-[0.66rem] uppercase tracking-[0.08em] text-[#8c8c8c]">
+											{formatRelativeTime(session.updatedAt)}
 										</span>
 									</div>
-									<p className="hidden">{session.model || "Model starts on first response"}</p>
 								</button>
 							);
 						})
@@ -138,50 +94,13 @@ export const Sidebar = memo(function Sidebar({
 					{canLoadMoreSessions ? (
 						<button
 							type="button"
-						className="mt-2.5 rounded-md border border-white/10 bg-white/3 px-3 py-2.5 text-center text-[0.78rem] font-semibold text-[#9ca3af] transition duration-150 hover:border-white/14 hover:bg-white/6 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-50"
+							className="mt-2.5 rounded-md border border-white/10 bg-white/3 px-3 py-2.5 text-center text-[0.78rem] font-semibold text-[#9ca3af] transition duration-150 hover:border-white/14 hover:bg-white/6 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-50"
 							onClick={onLoadMoreSessions}
 							disabled={loadingMoreSessions}
 						>
 							{loadingMoreSessions ? "Loading sessions..." : "Load 50 more sessions"}
 						</button>
 					) : null}
-				</div>
-			</div>
-
-			{/* Sidebar Footer with system statuses */}
-			<div className="border-t border-white/6 bg-[#0d0d0d] px-4 py-4">
-				<p className="font-mono text-[0.66rem] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">
-					System Status
-				</p>
-				<div className="mt-3 space-y-2">
-					<div className="flex items-center gap-2 text-[0.76rem] text-[#9ca3af]">
-						<span className="relative flex h-2 w-2 shrink-0">
-							<span className={`relative inline-flex h-2 w-2 rounded-full ${serverReady ? "bg-white" : "bg-neutral-500"}`} />
-						</span>
-						<span className="font-medium">{serverReady ? "Local server online" : "Waiting for local server"}</span>
-					</div>
-					<div className="flex items-center gap-2 text-[0.76rem] text-[#9ca3af]">
-						<span className="relative flex h-2 w-2 shrink-0">
-							<span className={`relative inline-flex h-2 w-2 rounded-full ${relayReady ? "bg-white" : "bg-neutral-500"}`} />
-						</span>
-						<span className="font-medium">{relayReady ? "Relay auth ready" : "Relay auth missing"}</span>
-					</div>
-					<div className="flex items-center gap-2 text-[0.76rem] text-[#9ca3af]">
-						<span className="relative flex h-2 w-2 shrink-0">
-							<span className={`relative inline-flex h-2 w-2 rounded-full ${relayTransportConnected ? "bg-white" : "bg-neutral-500"}`} />
-						</span>
-						<span className="font-medium">{relayTransportConnected ? "Relay transport connected" : "Relay transport idle"}</span>
-					</div>
-				</div>
-
-				<div className="mt-3.5 border-t border-white/6 pt-3">
-					<p id="sidebar-status" className="flex items-center justify-between text-[0.78rem] font-semibold text-white">
-						<span>{serverReady ? (connected ? "Connected" : streamRequested ? "Reconnecting..." : "Ready") : "Waiting"}</span>
-						<span className="rounded-sm bg-white/5 px-1.5 py-0.5 font-mono text-[0.68rem] text-[#9ca3af]">{sessionState}</span>
-					</p>
-					<p className="mt-1.5 text-[0.72rem] text-[#9ca3af]">
-						{totalSessions} stored thread{totalSessions === 1 ? "" : "s"}
-					</p>
 				</div>
 			</div>
 		</aside>

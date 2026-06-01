@@ -7,12 +7,12 @@ import {
 	SettingsManager,
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
+import { getProviders, type Api, type AssistantMessage, type Model } from "@earendil-works/pi-ai";
 import { agentToolsConfig, getConfiguredToolNames, getConfiguredToolsLabel } from "./agent-tools.ts";
 import { getAprealAgentDir, getAprealAgentPath } from "./agent-dir.ts";
 import { createLogger, summarizePrompt } from "./logger.ts";
 import { getDefaultMemoryStore } from "./memory-store.ts";
-import type { ProvidersResponse } from "@apreal/shared";
+import type { ProviderLoginState, ProvidersResponse } from "@apreal/shared";
 
 const APREAL_AGENT_DIR = getAprealAgentDir();
 const APREAL_AGENT_AUTH_PATH = getAprealAgentPath("auth.json");
@@ -673,20 +673,29 @@ function buildProvidersPayloadFromRuntime(runtime: PiRuntime): ProvidersResponse
 	}
 
 	const configuredProviderIds = [...new Set(runtime.authStorage.list().map(normalizeCredentialProviderId))];
-	const providers = configuredProviderIds.map((id) => {
+	const oauthProviderIds = new Set(runtime.authStorage.getOAuthProviders().map((provider) => provider.id));
+	const knownProviderIds = new Set<string>([
+		...configuredProviderIds,
+		...modelsByProvider.keys(),
+		...oauthProviderIds,
+		...getProviders(),
+	]);
+	const providers = [...knownProviderIds].map((id) => {
 		const credential = runtime.authStorage.get(id);
 		return {
 			id,
-			authType: (credential?.type ?? "api_key") as "oauth" | "api_key",
+			authType: (credential?.type ?? (oauthProviderIds.has(id) ? "oauth" : "api_key")) as "oauth" | "api_key",
+			supportsOAuth: oauthProviderIds.has(id),
+			supportsApiKey: true,
+			loginState: {
+				status: "idle",
+				authUrl: null,
+				error: null,
+				updatedAt: null,
+			} as ProviderLoginState,
 			models: modelsByProvider.get(id) ?? [],
 		};
 	});
-
-	for (const [providerId, models] of modelsByProvider) {
-		if (!configuredProviderIds.includes(providerId)) {
-			providers.push({ id: providerId, authType: "api_key", models });
-		}
-	}
 
 	providers.sort((left, right) => left.id.localeCompare(right.id));
 
@@ -697,23 +706,38 @@ function buildProvidersPayloadFromRuntime(runtime: PiRuntime): ProvidersResponse
 	};
 }
 
-export function buildProvidersPayload(cwd: string): ProvidersResponse {
+export function buildProvidersPayload(
+	cwd: string,
+	readLoginState?: (providerId: string) => ProviderLoginState | null,
+): ProvidersResponse {
 	const authStorage = AuthStorage.create(APREAL_AGENT_AUTH_PATH);
 	applyLegacyEnvCredentialAliases(authStorage);
 	const modelRegistry = ModelRegistry.create(authStorage, APREAL_AGENT_MODELS_PATH);
 	const settingsManager = SettingsManager.create(cwd, APREAL_AGENT_DIR);
 
-	return buildProvidersPayloadFromRuntime({
+	const payload = buildProvidersPayloadFromRuntime({
 		authStorage,
 		modelRegistry,
 		settingsManager,
 	});
+	if (!readLoginState) {
+		return payload;
+	}
+
+	return {
+		...payload,
+		providers: payload.providers.map((provider) => ({
+			...provider,
+			loginState: readLoginState(provider.id) ?? provider.loginState,
+		})),
+	};
 }
 
 export async function setDefaultProviderModel(
 	cwd: string,
 	provider: string,
 	modelId: string,
+	readLoginState?: (providerId: string) => ProviderLoginState | null,
 ): Promise<ProvidersResponse> {
 	const authStorage = AuthStorage.create(APREAL_AGENT_AUTH_PATH);
 	applyLegacyEnvCredentialAliases(authStorage);
@@ -730,9 +754,20 @@ export async function setDefaultProviderModel(
 	settingsManager.setDefaultModelAndProvider(provider, modelId);
 	await settingsManager.flush();
 
-	return buildProvidersPayloadFromRuntime({
+	const payload = buildProvidersPayloadFromRuntime({
 		authStorage,
 		modelRegistry,
 		settingsManager,
 	});
+	if (!readLoginState) {
+		return payload;
+	}
+
+	return {
+		...payload,
+		providers: payload.providers.map((entry) => ({
+			...entry,
+			loginState: readLoginState(entry.id) ?? entry.loginState,
+		})),
+	};
 }

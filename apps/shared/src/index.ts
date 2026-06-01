@@ -2,6 +2,8 @@ export const CLIENT_EVENT_STREAM_PATH = "/api/client/stream";
 export const CLIENT_MESSAGE_PATH = "/api/client/message";
 export const ADMIN_STATUS_PATH = "/api/admin/status";
 export const ADMIN_RELAY_REAUTHENTICATE_PATH = "/api/admin/relay/reauthenticate";
+export const ADMIN_PROVIDER_LOGIN_PATH = "/api/admin/providers/login";
+export const ADMIN_PROVIDER_API_KEY_PATH = "/api/admin/providers/api-key";
 export const RELAY_CLIENT_AUTH_PATH = "/api/relay/auth/client";
 export const RELAY_CLIENT_HEARTBEAT_PATH = "/api/relay/heartbeat";
 export const RELAY_AGENT_AUTH_PATH = "/api/relay/auth/agent";
@@ -108,7 +110,19 @@ export type ProviderModel = {
 export type ProviderInfo = {
 	id: string;
 	authType: "oauth" | "api_key";
+	supportsOAuth: boolean;
+	supportsApiKey: boolean;
+	loginState: ProviderLoginState;
 	models: ProviderModel[];
+};
+
+export type ProviderLoginStatus = "idle" | "pending" | "succeeded" | "failed";
+
+export type ProviderLoginState = {
+	status: ProviderLoginStatus;
+	authUrl: string | null;
+	error: string | null;
+	updatedAt: number | null;
 };
 
 export type ProvidersResponse = {
@@ -121,6 +135,24 @@ export type SetDefaultModelRequest = {
 	provider: string;
 	modelId: string;
 };
+
+export type ProviderLoginRequest = {
+	provider: string;
+};
+
+export type ProviderLoginResponse = {
+	provider: string;
+	loginState: ProviderLoginState;
+} & ProvidersResponse;
+
+export type ProviderApiKeyRequest = {
+	provider: string;
+	apiKey: string;
+};
+
+export type ProviderApiKeyResponse = {
+	provider: string;
+} & ProvidersResponse;
 
 export type ClientProvidersCommand =
 	| {

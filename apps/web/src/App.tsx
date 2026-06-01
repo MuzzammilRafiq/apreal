@@ -6,8 +6,9 @@ import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
 import { TranscriptPanel } from "./components/TranscriptPanel";
 import type { ScheduledJobDetails, SessionCacheEntry, SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "./chatTypes";
-import { formatSessionState } from "./chatView";
 import {
+	clearCachedSessions,
+	deleteCachedSession,
 	readCachedSessionSnapshot,
 	readCachedSessionSummaries,
 	writeSessionSnapshot,
@@ -20,6 +21,8 @@ import {
 	readProviders,
 	readScheduledJobRuns,
 	readScheduledJobs,
+	saveProviderApiKey as saveProviderApiKeyRequest,
+	startProviderLogin as startProviderLoginRequest,
 	submitRelayReauthentication,
 	updateDefaultModel as updateDefaultModelRequest,
 	updateScheduledJob as updateScheduledJobRequest,
@@ -48,6 +51,7 @@ type ServerMessage =
 	| { type: "session_summary_updated"; session: SessionSummary }
 	| { type: "session_created"; session: SessionSummary; transcript: TranscriptMessage[] }
 	| { type: "session_snapshot"; session: SessionSummary; transcript: TranscriptMessage[] }
+	| { type: "session_deleted"; sessionId: string }
 	| { type: "assistant_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
 	| { type: "assistant_thinking_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
 	| { type: "error"; message: string; sessionId?: string }
@@ -531,20 +535,29 @@ export function App() {
 		activateSession(null, { load: false });
 	}, [activateSession]);
 
+	const refreshProviders = useCallback(async () => {
+		try {
+			const data = await readProviders();
+			setProviders(data);
+			setProvidersError(null);
+			return data;
+		} catch (error) {
+			setProvidersError(error instanceof Error ? error.message : "Failed to load providers.");
+			throw error;
+		}
+	}, []);
+
+	const refreshAdminStatus = useCallback(async () => {
+		const nextStatus = await readLocalAdminStatus(transportConfig.statusUrl);
+		setAdminStatus(nextStatus);
+		setAdminStatusError(null);
+		void refreshProviders().catch(() => {
+			// Provider errors are already captured in UI state.
+		});
+		return nextStatus;
+	}, [refreshProviders]);
+
 	useEffect(() => {
-		const refreshAdminStatus = async () => {
-			const nextStatus = await readLocalAdminStatus(transportConfig.statusUrl);
-			setAdminStatus(nextStatus);
-			setAdminStatusError(null);
-
-			void readProviders().then(
-				(data) => { setProviders(data); setProvidersError(null); },
-				(error: unknown) => { setProvidersError(error instanceof Error ? error.message : "Failed to load providers."); },
-			);
-
-			return nextStatus;
-		};
-
 		let cancelled = false;
 		let refreshTimer: number | null = null;
 
@@ -582,7 +595,7 @@ export function App() {
 				window.clearTimeout(refreshTimer);
 			}
 		};
-	}, []);
+	}, [refreshAdminStatus]);
 
 	useEffect(() => {
 		if (serverReady) {
@@ -625,6 +638,13 @@ export function App() {
 					setLoadingMoreSessions(false);
 					setServerLoadedSessionCount((previous) => Math.max(previous, message.offset + message.sessions.length));
 					setTotalSessionCount(message.total);
+					if (message.offset === 0 && message.total === 0) {
+						setSessions([]);
+						setSessionCache(new Map());
+						activateSessionRef.current(null, { load: false });
+						void clearCachedSessions();
+						break;
+					}
 					setSessions((previous) => {
 						let next = previous;
 						for (const session of message.sessions) {
@@ -684,6 +704,24 @@ export function App() {
 					if (activeSessionIdRef.current === message.session.id && !isScheduledSessionSummary(message.session)) {
 						ensureSessionLoadedRef.current(message.session.id);
 					}
+					break;
+				}
+				case "session_deleted": {
+					setSessions((previous) => previous.filter((session) => session.id !== message.sessionId));
+					setSessionCache((previous) => {
+						if (!previous.has(message.sessionId)) {
+							return previous;
+						}
+
+						const next = new Map(previous);
+						next.delete(message.sessionId);
+						return next;
+					});
+					setTotalSessionCount((previous) => (previous === null ? null : Math.max(0, previous - 1)));
+					if (activeSessionIdRef.current === message.sessionId) {
+						activateSessionRef.current(null, { load: false });
+					}
+					void deleteCachedSession(message.sessionId);
 					break;
 				}
 				case "session_created": {
@@ -866,21 +904,7 @@ export function App() {
 				body: `Fetching the latest transcript from the ${transportConfig.label}.`,
 			}
 			: null;
-	const sessionState = formatSessionState(activeSession, pendingDraft);
 	const canLoadMoreSessions = visibleSessionLimit < Math.max(totalSessionCount ?? 0, sessions.length);
-
-	const refreshAdminStatus = useCallback(async () => {
-		const nextStatus = await readLocalAdminStatus(transportConfig.statusUrl);
-		setAdminStatus(nextStatus);
-		setAdminStatusError(null);
-
-		void readProviders().then(
-			(data) => { setProviders(data); setProvidersError(null); },
-			(error: unknown) => { setProvidersError(error instanceof Error ? error.message : "Failed to load providers."); },
-		);
-
-		return nextStatus;
-	}, []);
 
 	const refreshScheduledJobs = useCallback(async () => {
 		setLoadingScheduledJobs(true);
@@ -984,6 +1008,22 @@ export function App() {
 		setProvidersError(null);
 	}, []);
 
+	const handleStartProviderLogin = useCallback(async (provider: string) => {
+		const response = await startProviderLoginRequest(provider);
+		setProviders(response);
+		setProvidersError(null);
+
+		if (response.loginState.authUrl) {
+			window.location.assign(response.loginState.authUrl);
+		}
+	}, []);
+
+	const handleSaveProviderApiKey = useCallback(async (provider: string, apiKey: string) => {
+		const response = await saveProviderApiKeyRequest(provider, apiKey);
+		setProviders(response);
+		setProvidersError(null);
+	}, []);
+
 	useEffect(() => {
 		if (route !== "jobs" && route !== "settings") {
 			return;
@@ -993,6 +1033,27 @@ export function App() {
 			// The error state is already captured for rendering.
 		});
 	}, [refreshScheduledJobs, route]);
+
+	useEffect(() => {
+		if (route !== "settings") {
+			return;
+		}
+
+		const hasPendingProviderLogin = providers?.providers.some((provider) => provider.loginState.status === "pending");
+		if (!hasPendingProviderLogin) {
+			return;
+		}
+
+		const pollId = window.setInterval(() => {
+			void refreshProviders().catch(() => {
+				// Provider errors are already reflected in state.
+			});
+		}, 2000);
+
+		return () => {
+			window.clearInterval(pollId);
+		};
+	}, [providers, refreshProviders, route]);
 
 	if (route === "settings") {
 		return (
@@ -1026,6 +1087,8 @@ export function App() {
 				onDeleteJob={deleteScheduledJob}
 				onEnsureRunLoaded={ensureSessionLoaded}
 				onSetDefaultModel={handleSetDefaultModel}
+				onStartProviderLogin={handleStartProviderLogin}
+				onSaveProviderApiKey={handleSaveProviderApiKey}
 				onSubmitPairingCode={handleSubmitPairingCode}
 			/>
 		);
@@ -1057,18 +1120,11 @@ export function App() {
 	return (
 		<main className="grid h-svh w-full overflow-hidden grid-cols-1 font-ui text-ink min-[721px]:grid-cols-[240px_minmax(0,1fr)] min-[1221px]:grid-cols-[280px_minmax(0,1fr)]">
 			<Sidebar
-				connected={connected}
-				serverReady={serverReady}
-				relayReady={relayReady}
-				relayTransportConnected={relayTransportConnected}
-				streamRequested={streamRequested}
 				pendingDraft={pendingDraft}
 				sessions={visibleSessions}
-				totalSessions={totalSessionCount ?? sessions.length}
 				loadingMoreSessions={loadingMoreSessions}
 				canLoadMoreSessions={canLoadMoreSessions}
 				activeSessionId={activeSessionId}
-				sessionState={sessionState}
 				onStartNewChat={handleStartNewChat}
 				onOpenSettings={() => handleRouteChange("settings")}
 				onActivateSession={(sessionId) => activateSession(sessionId)}

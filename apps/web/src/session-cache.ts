@@ -163,3 +163,29 @@ export async function writeSessionSnapshot(session: SessionSummary, transcript: 
 	});
 	database.close();
 }
+
+export async function deleteCachedSession(sessionId: string): Promise<void> {
+	const database = await openDatabase();
+	if (!database) {
+		return;
+	}
+
+	await runReadwriteTransaction(database, [SESSION_SUMMARIES_STORE, SESSION_TRANSCRIPTS_STORE], (transaction) => {
+		transaction.objectStore(SESSION_SUMMARIES_STORE).delete(sessionId);
+		transaction.objectStore(SESSION_TRANSCRIPTS_STORE).delete(sessionId);
+	});
+	database.close();
+}
+
+export async function clearCachedSessions(): Promise<void> {
+	const database = await openDatabase();
+	if (!database) {
+		return;
+	}
+
+	await runReadwriteTransaction(database, [SESSION_SUMMARIES_STORE, SESSION_TRANSCRIPTS_STORE], (transaction) => {
+		transaction.objectStore(SESSION_SUMMARIES_STORE).clear();
+		transaction.objectStore(SESSION_TRANSCRIPTS_STORE).clear();
+	});
+	database.close();
+}

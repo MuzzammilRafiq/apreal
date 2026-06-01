@@ -2,7 +2,10 @@ import { createInterface } from "node:readline";
 import { access, readFile, stat } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import type { Server as HttpServer } from "node:http";
+import { AuthStorage } from "@earendil-works/pi-coding-agent";
 import {
+	ADMIN_PROVIDER_API_KEY_PATH,
+	ADMIN_PROVIDER_LOGIN_PATH,
 	ADMIN_PROVIDERS_PATH,
 	ADMIN_RELAY_REAUTHENTICATE_PATH,
 	ADMIN_STATUS_PATH,
@@ -13,13 +16,18 @@ import {
 	normalizeRelayPairingCode,
 	normalizeRelayPrincipalId,
 	type LocalWebAdminStatus,
+	type ProviderApiKeyRequest,
+	type ProviderApiKeyResponse,
+	type ProviderLoginRequest,
+	type ProviderLoginResponse,
+	type ProviderLoginState,
 	type RelayReauthenticateRequest,
 	type RelayReauthenticateResponse,
 	type SetDefaultModelRequest,
 } from "@apreal/shared";
 import { createChatStore } from "../chat-store.ts";
 import { getConfiguredToolsLabel } from "../agent-tools.ts";
-import { getAprealServerDatabasePath } from "../agent-dir.ts";
+import { getAprealAgentPath, getAprealServerDatabasePath } from "../agent-dir.ts";
 import { createLogger } from "../logger.ts";
 import {
 	ensureRelayAgentAuth,
@@ -62,6 +70,7 @@ export type {
 
 const WEB_DIST_DIR = resolve(SERVER_SRC_DIR, "..", "..", "..", "web", "dist");
 const WEB_INDEX_PATH = join(WEB_DIST_DIR, "index.html");
+const APREAL_AGENT_AUTH_PATH = getAprealAgentPath("auth.json");
 const ADMIN_JOBS_PATH = "/api/admin/jobs";
 const ADMIN_JOBS_PATH_PREFIX = `${ADMIN_JOBS_PATH}/`;
 
@@ -135,6 +144,45 @@ function listScheduledJobRuns(jobName: string, sessions: Map<string, SharedSessi
 		.filter((session) => session.title.startsWith(prefix))
 		.sort((left, right) => right.updatedAt - left.updatedAt || right.createdAt - left.createdAt)
 		.map((session) => buildSessionSummary(session));
+}
+
+function createIdleProviderLoginState(): ProviderLoginState {
+	return {
+		status: "idle",
+		authUrl: null,
+		error: null,
+		updatedAt: null,
+	};
+}
+
+type ProviderLoginAttempt = {
+	provider: string;
+	state: ProviderLoginState;
+	authUrlPromise: Promise<string>;
+	resolveAuthUrl: (authUrl: string) => void;
+	rejectAuthUrl: (error: unknown) => void;
+};
+
+function createProviderLoginAttempt(provider: string): ProviderLoginAttempt {
+	let resolveAuthUrl = (_authUrl: string) => {};
+	let rejectAuthUrl = (_error: unknown) => {};
+	const authUrlPromise = new Promise<string>((resolve, reject) => {
+		resolveAuthUrl = resolve;
+		rejectAuthUrl = reject;
+	});
+
+	return {
+		provider,
+		state: {
+			status: "pending",
+			authUrl: null,
+			error: null,
+			updatedAt: Date.now(),
+		},
+		authUrlPromise,
+		resolveAuthUrl,
+		rejectAuthUrl,
+	};
 }
 
 function createMissingWebUiResponse(request: Request, port: number): Response {
@@ -225,6 +273,10 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	const port = options?.port ?? parsePort(process.env.PORT);
 	const logger = createLogger("web-server");
 	const relayUrl = getRelayServerUrl();
+	const providerLoginAttempts = new Map<string, ProviderLoginAttempt>();
+	const readProviderLoginState = (providerId: string): ProviderLoginState | null =>
+		providerLoginAttempts.get(providerId)?.state ?? null;
+	const buildProvidersPayloadWithLoginState = () => buildProvidersPayload(cwd, readProviderLoginState);
 
 	const relayState: RelayMutableState = {
 		auth: null,
@@ -358,6 +410,120 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		);
 	};
 
+	const startProviderLogin = async (providerId: string): Promise<ProviderLoginResponse> => {
+		const normalizedProviderId = providerId.trim();
+		if (!normalizedProviderId) {
+			throw new Error("provider must be a non-empty string.");
+		}
+
+		const authStorage = AuthStorage.create(APREAL_AGENT_AUTH_PATH);
+		const oauthProvider = authStorage.getOAuthProviders().find((provider) => provider.id === normalizedProviderId);
+		if (!oauthProvider) {
+			throw new Error(`Provider ${normalizedProviderId} does not support Pi OAuth login.`);
+		}
+
+		const existingAttempt = providerLoginAttempts.get(normalizedProviderId);
+		if (existingAttempt?.state.status === "pending") {
+			return {
+				...buildProvidersPayloadWithLoginState(),
+				provider: normalizedProviderId,
+				loginState: existingAttempt.state,
+			};
+		}
+
+		const attempt = createProviderLoginAttempt(normalizedProviderId);
+		providerLoginAttempts.set(normalizedProviderId, attempt);
+
+		void authStorage.login(normalizedProviderId, {
+			onAuth: (info) => {
+				attempt.state = {
+					status: "pending",
+					authUrl: info.url,
+					error: null,
+					updatedAt: Date.now(),
+				};
+				attempt.resolveAuthUrl(info.url);
+			},
+			onPrompt: async (prompt) => {
+				throw new Error(
+					`Provider ${normalizedProviderId} requested extra input (${prompt.message}). Web login currently supports browser-based Pi OAuth only.`,
+				);
+			},
+			onSelect: async (prompt) => {
+				throw new Error(
+					`Provider ${normalizedProviderId} requires an interactive selection (${prompt.message}). Web login currently supports browser-based Pi OAuth only.`,
+				);
+			},
+			onProgress: (message) => {
+				logger.info("provider login progress", {
+					provider: normalizedProviderId,
+					message,
+				});
+			},
+		})
+			.then(() => {
+				attempt.state = {
+					status: "succeeded",
+					authUrl: null,
+					error: null,
+					updatedAt: Date.now(),
+				};
+			})
+			.catch((error) => {
+				const message = getErrorMessage(error);
+				attempt.state = {
+					status: "failed",
+					authUrl: null,
+					error: message,
+					updatedAt: Date.now(),
+				};
+				attempt.rejectAuthUrl(error);
+				logger.warn("provider login failed", {
+					provider: normalizedProviderId,
+					error: message,
+				});
+			});
+
+		try {
+			await attempt.authUrlPromise;
+		} catch (error) {
+			throw new Error(getErrorMessage(error));
+		}
+
+		return {
+			...buildProvidersPayloadWithLoginState(),
+			provider: normalizedProviderId,
+			loginState: attempt.state,
+		};
+	};
+
+	const saveProviderApiKey = async (providerId: string, apiKey: string): Promise<ProviderApiKeyResponse> => {
+		const normalizedProviderId = providerId.trim();
+		const normalizedApiKey = apiKey.trim();
+		if (!normalizedProviderId) {
+			throw new Error("provider must be a non-empty string.");
+		}
+		if (!normalizedApiKey) {
+			throw new Error("apiKey must be a non-empty string.");
+		}
+
+		const authStorage = AuthStorage.create(APREAL_AGENT_AUTH_PATH);
+		authStorage.set(normalizedProviderId, {
+			type: "api_key",
+			key: normalizedApiKey,
+		});
+
+		const loginAttempt = providerLoginAttempts.get(normalizedProviderId);
+		if (loginAttempt) {
+			loginAttempt.state = createIdleProviderLoginState();
+		}
+
+		return {
+			...buildProvidersPayloadWithLoginState(),
+			provider: normalizedProviderId,
+		};
+	};
+
 	const authenticateBrowserRequest = async (request: Request): Promise<{ clientId: string }> => {
 		const localClientId = readLocalClientId(request);
 		if (localClientId && isLoopbackClientRequest(request)) {
@@ -436,6 +602,115 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 					});
 				}
 
+				if (url.pathname === ADMIN_PROVIDER_API_KEY_PATH) {
+					const localOnlyResponse = assertLocalAdminRequest(request);
+					if (localOnlyResponse) {
+						return localOnlyResponse;
+					}
+
+					if (request.method === "OPTIONS") {
+						return new Response(null, {
+							status: 204,
+							headers: createCorsHeaders(),
+						});
+					}
+
+					if (request.method !== "POST") {
+						return new Response("Method Not Allowed", {
+							status: 405,
+							headers: createCorsHeaders(),
+						});
+					}
+
+					let payload: unknown;
+					try {
+						payload = await request.json();
+					} catch {
+						return json(
+							{ message: "Request body must be valid JSON." },
+							{ status: 400, headers: createCorsHeaders() },
+						);
+					}
+
+					const provider = typeof (payload as Partial<ProviderApiKeyRequest>)?.provider === "string"
+						? (payload as ProviderApiKeyRequest).provider
+						: "";
+					const apiKey = typeof (payload as Partial<ProviderApiKeyRequest>)?.apiKey === "string"
+						? (payload as ProviderApiKeyRequest).apiKey
+						: "";
+					if (!provider.trim()) {
+						return json(
+							{ message: "provider must be a non-empty string." },
+							{ status: 400, headers: createCorsHeaders() },
+						);
+					}
+					if (!apiKey.trim()) {
+						return json(
+							{ message: "apiKey must be a non-empty string." },
+							{ status: 400, headers: createCorsHeaders() },
+						);
+					}
+
+					try {
+						return json(await saveProviderApiKey(provider, apiKey), { headers: createCorsHeaders() });
+					} catch (error) {
+						return json(
+							{ message: getErrorMessage(error) },
+							{ status: 400, headers: createCorsHeaders() },
+						);
+					}
+				}
+
+				if (url.pathname === ADMIN_PROVIDER_LOGIN_PATH) {
+					const localOnlyResponse = assertLocalAdminRequest(request);
+					if (localOnlyResponse) {
+						return localOnlyResponse;
+					}
+
+					if (request.method === "OPTIONS") {
+						return new Response(null, {
+							status: 204,
+							headers: createCorsHeaders(),
+						});
+					}
+
+					if (request.method !== "POST") {
+						return new Response("Method Not Allowed", {
+							status: 405,
+							headers: createCorsHeaders(),
+						});
+					}
+
+					let payload: unknown;
+					try {
+						payload = await request.json();
+					} catch {
+						return json(
+							{ message: "Request body must be valid JSON." },
+							{ status: 400, headers: createCorsHeaders() },
+						);
+					}
+
+					const provider = typeof (payload as Partial<ProviderLoginRequest>)?.provider === "string"
+						? (payload as ProviderLoginRequest).provider
+						: "";
+					if (!provider.trim()) {
+						return json(
+							{ message: "provider must be a non-empty string." },
+							{ status: 400, headers: createCorsHeaders() },
+						);
+					}
+
+					try {
+						return json(await startProviderLogin(provider), { headers: createCorsHeaders() });
+					} catch (error) {
+						return json(
+							{ message: getErrorMessage(error) },
+							{ status: 400, headers: createCorsHeaders() },
+						);
+					}
+				}
+
 				if (url.pathname === ADMIN_PROVIDERS_PATH) {
 					const localOnlyResponse = assertLocalAdminRequest(request);
 					if (localOnlyResponse) {
@@ -451,7 +726,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 
 					if (request.method === "GET") {
 						try {
-							return json(buildProvidersPayload(cwd), { headers: createCorsHeaders() });
+							return json(buildProvidersPayloadWithLoginState(), { headers: createCorsHeaders() });
 						} catch (error) {
 							return json(
 								{ message: getErrorMessage(error) },
@@ -494,7 +769,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 
 						try {
 							return json(
-								await setDefaultProviderModel(cwd, provider.trim(), modelId.trim()),
+								await setDefaultProviderModel(cwd, provider.trim(), modelId.trim(), readProviderLoginState),
 								{ headers: createCorsHeaders() },
 							);
 						} catch (error) {
