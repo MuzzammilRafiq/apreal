@@ -10,8 +10,8 @@ import {
 import { getProviders, type Api, type AssistantMessage, type Model } from "@earendil-works/pi-ai";
 import { agentToolsConfig, getConfiguredToolNames, getConfiguredToolsLabel } from "./agent-tools.ts";
 import { getAprealAgentDir, getAprealAgentPath } from "./agent-dir.ts";
+import { getDefaultFileMemoryStore } from "./file-memory-store.ts";
 import { createLogger, summarizePrompt } from "./logger.ts";
-import { getDefaultMemoryStore } from "./memory-store.ts";
 import type { AvailableSkill, ProviderLoginState, ProvidersResponse } from "@apreal/shared";
 
 const APREAL_AGENT_DIR = getAprealAgentDir();
@@ -239,16 +239,12 @@ export function formatToolExecutionSummary(name: string, args: unknown): string 
 		case "memory": {
 			const action = readStringField(record, ["action"]);
 			const memoryType = readStringField(record, ["memoryType"]);
-			const query = readStringField(record, ["query"]);
-			const memoryId = readStringField(record, ["memoryId", "id"]);
-			if (action === "search" && query) {
-				return truncateToolSummary(`${action}: ${query}`);
+			const fileName = readStringField(record, ["fileName", "file", "path"]);
+			if (action && memoryType && fileName) {
+				return truncateToolSummary(`${action}: ${memoryType}/${fileName}`);
 			}
 			if (action && memoryType) {
 				return truncateToolSummary(`${action}: ${memoryType}`);
-			}
-			if (action && memoryId) {
-				return truncateToolSummary(`${action}: ${memoryId}`);
 			}
 			if (action) {
 				return truncateToolSummary(action);
@@ -359,21 +355,25 @@ function getMissingAuthError() {
 }
 
 async function createResourceLoader(cwd: string, settingsManager: SettingsManager) {
-	const memoryStore = getDefaultMemoryStore();
+	const memoryStore = getDefaultFileMemoryStore();
 	const resourceLoader = new DefaultResourceLoader({
 		cwd,
 		agentDir: APREAL_AGENT_DIR,
 		settingsManager,
 		agentsFilesOverride: (base) => {
-			const persistentMemory = memoryStore.renderAlwaysLoadedContext();
-			if (!persistentMemory) {
+			const memoryFiles = [
+				memoryStore.renderAlwaysContext(),
+				memoryStore.renderSearchIndexContext(),
+			].filter((file): file is { path: string; content: string } => file !== null);
+			if (memoryFiles.length === 0) {
 				return base;
 			}
 
+			const memoryPaths = new Set(memoryFiles.map((file) => file.path));
 			return {
 				agentsFiles: [
-					...base.agentsFiles.filter((file) => file.path !== persistentMemory.path),
-					persistentMemory,
+					...base.agentsFiles.filter((file) => !memoryPaths.has(file.path)),
+					...memoryFiles,
 				],
 			};
 		},
@@ -381,10 +381,11 @@ async function createResourceLoader(cwd: string, settingsManager: SettingsManage
 			...base,
 			[
 				"## Persistent Memory Skill",
-				"- Use the `memory` skill when the user asks you to remember, read, update, or forget durable information.",
-				"- Save durable facts as small, granular memory items grouped inside memory blocks.",
-				"- Give each memory item a short description and prefer granular items; split oversized content into multiple items when practical.",
-				"- `always` memories only load compact summaries into future turns; read full item content on demand when needed.",
+				"- Use the `memory` skill and `memory` tool when the user asks you to remember, read, update, or forget durable information.",
+				"- There is exactly one always-loaded memory file, `always.md`; keep it compact and stable.",
+				"- Search memory is up to 10 topic-specific Markdown files; only the search memory index is loaded by default.",
+				"- Read a search memory file on demand only when its file name or preview is relevant to the task.",
+				"- Keep every memory file at 50 lines or fewer by summarizing, consolidating, and removing stale details.",
 			].join("\n"),
 		],
 	});

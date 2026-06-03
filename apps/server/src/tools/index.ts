@@ -1,13 +1,16 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { JobStore, Scheduler } from "../scheduled-jobs/index.ts";
+import { getDefaultFileMemoryStore } from "../file-memory-store.ts";
 import { createDeleteScheduledJobTool } from "./delete-job.ts";
 import { createListScheduledJobsTool } from "./list-jobs.ts";
+import { createMemoryTool } from "./memory.ts";
 import { createScheduleBackgroundJobTool } from "./schedule-job.ts";
 import { webSearchTool } from "./web-search.ts";
 
 export { webSearchTool } from "./web-search.ts";
 export { createDeleteScheduledJobTool } from "./delete-job.ts";
 export { createListScheduledJobsTool } from "./list-jobs.ts";
+export { createMemoryTool } from "./memory.ts";
 export { createScheduleBackgroundJobTool } from "./schedule-job.ts";
 
 export function createCustomTools(
@@ -15,7 +18,11 @@ export function createCustomTools(
 	scheduler?: Scheduler,
 	extraTools: ToolDefinition[] = [],
 ): ToolDefinition[] {
-	const tools: ToolDefinition[] = [webSearchTool, ...extraTools];
+	const tools: ToolDefinition[] = [
+		webSearchTool,
+		createMemoryTool(getDefaultFileMemoryStore()),
+		...extraTools,
+	];
 	if (!store || !scheduler) {
 		return tools;
 	}
