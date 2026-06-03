@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LOCAL_CLIENT_ID_QUERY_PARAM, type CreateMcpServerRequest, type LocalWebAdminStatus, type McpServerConfig, type ProvidersResponse, type UpdateMcpServerRequest } from "@apreal/shared";
-import { Composer } from "./components/Composer";
-import { ScheduledJobsPage } from "./components/ScheduledJobsPage";
-import { SettingsPage } from "./components/SettingsPage";
-import { Sidebar } from "./components/Sidebar";
-import { TranscriptPanel } from "./components/TranscriptPanel";
-import type { ScheduledJobDetails, SessionCacheEntry, SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "./chatTypes";
+import { LOCAL_CLIENT_ID_QUERY_PARAM } from "@apreal/shared";
+import { AppRouteView } from "./AppRouteView";
+import type { ScheduledJobDetails, SessionCacheEntry, SessionSummary, TranscriptMessage } from "./chatTypes";
 import {
 	clearCachedSessions,
 	deleteCachedSession,
@@ -16,223 +12,26 @@ import {
 	writeSessionSummary,
 } from "./session-cache";
 import {
-	deleteScheduledJob as deleteScheduledJobRequest,
-	createMcpServer as createMcpServerRequest,
-	deleteMcpServer as deleteMcpServerRequest,
-	refreshMcpServers as refreshMcpServersRequest,
-	readLocalAdminStatus,
-	readMcpServers,
-	readProviders,
-	readScheduledJobRuns,
-	readScheduledJobs,
-	saveProviderApiKey as saveProviderApiKeyRequest,
-	saveAppendSystemPrompt as saveAppendSystemPromptRequest,
-	startProviderLogin as startProviderLoginRequest,
-	submitRelayReauthentication,
-	updateMcpServer as updateMcpServerRequest,
-	updateDefaultModel as updateDefaultModelRequest,
-	updateScheduledJob as updateScheduledJobRequest,
-} from "./server-admin";
-import { getWebTransportConfig } from "./transport-config";
-
-const ACTIVE_SESSION_STORAGE_KEY = "pi-browser-active-session";
-const SESSION_PAGE_SIZE = 50;
-const STREAM_DISCONNECTED_MESSAGE = "Disconnected from the server stream. Reconnecting...";
-const STREAM_REQUIRED_MESSAGE = "Client event stream is not connected.";
-const ADMIN_STATUS_REFRESH_INTERVAL_MS = 3_000;
-const transportConfig = getWebTransportConfig();
-
-type AppRoute = "chat" | "settings" | "jobs";
-
-type ClientMessage =
-	| { type: "prompt"; prompt: string; sessionId?: string | null }
-	| { type: "abort"; sessionId: string }
-	| { type: "load_session"; sessionId: string }
-	| { type: "load_sessions_page"; offset?: number; limit?: number }
-	| { type: "ping" };
-
-type ServerMessage =
-	| { type: "connected"; clientId: string; message: string; tools?: string }
-	| { type: "sessions_page"; sessions: SessionSummary[]; offset: number; limit: number; total: number }
-	| { type: "session_summary_updated"; session: SessionSummary }
-	| { type: "session_created"; session: SessionSummary; transcript: TranscriptMessage[] }
-	| { type: "session_snapshot"; session: SessionSummary; transcript: TranscriptMessage[] }
-	| { type: "session_deleted"; sessionId: string }
-	| { type: "assistant_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
-	| { type: "assistant_thinking_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
-	| { type: "error"; message: string; sessionId?: string }
-	| { type: "pong" };
-
-type AssistantDeltaField = "body" | "thinking";
-
-function readCurrentRoute(): AppRoute {
-	if (window.location.pathname === "/settings") {
-		return "settings";
-	}
-
-	if (window.location.pathname === "/jobs") {
-		return "jobs";
-	}
-
-	return "chat";
-}
-
-function navigateToRoute(route: AppRoute) {
-	const nextPathname = route === "settings" ? "/settings" : route === "jobs" ? "/jobs" : "/";
-	if (window.location.pathname === nextPathname) {
-		return;
-	}
-
-	window.history.pushState({}, "", nextPathname);
-}
-
-function getErrorMessage(error: unknown): string {
-	if (error instanceof Error && error.message) {
-		return error.message;
-	}
-
-	return String(error);
-}
-
-function isObjectRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function readStoredSessionId(): string | null {
-	try {
-		return window.sessionStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
-	} catch {
-		return null;
-	}
-}
-
-function storeActiveSessionId(sessionId: string | null) {
-	try {
-		if (sessionId) {
-			window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, sessionId);
-			return;
-		}
-
-		window.sessionStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
-	} catch {
-		// Ignore browser storage failures.
-	}
-}
-
-function parseServerMessage(rawData: string): ServerMessage | null {
-	let value: unknown;
-	try {
-		value = JSON.parse(rawData);
-	} catch {
-		return null;
-	}
-
-	if (!isObjectRecord(value) || typeof value.type !== "string") {
-		return null;
-	}
-
-	return value as ServerMessage;
-}
-
-function cloneTranscript(transcript: TranscriptMessage[]): TranscriptMessage[] {
-	return transcript.map((entry) => ({
-		...entry,
-		modelLabel: entry.modelLabel ?? null,
-		modelSource: entry.modelSource ?? null,
-		toolCalls: entry.toolCalls.map((toolCall) => ({ ...toolCall })),
-		segments: entry.segments.map((segment) => ({ ...segment })),
-	}));
-}
-
-function upsertSessionInList(sessions: SessionSummary[], session: SessionSummary): SessionSummary[] {
-	const next = sessions.filter((entry) => entry.id !== session.id);
-	next.push(session);
-	next.sort((left, right) => right.updatedAt - left.updatedAt);
-	return next;
-}
-
-function isScheduledSessionSummary(session: SessionSummary | null | undefined): boolean {
-	return Boolean(session?.title.startsWith("[Scheduled:"));
-}
-
-function createSummaryOnlyCacheEntry(session: SessionSummary): SessionCacheEntry {
-	return {
-		session,
-		transcript: [],
-		transcriptLoaded: false,
-	};
-}
-
-function getSegmentSortValue(segment: TranscriptMessageSegment): number {
-	return segment.contentIndex ?? Number.MAX_SAFE_INTEGER;
-}
-
-function insertSegmentInOrder(
-	segments: TranscriptMessageSegment[],
-	segment: TranscriptMessageSegment,
-): TranscriptMessageSegment[] {
-	const next = [...segments];
-	const insertIndex = next.findIndex((entry) => getSegmentSortValue(entry) > getSegmentSortValue(segment));
-	if (insertIndex === -1) {
-		next.push(segment);
-		return next;
-	}
-
-	next.splice(insertIndex, 0, segment);
-	return next;
-}
-
-function appendAssistantDeltaToMessage(
-	message: TranscriptMessage,
-	delta: string,
-	field: AssistantDeltaField,
-	contentIndex: number,
-): TranscriptMessage {
-	const now = Date.now();
-	const segmentType = field === "thinking" ? "thinking" : "text";
-	const existingSegmentIndex = message.segments.findIndex(
-		(segment) => segment.type === segmentType && segment.contentIndex === contentIndex,
-	);
-
-	let segments = message.segments;
-	if (existingSegmentIndex >= 0) {
-		segments = [...message.segments];
-		const existingSegment = segments[existingSegmentIndex];
-		if (existingSegment && existingSegment.type === segmentType) {
-			segments[existingSegmentIndex] = {
-				...existingSegment,
-				content: `${existingSegment.content}${delta}`,
-				updatedAt: now,
-			};
-		}
-	} else {
-		segments = insertSegmentInOrder(message.segments, {
-			id: crypto.randomUUID(),
-			type: segmentType,
-			content: delta,
-			contentIndex,
-			createdAt: now,
-			updatedAt: now,
-		} as TranscriptMessageSegment);
-	}
-
-	if (field === "thinking") {
-		return {
-			...message,
-			pending: true,
-			thinking: `${message.thinking}${delta}`,
-			segments,
-		};
-	}
-
-	return {
-		...message,
-		pending: true,
-		body: `${message.body}${delta}`,
-		segments,
-	};
-}
-
+	SESSION_PAGE_SIZE,
+	STREAM_DISCONNECTED_MESSAGE,
+	STREAM_REQUIRED_MESSAGE,
+	appendAssistantDeltaToMessage,
+	cloneTranscript,
+	createSummaryOnlyCacheEntry,
+	getErrorMessage,
+	isObjectRecord,
+	isScheduledSessionSummary,
+	navigateToRoute,
+	parseServerMessage,
+	readCurrentRoute,
+	readStoredSessionId,
+	storeActiveSessionId,
+	transportConfig,
+	upsertSessionInList,
+	type AppRoute,
+	type ClientMessage,
+} from "./app-state";
+import { useAppAdmin } from "./useAppAdmin";
 export function App() {
 	const [route, setRoute] = useState<AppRoute>(() => readCurrentRoute());
 	const [connected, setConnected] = useState(false);
@@ -244,27 +43,16 @@ export function App() {
 	const [totalSessionCount, setTotalSessionCount] = useState<number | null>(null);
 	const [loadingMoreSessions, setLoadingMoreSessions] = useState(false);
 	const [activeSessionId, setActiveSessionId] = useState<string | null>(() => readStoredSessionId());
-	const [adminStatus, setAdminStatus] = useState<LocalWebAdminStatus | null>(null);
-	const [adminStatusError, setAdminStatusError] = useState<string | null>(null);
-	const [providers, setProviders] = useState<ProvidersResponse | null>(null);
-	const [providersError, setProvidersError] = useState<string | null>(null);
-	const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([]);
-	const [mcpServersError, setMcpServersError] = useState<string | null>(null);
-	const [loadingMcpServers, setLoadingMcpServers] = useState(false);
-	const [scheduledJobs, setScheduledJobs] = useState<ScheduledJobDetails[]>([]);
-	const [scheduledJobsError, setScheduledJobsError] = useState<string | null>(null);
-	const [loadingScheduledJobs, setLoadingScheduledJobs] = useState(false);
-	const [scheduledJobRuns, setScheduledJobRuns] = useState<SessionSummary[]>([]);
-	const [scheduledJobRunsError, setScheduledJobRunsError] = useState<string | null>(null);
-	const [loadingScheduledJobRuns, setLoadingScheduledJobRuns] = useState(false);
-	const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
-	const [settingsError, setSettingsError] = useState<string | null>(null);
-	const [submittingPairingCode, setSubmittingPairingCode] = useState(false);
-	const [appendPromptMessage, setAppendPromptMessage] = useState<string | null>(null);
-	const [appendPromptError, setAppendPromptError] = useState<string | null>(null);
-	const [savingAppendPrompt, setSavingAppendPrompt] = useState(false);
 	const [connectionError, setConnectionError] = useState<string | null>(null);
 	const [streamRequested, setStreamRequested] = useState(false);
+	const {
+		adminStatus, adminStatusError, providers, providersError, mcpServers, mcpServersError, loadingMcpServers,
+		scheduledJobs, scheduledJobsError, loadingScheduledJobs, scheduledJobRuns, scheduledJobRunsError, loadingScheduledJobRuns,
+		settingsMessage, settingsError, submittingPairingCode, appendPromptMessage, appendPromptError, savingAppendPrompt,
+		setAdminStatus, setAdminStatusError, refreshAdminStatus, reloadMcpServers, handleRefreshJobs, handleRefreshJobRuns,
+		updateScheduledJob, toggleScheduledJobEnabled, deleteScheduledJob, handleSubmitPairingCode, handleSaveAppendSystemPrompt,
+		handleSetDefaultModel, handleStartProviderLogin, handleSaveProviderApiKey, handleCreateMcpServer, handleUpdateMcpServer, handleDeleteMcpServer,
+	} = useAppAdmin({ route, setConnected, setStreamRequested });
 	const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
 	const transcriptRef = useRef<HTMLDivElement | null>(null);
 	const sessionsRef = useRef(sessions);
@@ -547,97 +335,6 @@ export function App() {
 		activateSession(null, { load: false });
 	}, [activateSession]);
 
-	const refreshProviders = useCallback(async () => {
-		try {
-			const data = await readProviders();
-			setProviders(data);
-			setProvidersError(null);
-			return data;
-		} catch (error) {
-			setProvidersError(error instanceof Error ? error.message : "Failed to load providers.");
-			throw error;
-		}
-	}, []);
-
-	const refreshMcpServers = useCallback(async () => {
-		setLoadingMcpServers(true);
-		try {
-			const response = await readMcpServers();
-			setMcpServers(response.servers);
-			setMcpServersError(null);
-			return response.servers;
-		} catch (error) {
-			setMcpServersError(getErrorMessage(error));
-			throw error;
-		} finally {
-			setLoadingMcpServers(false);
-		}
-	}, []);
-
-	const reloadMcpServers = useCallback(async () => {
-		setLoadingMcpServers(true);
-		try {
-			const response = await refreshMcpServersRequest();
-			setMcpServers(response.servers);
-			setMcpServersError(null);
-			return response.servers;
-		} catch (error) {
-			setMcpServersError(getErrorMessage(error));
-			throw error;
-		} finally {
-			setLoadingMcpServers(false);
-		}
-	}, []);
-
-	const refreshAdminStatus = useCallback(async () => {
-		const nextStatus = await readLocalAdminStatus(transportConfig.statusUrl);
-		setAdminStatus(nextStatus);
-		setAdminStatusError(null);
-		void refreshProviders().catch(() => {
-			// Provider errors are already captured in UI state.
-		});
-		return nextStatus;
-	}, [refreshProviders]);
-
-	useEffect(() => {
-		let cancelled = false;
-		let refreshTimer: number | null = null;
-
-		const pollAdminStatus = async () => {
-			try {
-				const nextStatus = await refreshAdminStatus();
-				if (cancelled) {
-					return;
-				}
-
-				setStreamRequested(true);
-				if (!nextStatus.relayReady) {
-					setSettingsMessage(null);
-				}
-			} catch (error) {
-				if (cancelled) {
-					return;
-				}
-
-				setAdminStatus(null);
-				setAdminStatusError(getErrorMessage(error));
-				setConnected(false);
-			} finally {
-				if (!cancelled) {
-					refreshTimer = window.setTimeout(pollAdminStatus, ADMIN_STATUS_REFRESH_INTERVAL_MS);
-				}
-			}
-		};
-
-		void pollAdminStatus();
-
-		return () => {
-			cancelled = true;
-			if (refreshTimer !== null) {
-				window.clearTimeout(refreshTimer);
-			}
-		};
-	}, [refreshAdminStatus]);
 
 	useEffect(() => {
 		if (serverReady) {
@@ -948,318 +645,51 @@ export function App() {
 			: null;
 	const canLoadMoreSessions = visibleSessionLimit < Math.max(totalSessionCount ?? 0, sessions.length);
 
-	const refreshScheduledJobs = useCallback(async () => {
-		setLoadingScheduledJobs(true);
-		try {
-			const jobs = await readScheduledJobs();
-			setScheduledJobs(jobs);
-			setScheduledJobsError(null);
-			if (jobs.length === 0) {
-				setScheduledJobRuns([]);
-				setScheduledJobRunsError(null);
-			}
-			return jobs;
-		} catch (error) {
-			setScheduledJobsError(getErrorMessage(error));
-			throw error;
-		} finally {
-			setLoadingScheduledJobs(false);
-		}
-	}, []);
-
-	const refreshScheduledJobRuns = useCallback(async (jobId: string) => {
-		setLoadingScheduledJobRuns(true);
-		setScheduledJobRuns([]);
-		setScheduledJobRunsError(null);
-		try {
-			const runs = await readScheduledJobRuns(jobId);
-			setScheduledJobRuns(runs);
-			setScheduledJobRunsError(null);
-			return runs;
-		} catch (error) {
-			setScheduledJobRunsError(getErrorMessage(error));
-			throw error;
-		} finally {
-			setLoadingScheduledJobRuns(false);
-		}
-	}, []);
-
-	const updateScheduledJob = useCallback(async (jobId: string, intervalMinutes: number) => {
-		await updateScheduledJobRequest(jobId, { intervalMinutes });
-		await refreshScheduledJobs();
-	}, [refreshScheduledJobs]);
-
-	const toggleScheduledJobEnabled = useCallback(async (jobId: string, enabled: boolean) => {
-		await updateScheduledJobRequest(jobId, { enabled });
-		await refreshScheduledJobs();
-	}, [refreshScheduledJobs]);
-
-	const deleteScheduledJob = useCallback(async (jobId: string) => {
-		await deleteScheduledJobRequest(jobId);
-		setScheduledJobRuns([]);
-		setScheduledJobRunsError(null);
-		await refreshScheduledJobs();
-	}, [refreshScheduledJobs]);
-
-
-	const handleRefreshJobs = useCallback(() => {
-		void refreshScheduledJobs().catch(() => {
-			// The error state is already captured for rendering.
-		});
-	}, [refreshScheduledJobs]);
-
-	const handleRefreshJobRuns = useCallback((jobId: string) => {
-		void refreshScheduledJobRuns(jobId).catch(() => {
-			// The error state is already captured for rendering.
-		});
-	}, [refreshScheduledJobRuns]);
-
 	const handleRouteChange = useCallback((nextRoute: AppRoute) => {
 		navigateToRoute(nextRoute);
 		setRoute(nextRoute);
 	}, []);
 
-	const handleSubmitPairingCode = useCallback((pairingCode: string) => {
-		const trimmedPairingCode = pairingCode.trim();
-		if (!trimmedPairingCode) {
-			setSettingsError("A pairing code is required.");
-			setSettingsMessage(null);
-			return;
-		}
 
-		setSubmittingPairingCode(true);
-		setSettingsError(null);
-		setSettingsMessage(null);
-		void submitRelayReauthentication(transportConfig.relayReauthenticateUrl, trimmedPairingCode)
-			.then((response) => {
-				setAdminStatus(response.status);
-				setAdminStatusError(null);
-				setSettingsMessage("Relay pairing updated. The server restarted its relay transport.");
-			})
-			.catch((error) => {
-				setSettingsError(getErrorMessage(error));
-			})
-			.finally(() => {
-				setSubmittingPairingCode(false);
-			});
-	}, []);
-
-	const handleSaveAppendSystemPrompt = useCallback((appendSystemPrompt: string) => {
-		setSavingAppendPrompt(true);
-		setAppendPromptError(null);
-		setAppendPromptMessage(null);
-		void saveAppendSystemPromptRequest(appendSystemPrompt)
-			.then((response) => {
-				setAdminStatus(response.status);
-				setAdminStatusError(null);
-				setAppendPromptMessage(
-					appendSystemPrompt.trim().length > 0
-						? "Appended system prompt saved. Idle sessions will reload it on the next prompt."
-						: "Appended system prompt cleared. Idle sessions will use the default prompt on the next prompt.",
-				);
-			})
-			.catch((error) => {
-				setAppendPromptError(getErrorMessage(error));
-			})
-			.finally(() => {
-				setSavingAppendPrompt(false);
-			});
-	}, []);
-
-	const handleSetDefaultModel = useCallback(async (provider: string, modelId: string) => {
-		const nextProviders = await updateDefaultModelRequest({ provider, modelId });
-		setProviders(nextProviders);
-		setProvidersError(null);
-	}, []);
-
-	const handleStartProviderLogin = useCallback(async (provider: string) => {
-		const response = await startProviderLoginRequest(provider);
-		setProviders(response);
-		setProvidersError(null);
-
-		if (response.loginState.authUrl) {
-			window.location.assign(response.loginState.authUrl);
-		}
-	}, []);
-
-	const handleSaveProviderApiKey = useCallback(async (provider: string, apiKey: string) => {
-		const response = await saveProviderApiKeyRequest(provider, apiKey);
-		setProviders(response);
-		setProvidersError(null);
-	}, []);
-
-	const handleCreateMcpServer = useCallback(async (requestBody: CreateMcpServerRequest) => {
-		const response = await createMcpServerRequest(requestBody);
-		setMcpServers(response.servers);
-		setMcpServersError(null);
-	}, []);
-
-	const handleUpdateMcpServer = useCallback(async (serverId: string, requestBody: UpdateMcpServerRequest) => {
-		const response = await updateMcpServerRequest(serverId, requestBody);
-		setMcpServers(response.servers);
-		setMcpServersError(null);
-	}, []);
-
-	const handleDeleteMcpServer = useCallback(async (serverId: string) => {
-		const response = await deleteMcpServerRequest(serverId);
-		setMcpServers(response.servers);
-		setMcpServersError(null);
-	}, []);
-
-	useEffect(() => {
-		if (route !== "jobs" && route !== "settings") {
-			return;
-		}
-
-		void refreshScheduledJobs().catch(() => {
-			// The error state is already captured for rendering.
-		});
-	}, [refreshScheduledJobs, route]);
-
-	useEffect(() => {
-		if (route !== "settings") {
-			return;
-		}
-
-		void refreshMcpServers().catch(() => {
-			// MCP errors are already captured for rendering.
-		});
-	}, [refreshMcpServers, route]);
-
-	useEffect(() => {
-		if (route !== "settings") {
-			return;
-		}
-
-		const hasPendingProviderLogin = providers?.providers.some((provider) => provider.loginState.status === "pending");
-		if (!hasPendingProviderLogin) {
-			return;
-		}
-
-		const pollId = window.setInterval(() => {
-			void refreshProviders().catch(() => {
-				// Provider errors are already reflected in state.
-			});
-		}, 2000);
-
-		return () => {
-			window.clearInterval(pollId);
-		};
-	}, [providers, refreshProviders, route]);
-
-	if (route === "settings") {
-		return (
-			<SettingsPage
-				adminStatus={adminStatus}
-				statusError={adminStatusError}
-				providers={providers}
-				providersError={providersError}
-				mcpServers={mcpServers}
-				mcpServersError={mcpServersError}
-				isLoadingMcpServers={loadingMcpServers}
-				isSubmitting={submittingPairingCode}
-				submissionMessage={settingsMessage}
-				submissionError={settingsError}
-				isSavingAppendPrompt={savingAppendPrompt}
-				appendPromptSubmissionMessage={appendPromptMessage}
-				appendPromptSubmissionError={appendPromptError}
-				jobs={scheduledJobs}
-				jobRuns={scheduledJobRuns}
-				sessionCache={sessionCache}
-				jobsError={scheduledJobsError}
-				jobRunsError={scheduledJobRunsError}
-				isLoadingJobs={loadingScheduledJobs}
-				isLoadingJobRuns={loadingScheduledJobRuns}
-				connectionError={connectionError}
-				onBack={() => handleRouteChange("chat")}
-				onRefresh={() => {
-					void refreshAdminStatus().catch((error) => {
-						setAdminStatus(null);
-						setAdminStatusError(getErrorMessage(error));
-					});
-				}}
-				onRefreshJobs={handleRefreshJobs}
-				onRefreshJobRuns={handleRefreshJobRuns}
-				onUpdateJobInterval={updateScheduledJob}
-				onToggleJobEnabled={toggleScheduledJobEnabled}
-				onDeleteJob={deleteScheduledJob}
-				onEnsureRunLoaded={ensureSessionLoaded}
-				onSetDefaultModel={handleSetDefaultModel}
-				onStartProviderLogin={handleStartProviderLogin}
-				onSaveProviderApiKey={handleSaveProviderApiKey}
-				onCreateMcpServer={handleCreateMcpServer}
-				onUpdateMcpServer={handleUpdateMcpServer}
-				onDeleteMcpServer={handleDeleteMcpServer}
-				onRefreshMcpServers={() => {
-					void reloadMcpServers().catch(() => {
-						// MCP errors are already captured for rendering.
-					});
-				}}
-				onSubmitPairingCode={handleSubmitPairingCode}
-				onSaveAppendSystemPrompt={handleSaveAppendSystemPrompt}
-			/>
-		);
-	}
-
-	if (route === "jobs") {
-		return (
-			<ScheduledJobsPage
-				adminStatus={adminStatus}
-				jobs={scheduledJobs}
-				jobRuns={scheduledJobRuns}
-				sessionCache={sessionCache}
-				jobsError={scheduledJobsError}
-				jobRunsError={scheduledJobRunsError}
-				isLoadingJobs={loadingScheduledJobs}
-				isLoadingJobRuns={loadingScheduledJobRuns}
-				connectionError={connectionError}
-				onBack={() => handleRouteChange("chat")}
-				onRefreshJobs={handleRefreshJobs}
-				onRefreshJobRuns={handleRefreshJobRuns}
-				onUpdateJobInterval={updateScheduledJob}
-				onToggleJobEnabled={toggleScheduledJobEnabled}
-				onDeleteJob={deleteScheduledJob}
-				onEnsureRunLoaded={ensureSessionLoaded}
-			/>
-		);
-	}
 
 	return (
-		<main className="grid h-svh w-full overflow-hidden grid-cols-1 font-ui text-ink min-[721px]:grid-cols-[240px_minmax(0,1fr)] min-[1221px]:grid-cols-[280px_minmax(0,1fr)]">
-			<Sidebar
-				pendingDraft={pendingDraft}
-				sessions={visibleSessions}
-				loadingMoreSessions={loadingMoreSessions}
-				canLoadMoreSessions={canLoadMoreSessions}
-				activeSessionId={activeSessionId}
-				onStartNewChat={handleStartNewChat}
-				onOpenSettings={() => handleRouteChange("settings")}
-				onActivateSession={(sessionId) => activateSession(sessionId)}
-				onLoadMoreSessions={handleLoadMoreSessions}
-			/>
-
-			<section className="relative flex h-svh min-w-0 flex-col overflow-hidden">
-				<TranscriptPanel
-					transcriptRef={transcriptRef}
-					activeSession={activeSession}
-					activeTranscript={activeTranscript}
-					emptyState={emptyState}
-					connectionError={connectionError}
-				/>
-				<div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-3 pb-3 max-[860px]:px-2.5">
-					<Composer
-						connected={connected}
-						serverReady={serverReady}
-						streamRequested={streamRequested}
-						connectionLabel={transportConfig.label}
-						activeSession={activeSession}
-						activeSessionId={activeSessionId}
-						promptInputRef={promptInputRef}
-						onSend={submitPrompt}
-						onAbort={handleAbort}
-					/>
-				</div>
-			</section>
-		</main>
+		<AppRouteView
+			route={route}
+			adminStatus={adminStatus} adminStatusError={adminStatusError} providers={providers} providersError={providersError}
+			mcpServers={mcpServers} mcpServersError={mcpServersError} loadingMcpServers={loadingMcpServers}
+			submittingPairingCode={submittingPairingCode} settingsMessage={settingsMessage} settingsError={settingsError}
+			savingAppendPrompt={savingAppendPrompt} appendPromptMessage={appendPromptMessage} appendPromptError={appendPromptError}
+			scheduledJobs={scheduledJobs} scheduledJobRuns={scheduledJobRuns} sessionCache={sessionCache}
+			scheduledJobsError={scheduledJobsError} scheduledJobRunsError={scheduledJobRunsError}
+			loadingScheduledJobs={loadingScheduledJobs} loadingScheduledJobRuns={loadingScheduledJobRuns}
+			connectionError={connectionError} pendingDraft={pendingDraft} visibleSessions={visibleSessions}
+			loadingMoreSessions={loadingMoreSessions} canLoadMoreSessions={canLoadMoreSessions}
+			activeSessionId={activeSessionId} activeSession={activeSession} activeTranscript={activeTranscript}
+			emptyState={emptyState} connected={connected} serverReady={serverReady} streamRequested={streamRequested}
+			connectionLabel={transportConfig.label}
+			promptInputRef={promptInputRef}
+			transcriptRef={transcriptRef}
+			onRouteChange={handleRouteChange}
+			onRefreshAdminStatus={() => {
+				void refreshAdminStatus().catch((error) => {
+					setAdminStatus(null);
+					setAdminStatusError(getErrorMessage(error));
+				});
+			}}
+			onRefreshJobs={handleRefreshJobs} onRefreshJobRuns={handleRefreshJobRuns}
+			onUpdateJobInterval={updateScheduledJob} onToggleJobEnabled={toggleScheduledJobEnabled}
+			onDeleteJob={deleteScheduledJob} onEnsureSessionLoaded={ensureSessionLoaded}
+			onSetDefaultModel={handleSetDefaultModel} onStartProviderLogin={handleStartProviderLogin}
+			onSaveProviderApiKey={handleSaveProviderApiKey} onCreateMcpServer={handleCreateMcpServer}
+			onUpdateMcpServer={handleUpdateMcpServer} onDeleteMcpServer={handleDeleteMcpServer}
+			onRefreshMcpServers={() => {
+				void reloadMcpServers().catch(() => {
+					// MCP errors are already captured for rendering.
+				});
+			}}
+			onSubmitPairingCode={handleSubmitPairingCode} onSaveAppendSystemPrompt={handleSaveAppendSystemPrompt}
+			onStartNewChat={handleStartNewChat} onActivateSession={activateSession} onLoadMoreSessions={handleLoadMoreSessions}
+			onSendPrompt={submitPrompt} onAbort={handleAbort}
+		/>
 	);
 }
