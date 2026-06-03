@@ -4,6 +4,8 @@ export const ADMIN_STATUS_PATH = "/api/admin/status";
 export const ADMIN_RELAY_REAUTHENTICATE_PATH = "/api/admin/relay/reauthenticate";
 export const ADMIN_PROVIDER_LOGIN_PATH = "/api/admin/providers/login";
 export const ADMIN_PROVIDER_API_KEY_PATH = "/api/admin/providers/api-key";
+export const ADMIN_MCP_PATH = "/api/admin/mcp";
+export const ADMIN_MCP_REFRESH_PATH = "/api/admin/mcp/refresh";
 export const RELAY_CLIENT_AUTH_PATH = "/api/relay/auth/client";
 export const RELAY_CLIENT_HEARTBEAT_PATH = "/api/relay/heartbeat";
 export const RELAY_AGENT_AUTH_PATH = "/api/relay/auth/agent";
@@ -33,6 +35,58 @@ export type AvailableSkill = {
 	source: AvailableSkillSource;
 	sourceLabel: string;
 	location: string;
+};
+
+export type McpServerTransport = "stdio" | "http" | "sse";
+
+export type McpServerConfig = {
+	id: string;
+	name: string;
+	transport: McpServerTransport;
+	enabled: boolean;
+	command: string | null;
+	args: string[];
+	env: Record<string, string>;
+	url: string | null;
+	headers: Record<string, string>;
+	createdAt: number;
+	updatedAt: number;
+	runtime?: McpServerRuntimeStatus;
+};
+
+export type McpServerRuntimeState = "idle" | "connecting" | "ready" | "error" | "disabled";
+
+export type McpServerRuntimeStatus = {
+	state: McpServerRuntimeState;
+	toolCount: number;
+	lastError: string | null;
+	updatedAt: number | null;
+};
+
+export type McpServersResponse = {
+	servers: McpServerConfig[];
+};
+
+export type CreateMcpServerRequest = {
+	name: string;
+	transport: McpServerTransport;
+	enabled?: boolean;
+	command?: string | null;
+	args?: string[];
+	env?: Record<string, string>;
+	url?: string | null;
+	headers?: Record<string, string>;
+};
+
+export type UpdateMcpServerRequest = {
+	name?: string;
+	transport?: McpServerTransport;
+	enabled?: boolean;
+	command?: string | null;
+	args?: string[];
+	env?: Record<string, string>;
+	url?: string | null;
+	headers?: Record<string, string>;
 };
 
 export type RelayAuthTarget = {

@@ -4,6 +4,8 @@ import { extname, join, resolve, sep } from "node:path";
 import type { Server as HttpServer } from "node:http";
 import { AuthStorage } from "@earendil-works/pi-coding-agent";
 import {
+	ADMIN_MCP_PATH,
+	ADMIN_MCP_REFRESH_PATH,
 	ADMIN_PROVIDER_API_KEY_PATH,
 	ADMIN_PROVIDER_LOGIN_PATH,
 	ADMIN_PROVIDERS_PATH,
@@ -15,7 +17,9 @@ import {
 	LOCAL_CLIENT_ID_QUERY_PARAM,
 	normalizeRelayPairingCode,
 	normalizeRelayPrincipalId,
+	type CreateMcpServerRequest,
 	type LocalWebAdminStatus,
+	type McpServersResponse,
 	type ProviderApiKeyRequest,
 	type ProviderApiKeyResponse,
 	type ProviderLoginRequest,
@@ -24,11 +28,14 @@ import {
 	type RelayReauthenticateRequest,
 	type RelayReauthenticateResponse,
 	type SetDefaultModelRequest,
+	type UpdateMcpServerRequest,
 } from "@apreal/shared";
 import { createChatStore } from "../chat-store.ts";
 import { getConfiguredToolInventory, getConfiguredToolsLabel } from "../agent-tools.ts";
 import { getAprealAgentPath, getAprealServerDatabasePath } from "../agent-dir.ts";
 import { createLogger } from "../logger.ts";
+import { McpToolRegistry } from "../mcp-tools.ts";
+import { McpStore } from "../mcp-store.ts";
 import {
 	ensureRelayAgentAuth,
 	getRelayServerUrl,
@@ -71,8 +78,10 @@ export type {
 const WEB_DIST_DIR = resolve(SERVER_SRC_DIR, "..", "..", "..", "web", "dist");
 const WEB_INDEX_PATH = join(WEB_DIST_DIR, "index.html");
 const APREAL_AGENT_AUTH_PATH = getAprealAgentPath("auth.json");
+const APREAL_AGENT_MCP_PATH = getAprealAgentPath("mcp.json");
 const ADMIN_JOBS_PATH = "/api/admin/jobs";
 const ADMIN_JOBS_PATH_PREFIX = `${ADMIN_JOBS_PATH}/`;
+const ADMIN_MCP_PATH_PREFIX = `${ADMIN_MCP_PATH}/`;
 
 const CONTENT_TYPES = new Map<string, string>([
 	[".css", "text/css; charset=utf-8"],
@@ -133,6 +142,24 @@ function parseAdminJobRoute(pathname: string): { jobId: string; subpath: "runs" 
 			jobId: decodeURIComponent(jobIdPart),
 			subpath: subpath === "runs" ? "runs" : null,
 		};
+	} catch {
+		return null;
+	}
+}
+
+function parseAdminMcpRoute(pathname: string): { serverId: string } | null {
+	if (!pathname.startsWith(ADMIN_MCP_PATH_PREFIX)) {
+		return null;
+	}
+
+	const remainder = pathname.slice(ADMIN_MCP_PATH_PREFIX.length);
+	const parts = remainder.split("/").filter(Boolean);
+	if (parts.length !== 1 || !parts[0]) {
+		return null;
+	}
+
+	try {
+		return { serverId: decodeURIComponent(parts[0]) };
 	} catch {
 		return null;
 	}
@@ -303,6 +330,9 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	const dbPath = getAprealServerDatabasePath();
 	const chatStore = createChatStore(dbPath);
 	const jobStore = new JobStore(dbPath);
+	const mcpStore = new McpStore(APREAL_AGENT_MCP_PATH);
+	const mcpToolRegistry = new McpToolRegistry(cwd, createLogger("mcp"));
+	const webUiReady = await fileExists(WEB_INDEX_PATH);
 	for (const [sessionId, session] of chatStore.loadSessions()) {
 		sessions.set(sessionId, session);
 	}
@@ -326,9 +356,29 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		getCustomTools: () => customTools,
 	});
 	const scheduler = new Scheduler(jobStore, schedulerLogger, executor);
-	customTools = createCustomTools(jobStore, scheduler);
+	let inventorySnapshot: Pick<LocalWebAdminStatus, "availableTools" | "availableSkills"> = {
+		availableTools: getConfiguredToolInventory(customTools),
+		availableSkills: [],
+	};
+	let inventorySnapshotExpiresAt = 0;
+	let inventorySnapshotPromise: Promise<typeof inventorySnapshot> | null = null;
+	const rebuildCustomTools = async () => {
+		let mcpTools = [] as import("@earendil-works/pi-coding-agent").ToolDefinition[];
+		try {
+			const { servers } = await mcpStore.list();
+			mcpTools = await mcpToolRegistry.buildTools(servers);
+		} catch (error) {
+			logger.warn("failed to refresh mcp tools", {
+				error: getErrorMessage(error),
+			});
+		}
+
+		customTools = createCustomTools(jobStore, scheduler, mcpTools);
+		inventorySnapshotExpiresAt = 0;
+	};
+	await rebuildCustomTools();
 	const handlers = createHandlers(
-		{ logger, cwd, clients, sessions, chatStore, customTools, jobStore, scheduler },
+		{ logger, cwd, clients, sessions, chatStore, getCustomTools: () => customTools, jobStore, scheduler },
 		clientManager,
 	);
 	const relay = createRelay(
@@ -337,13 +387,6 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		handlers.handleClientMessage,
 	);
 	const handleHttpClientMessage = clientManager.createHttpClientMessageHandler(handlers.handleClientMessage);
-	const webUiReady = await fileExists(WEB_INDEX_PATH);
-	let inventorySnapshot: Pick<LocalWebAdminStatus, "availableTools" | "availableSkills"> = {
-		availableTools: getConfiguredToolInventory(customTools),
-		availableSkills: [],
-	};
-	let inventorySnapshotExpiresAt = 0;
-	let inventorySnapshotPromise: Promise<typeof inventorySnapshot> | null = null;
 
 	const readInventorySnapshot = async () => {
 		const now = Date.now();
@@ -442,6 +485,18 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 			availableTools: inventory.availableTools,
 			availableSkills: inventory.availableSkills,
 		};
+	};
+
+	const withMcpRuntime = (response: McpServersResponse): McpServersResponse => ({
+		servers: mcpToolRegistry.withRuntime(response.servers),
+	});
+	const readMcpServers = async (): Promise<McpServersResponse> => withMcpRuntime(await mcpStore.list());
+	const createMcpServer = async (requestBody: CreateMcpServerRequest): Promise<McpServersResponse> => withMcpRuntime(await mcpStore.create(requestBody));
+	const updateMcpServer = async (serverId: string, requestBody: UpdateMcpServerRequest): Promise<McpServersResponse> => withMcpRuntime(await mcpStore.update(serverId, requestBody));
+	const deleteMcpServer = async (serverId: string): Promise<McpServersResponse> => withMcpRuntime(await mcpStore.delete(serverId));
+	const refreshMcpServers = async (): Promise<McpServersResponse> => {
+		await rebuildCustomTools();
+		return readMcpServers();
 	};
 
 	const assertLocalAdminRequest = (request: Request): Response | null => {
@@ -829,6 +884,137 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 						status: 405,
 						headers: createCorsHeaders(),
 					});
+				}
+
+				if (url.pathname === ADMIN_MCP_REFRESH_PATH) {
+					if (request.method === "OPTIONS") {
+						return new Response(null, {
+							status: 204,
+							headers: createCorsHeaders(),
+						});
+					}
+
+					if (request.method === "POST") {
+						try {
+							return json(await refreshMcpServers(), { headers: createCorsHeaders() });
+						} catch (error) {
+							return json(
+								{ message: getErrorMessage(error) },
+								{ status: 400, headers: createCorsHeaders() },
+							);
+						}
+					}
+
+					return json(
+						{ message: `Method ${request.method} not allowed for MCP refresh.` },
+						{ status: 405, headers: createCorsHeaders() },
+					);
+				}
+
+				if (url.pathname === ADMIN_MCP_PATH) {
+					if (request.method === "OPTIONS") {
+						return new Response(null, {
+							status: 204,
+							headers: createCorsHeaders(),
+						});
+					}
+
+					if (request.method === "GET") {
+						return json(await readMcpServers(), { headers: createCorsHeaders() });
+					}
+
+					if (request.method === "POST") {
+						let payload: unknown;
+						try {
+							payload = await request.json();
+						} catch {
+							return json(
+								{ message: "The MCP server request body must be valid JSON." },
+								{ status: 400, headers: createCorsHeaders() },
+							);
+						}
+
+						if (!payload || typeof payload !== "object") {
+							return json(
+								{ message: "The MCP server request body must be an object." },
+								{ status: 400, headers: createCorsHeaders() },
+							);
+						}
+
+						try {
+							await createMcpServer(payload as CreateMcpServerRequest);
+							await rebuildCustomTools();
+							return json(await readMcpServers(), { headers: createCorsHeaders() });
+						} catch (error) {
+							return json(
+								{ message: getErrorMessage(error) },
+								{ status: 400, headers: createCorsHeaders() },
+							);
+						}
+					}
+
+					return json(
+						{ message: `Method ${request.method} not allowed for MCP servers.` },
+						{ status: 405, headers: createCorsHeaders() },
+					);
+				}
+
+				const adminMcpRoute = parseAdminMcpRoute(url.pathname);
+				if (adminMcpRoute) {
+					if (request.method === "OPTIONS") {
+						return new Response(null, {
+							status: 204,
+							headers: createCorsHeaders(),
+						});
+					}
+
+					if (request.method === "PATCH") {
+						let payload: unknown;
+						try {
+							payload = await request.json();
+						} catch {
+							return json(
+								{ message: "The MCP server update body must be valid JSON." },
+								{ status: 400, headers: createCorsHeaders() },
+							);
+						}
+
+						if (!payload || typeof payload !== "object") {
+							return json(
+								{ message: "The MCP server update body must be an object." },
+								{ status: 400, headers: createCorsHeaders() },
+							);
+						}
+
+						try {
+							await updateMcpServer(adminMcpRoute.serverId, payload as UpdateMcpServerRequest);
+							await rebuildCustomTools();
+							return json(await readMcpServers(), { headers: createCorsHeaders() });
+						} catch (error) {
+							return json(
+								{ message: getErrorMessage(error) },
+								{ status: /not found/i.test(getErrorMessage(error)) ? 404 : 400, headers: createCorsHeaders() },
+							);
+						}
+					}
+
+					if (request.method === "DELETE") {
+						try {
+							await deleteMcpServer(adminMcpRoute.serverId);
+							await rebuildCustomTools();
+							return json(await readMcpServers(), { headers: createCorsHeaders() });
+						} catch (error) {
+							return json(
+								{ message: getErrorMessage(error) },
+								{ status: /not found/i.test(getErrorMessage(error)) ? 404 : 400, headers: createCorsHeaders() },
+							);
+						}
+					}
+
+					return json(
+						{ message: `Method ${request.method} not allowed for this MCP server.` },
+						{ status: 405, headers: createCorsHeaders() },
+					);
 				}
 
 				if (url.pathname === ADMIN_JOBS_PATH) {

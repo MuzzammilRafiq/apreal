@@ -41,7 +41,7 @@ export interface HandlerState {
 	clients: Map<string, ClientConnection>;
 	sessions: Map<string, SharedSessionState>;
 	chatStore: { saveSession(session: SharedSessionState): void; deleteSession?(sessionId: string): void };
-	customTools?: ToolDefinition[];
+	getCustomTools?: () => ToolDefinition[];
 	jobStore?: JobStore;
 	scheduler?: Scheduler;
 }
@@ -54,7 +54,7 @@ export function createHandlers(
 	state: HandlerState,
 	clientActions: ClientActions,
 ): HandlerActions {
-	const { logger, cwd, clients, sessions, chatStore, customTools, jobStore, scheduler } = state;
+	const { logger, cwd, clients, sessions, chatStore, getCustomTools, jobStore, scheduler } = state;
 
 	function listScheduledJobRuns(jobName: string) {
 		const prefix = `[Scheduled: ${jobName}]`;
@@ -321,7 +321,7 @@ export function createHandlers(
 			const controller = await createAgentController(cwd, {
 				sessionId: session.id,
 				transport: "http",
-				customTools,
+				customTools: getCustomTools?.(),
 			});
 			session.controller = controller;
 			session.model = formatModelLabel(controller.model);

@@ -18,6 +18,8 @@ const APREAL_AGENT_DIR = getAprealAgentDir();
 const APREAL_AGENT_AUTH_PATH = getAprealAgentPath("auth.json");
 const APREAL_AGENT_MODELS_PATH = getAprealAgentPath("models.json");
 const APREAL_AGENT_SETTINGS_PATH = getAprealAgentPath("settings.json");
+process.env.PI_CODING_AGENT_DIR ??= APREAL_AGENT_DIR;
+process.env.PI_CODING_AGENT_SESSION_DIR ??= getAprealAgentPath("sessions");
 const PI_LOGIN_GUIDANCE =
 	"Sign in from Apreal settings, then pick the default model for new chats.";
 const LEGACY_ENV_CREDENTIAL_PROVIDERS: Record<string, string> = {
@@ -378,11 +380,11 @@ async function createResourceLoader(cwd: string, settingsManager: SettingsManage
 		appendSystemPromptOverride: (base) => [
 			...base,
 			[
-				"## Persistent Memory Tool",
-				"- Use the `memory` tool when the user asks you to remember, read, update, or forget durable information.",
+				"## Persistent Memory Skill",
+				"- Use the `memory` skill when the user asks you to remember, read, update, or forget durable information.",
 				"- Save durable facts as small, granular memory items grouped inside memory blocks.",
 				"- Give each memory item a short description and prefer granular items; split oversized content into multiple items when practical.",
-				"- `always` memories only load compact summaries into future turns; read full item content on demand with the tool.",
+				"- `always` memories only load compact summaries into future turns; read full item content on demand when needed.",
 			].join("\n"),
 		],
 	});
