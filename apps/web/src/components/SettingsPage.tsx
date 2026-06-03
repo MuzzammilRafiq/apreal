@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AvailableSkill, AvailableTool, LocalWebAdminStatus, ProvidersResponse } from "@apreal/shared";
+import type { AvailableSkill, AvailableTool, CreateMcpServerRequest, LocalWebAdminStatus, McpServerConfig, McpServerTransport, ProvidersResponse, UpdateMcpServerRequest } from "@apreal/shared";
 import type { ScheduledJobDetails, SessionCacheEntry, SessionSummary } from "../chatTypes";
 import { JobsPanel } from "./JobsPanel";
 
@@ -80,6 +80,9 @@ type SettingsPageProps = {
 	statusError: string | null;
 	providers: ProvidersResponse | null;
 	providersError: string | null;
+	mcpServers: McpServerConfig[];
+	mcpServersError: string | null;
+	isLoadingMcpServers: boolean;
 	isSubmitting: boolean;
 	submissionMessage: string | null;
 	submissionError: string | null;
@@ -102,6 +105,10 @@ type SettingsPageProps = {
 	onSetDefaultModel: (provider: string, modelId: string) => Promise<void>;
 	onStartProviderLogin: (provider: string) => Promise<void>;
 	onSaveProviderApiKey: (provider: string, apiKey: string) => Promise<void>;
+	onCreateMcpServer: (request: CreateMcpServerRequest) => Promise<void>;
+	onUpdateMcpServer: (serverId: string, request: UpdateMcpServerRequest) => Promise<void>;
+	onDeleteMcpServer: (serverId: string) => Promise<void>;
+	onRefreshMcpServers: () => void;
 	onSubmitPairingCode: (pairingCode: string) => void;
 };
 
@@ -120,12 +127,13 @@ function renderStatusPill(label: string, tone: "neutral" | "success" | "danger")
 	);
 }
 
-type SettingsSection = "connection" | "models" | "skills" | "tools" | "jobs";
+type SettingsSection = "connection" | "models" | "skills" | "mcp" | "tools" | "jobs";
 
 const SECTIONS: { id: SettingsSection; label: string }[] = [
 	{ id: "connection", label: "Connection" },
 	{ id: "models", label: "Model control" },
 	{ id: "skills", label: "Skills" },
+	{ id: "mcp", label: "MCP" },
 	{ id: "tools", label: "Tools" },
 	{ id: "jobs", label: "Schedules & jobs" },
 ];
@@ -134,9 +142,81 @@ const SECTION_TITLES: Record<SettingsSection, string> = {
 	connection: "Connection",
 	models: "Model configuration",
 	skills: "Available skills",
+	mcp: "MCP servers",
 	tools: "Available tools",
 	jobs: "Scheduled automated tasks",
 };
+
+const MCP_TRANSPORT_OPTIONS: { value: McpServerTransport; label: string; description: string }[] = [
+	{ value: "stdio", label: "stdio", description: "Launches a local process from this machine." },
+	{ value: "http", label: "http", description: "Connects to a remote MCP server over HTTP." },
+	{ value: "sse", label: "sse", description: "Connects to a remote MCP server over Server-Sent Events." },
+];
+
+function parseLineSeparatedList(value: string): string[] {
+	return value
+		.split(/\r?\n/)
+		.map((entry) => entry.trim())
+		.filter(Boolean);
+}
+
+function parseKeyValueText(value: string, label: string): Record<string, string> {
+	const record: Record<string, string> = {};
+	for (const line of value.split(/\r?\n/)) {
+		const trimmed = line.trim();
+		if (!trimmed) {
+			continue;
+		}
+
+		const separatorIndex = trimmed.indexOf("=");
+		if (separatorIndex <= 0) {
+			throw new Error(`${label} entries must use KEY=VALUE format.`);
+		}
+
+		const key = trimmed.slice(0, separatorIndex).trim();
+		const entryValue = trimmed.slice(separatorIndex + 1);
+		if (!key) {
+			throw new Error(`${label} keys must be non-empty.`);
+		}
+
+		record[key] = entryValue;
+	}
+
+	return record;
+}
+
+function stringifyKeyValueRecord(record: Record<string, string>): string {
+	return Object.entries(record)
+		.map(([key, value]) => `${key}=${value}`)
+		.join("\n");
+}
+
+function getMcpRuntimeTone(server: McpServerConfig): "neutral" | "success" | "danger" {
+	const state = server.runtime?.state;
+	if (state === "ready") {
+		return "success";
+	}
+	if (state === "error") {
+		return "danger";
+	}
+	return "neutral";
+}
+
+function getMcpRuntimeLabel(server: McpServerConfig): string {
+	switch (server.runtime?.state) {
+		case "ready":
+			return "Ready";
+		case "connecting":
+			return "Connecting";
+		case "error":
+			return "Error";
+		case "disabled":
+			return "Disabled";
+		case "idle":
+		default:
+			return server.enabled ? "Idle" : "Disabled";
+	}
+}
 
 function getToolToneClassName(kind: AvailableTool["kind"]): string {
 	return kind === "built_in"
@@ -190,6 +270,14 @@ function SectionIcon({ section }: { section: SettingsSection }) {
 			</svg>
 		);
 	}
+	if (section === "mcp") {
+		return (
+			<svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+				<path d="M8 8h8v8H8z" strokeLinecap="round" strokeLinejoin="round" />
+				<path d="M3 12h5M16 12h5M12 3v5M12 16v5" strokeLinecap="round" strokeLinejoin="round" />
+			</svg>
+		);
+	}
 	if (section === "tools") {
 		return (
 			<svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -209,6 +297,9 @@ export function SettingsPage({
 	statusError,
 	providers,
 	providersError,
+	mcpServers,
+	mcpServersError,
+	isLoadingMcpServers,
 	isSubmitting,
 	submissionMessage,
 	submissionError,
@@ -231,6 +322,10 @@ export function SettingsPage({
 	onSetDefaultModel,
 	onStartProviderLogin,
 	onSaveProviderApiKey,
+	onCreateMcpServer,
+	onUpdateMcpServer,
+	onDeleteMcpServer,
+	onRefreshMcpServers,
 	onSubmitPairingCode,
 }: SettingsPageProps) {
 	const [activeSection, setActiveSection] = useState<SettingsSection>("connection");
@@ -245,12 +340,36 @@ export function SettingsPage({
 	const [providerAuthError, setProviderAuthError] = useState<string | null>(null);
 	const [apiKeyDrafts, setApiKeyDrafts] = useState<Record<string, string>>({});
 	const [apiKeyEditorProviderId, setApiKeyEditorProviderId] = useState<string | null>(null);
+	const [mcpEditingServerId, setMcpEditingServerId] = useState<string | null>(null);
+	const [mcpName, setMcpName] = useState("");
+	const [mcpTransport, setMcpTransport] = useState<McpServerTransport>("stdio");
+	const [mcpEnabled, setMcpEnabled] = useState(true);
+	const [mcpCommand, setMcpCommand] = useState("");
+	const [mcpArgs, setMcpArgs] = useState("");
+	const [mcpEnv, setMcpEnv] = useState("");
+	const [mcpUrl, setMcpUrl] = useState("");
+	const [mcpHeaders, setMcpHeaders] = useState("");
+	const [mcpFormError, setMcpFormError] = useState<string | null>(null);
+	const [mcpFormMessage, setMcpFormMessage] = useState<string | null>(null);
+	const [mcpActionServerId, setMcpActionServerId] = useState<string | null>(null);
 
 	useEffect(() => {
 		if (submissionMessage) {
 			setPairingCode("");
 		}
 	}, [submissionMessage]);
+
+	const resetMcpForm = () => {
+		setMcpEditingServerId(null);
+		setMcpName("");
+		setMcpTransport("stdio");
+		setMcpEnabled(true);
+		setMcpCommand("");
+		setMcpArgs("");
+		setMcpEnv("");
+		setMcpUrl("");
+		setMcpHeaders("");
+	};
 
 	const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
@@ -418,11 +537,93 @@ export function SettingsPage({
 		}
 	};
 
+	const handleEditMcpServer = (server: McpServerConfig) => {
+		setMcpEditingServerId(server.id);
+		setMcpName(server.name);
+		setMcpTransport(server.transport);
+		setMcpEnabled(server.enabled);
+		setMcpCommand(server.command ?? "");
+		setMcpArgs(server.args.join("\n"));
+		setMcpEnv(stringifyKeyValueRecord(server.env));
+		setMcpUrl(server.url ?? "");
+		setMcpHeaders(stringifyKeyValueRecord(server.headers));
+		setMcpFormError(null);
+		setMcpFormMessage(null);
+	};
+
+	const handleSubmitMcpServer = async (event: React.FormEvent<HTMLFormElement>) => {
+		event.preventDefault();
+		setMcpFormError(null);
+		setMcpFormMessage(null);
+		setMcpActionServerId(mcpEditingServerId ?? "new");
+
+		try {
+			const request = {
+				name: mcpName.trim(),
+				transport: mcpTransport,
+				enabled: mcpEnabled,
+				command: mcpCommand.trim() || null,
+				args: parseLineSeparatedList(mcpArgs),
+				env: parseKeyValueText(mcpEnv, "Environment"),
+				url: mcpUrl.trim() || null,
+				headers: parseKeyValueText(mcpHeaders, "Headers"),
+			};
+
+			if (mcpEditingServerId) {
+				await onUpdateMcpServer(mcpEditingServerId, request);
+				setMcpFormMessage("MCP server updated.");
+			} else {
+				await onCreateMcpServer(request);
+				setMcpFormMessage("MCP server created.");
+			}
+
+			resetMcpForm();
+		} catch (error) {
+			setMcpFormError(error instanceof Error ? error.message : "Failed to save MCP server.");
+		} finally {
+			setMcpActionServerId(null);
+		}
+	};
+
+	const handleToggleMcpServer = async (server: McpServerConfig) => {
+		setMcpActionServerId(server.id);
+		setMcpFormError(null);
+		setMcpFormMessage(null);
+		try {
+			await onUpdateMcpServer(server.id, { enabled: !server.enabled });
+			setMcpFormMessage(server.enabled ? "MCP server disabled." : "MCP server enabled.");
+		} catch (error) {
+			setMcpFormError(error instanceof Error ? error.message : "Failed to update MCP server.");
+		} finally {
+			setMcpActionServerId(null);
+		}
+	};
+
+	const handleDeleteSelectedMcpServer = async (serverId: string) => {
+		setMcpActionServerId(serverId);
+		setMcpFormError(null);
+		setMcpFormMessage(null);
+		try {
+			await onDeleteMcpServer(serverId);
+			if (mcpEditingServerId === serverId) {
+				resetMcpForm();
+			}
+			setMcpFormMessage("MCP server removed.");
+		} catch (error) {
+			setMcpFormError(error instanceof Error ? error.message : "Failed to delete MCP server.");
+		} finally {
+			setMcpActionServerId(null);
+		}
+	};
+
 	const isOnline = Boolean(adminStatus);
 	const relayReady = Boolean(adminStatus?.relayReady);
 	const activeSectionTitle = SECTION_TITLES[activeSection];
 	const availableSkills = adminStatus?.availableSkills ?? [];
 	const availableTools = adminStatus?.availableTools ?? [];
+	const enabledMcpServerCount = mcpServers.filter((server) => server.enabled).length;
+	const readyMcpServerCount = mcpServers.filter((server) => server.runtime?.state === "ready").length;
+	const mcpToolCount = mcpServers.reduce((total, server) => total + (server.runtime?.toolCount ?? 0), 0);
 
 	return (
 		<main className="min-h-svh bg-[#f3f3f1] text-[#171717] selection:bg-black/10 selection:text-black">
@@ -523,6 +724,18 @@ export function SettingsPage({
 											<path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8h-4.21" />
 										</svg>
 										{isLoadingJobs ? "Syncing..." : "Sync Jobs"}
+									</button>
+								) : activeSection === "mcp" ? (
+									<button
+										type="button"
+										className="inline-flex items-center gap-2 border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-[#171717] transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer"
+										onClick={onRefreshMcpServers}
+										disabled={isLoadingMcpServers}
+									>
+										<svg className={`h-4 w-4 ${isLoadingMcpServers ? "animate-spin text-slate-700" : "text-[#525252]"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+											<path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8h-4.21" />
+										</svg>
+										{isLoadingMcpServers ? "Syncing..." : "Sync MCP"}
 									</button>
 								) : (
 									<button
@@ -1040,6 +1253,202 @@ export function SettingsPage({
 											))}
 										</div>
 									)}
+								</div>
+							</div>
+						)}
+
+						{activeSection === "mcp" && (
+							<div className="space-y-4">
+								<div className="border border-black/8 bg-white p-5">
+									<div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4">
+										<div>
+											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Model Context Protocol</p>
+											<h2 className="mt-1 text-base font-bold text-slate-900">Manage MCP server definitions</h2>
+										</div>
+										<div className="flex flex-wrap items-center gap-2">
+											<button
+												type="button"
+												className="border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+												onClick={onRefreshMcpServers}
+												disabled={isLoadingMcpServers}
+											>
+												{isLoadingMcpServers ? "Syncing..." : "Sync MCP"}
+											</button>
+											{renderStatusPill(`${enabledMcpServerCount}/${mcpServers.length} active`, enabledMcpServerCount > 0 ? "success" : "neutral")}
+										</div>
+									</div>
+
+									<p className="mt-4 text-[0.84rem] leading-[1.6] text-slate-600">
+										Configured MCP servers are discovered by the local Apreal server and their tools become available to new chats automatically.
+									</p>
+
+									<div className="mt-4 grid gap-3 min-[720px]:grid-cols-3">
+										<div className="border border-slate-200 bg-slate-50 px-3.5 py-3">
+											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Configured servers</p>
+											<p className="mt-2 text-base font-bold text-slate-900">{mcpServers.length}</p>
+										</div>
+										<div className="border border-slate-200 bg-slate-50 px-3.5 py-3">
+											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Healthy connections</p>
+											<p className="mt-2 text-base font-bold text-slate-900">{readyMcpServerCount}</p>
+										</div>
+										<div className="border border-slate-200 bg-slate-50 px-3.5 py-3">
+											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Discovered tools</p>
+											<p className="mt-2 text-base font-bold text-slate-900">{mcpToolCount}</p>
+										</div>
+									</div>
+
+									<p className="mt-3 text-[0.78rem] text-slate-500 font-medium">
+										{enabledMcpServerCount} enabled server{enabledMcpServerCount === 1 ? "" : "s"}. Runtime health updates when the local server refreshes MCP tool discovery.
+									</p>
+
+									{mcpServersError ? (
+										<p className="mt-4 border border-slate-300 bg-slate-100 p-3 text-[0.82rem] leading-[1.5] text-slate-800 font-medium">
+											{mcpServersError}
+										</p>
+									) : null}
+									{mcpFormMessage ? (
+										<p className="mt-4 border border-slate-300 bg-white p-3 text-[0.82rem] leading-[1.5] text-slate-700 font-medium">
+											{mcpFormMessage}
+										</p>
+									) : null}
+									{mcpFormError ? (
+										<p className="mt-4 border border-slate-300 bg-slate-100 p-3 text-[0.82rem] leading-[1.5] text-slate-800 font-medium">
+											{mcpFormError}
+										</p>
+									) : null}
+
+									<div className="mt-5 grid gap-6 min-[1180px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+										<form className="space-y-4 border border-slate-200 bg-[#fafaf8] p-4" onSubmit={handleSubmitMcpServer}>
+											<div className="flex items-center justify-between gap-3">
+												<div>
+													<p className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.14em] text-slate-400">Editor</p>
+													<h3 className="mt-1 text-[1rem] font-bold text-slate-900">{mcpEditingServerId ? "Edit MCP server" : "Add MCP server"}</h3>
+												</div>
+												{mcpEditingServerId ? (
+													<button type="button" className="border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer" onClick={() => {
+														resetMcpForm();
+														setMcpFormError(null);
+														setMcpFormMessage(null);
+													}}>
+														Cancel edit
+													</button>
+												) : null}
+											</div>
+
+											<label className="block">
+												<span className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Display name</span>
+												<input type="text" value={mcpName} onChange={(event) => setMcpName(event.target.value)} placeholder="filesystem" className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm text-[#171717] placeholder:text-slate-400 outline-none transition focus:border-slate-500" autoComplete="off" spellCheck={false} />
+											</label>
+
+											<div className="grid gap-4 min-[640px]:grid-cols-[minmax(0,1fr)_auto]">
+												<label className="block">
+													<span className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Transport</span>
+													<select value={mcpTransport} onChange={(event) => setMcpTransport(event.target.value as McpServerTransport)} className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm text-[#171717] outline-none transition focus:border-slate-500">
+														{MCP_TRANSPORT_OPTIONS.map((option) => (
+															<option key={option.value} value={option.value}>{option.label}</option>
+														))}
+													</select>
+													<p className="mt-2 text-[0.76rem] leading-[1.5] text-slate-500">{MCP_TRANSPORT_OPTIONS.find((option) => option.value === mcpTransport)?.description}</p>
+												</label>
+												<label className="flex items-end gap-2 pb-1">
+													<input type="checkbox" checked={mcpEnabled} onChange={(event) => setMcpEnabled(event.target.checked)} className="h-4 w-4 border-slate-300" />
+													<span className="text-sm font-semibold text-slate-700">Enabled</span>
+												</label>
+											</div>
+
+											{mcpTransport === "stdio" ? (
+												<>
+													<label className="block">
+														<span className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Command</span>
+														<input type="text" value={mcpCommand} onChange={(event) => setMcpCommand(event.target.value)} placeholder="npx -y @modelcontextprotocol/server-filesystem" className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm text-[#171717] placeholder:text-slate-400 outline-none transition focus:border-slate-500" autoComplete="off" spellCheck={false} />
+													</label>
+													<label className="block">
+														<span className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Arguments</span>
+														<textarea value={mcpArgs} onChange={(event) => setMcpArgs(event.target.value)} placeholder="One argument per line" className="mt-2 min-h-28 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm text-[#171717] placeholder:text-slate-400 outline-none transition focus:border-slate-500" spellCheck={false} />
+													</label>
+												</>
+											) : (
+												<label className="block">
+													<span className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Server URL</span>
+													<input type="url" value={mcpUrl} onChange={(event) => setMcpUrl(event.target.value)} placeholder="https://example.com/mcp" className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm text-[#171717] placeholder:text-slate-400 outline-none transition focus:border-slate-500" autoComplete="off" spellCheck={false} />
+												</label>
+											)}
+
+											<label className="block">
+												<span className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Environment variables</span>
+												<textarea value={mcpEnv} onChange={(event) => setMcpEnv(event.target.value)} placeholder="KEY=value" className="mt-2 min-h-28 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm text-[#171717] placeholder:text-slate-400 outline-none transition focus:border-slate-500" spellCheck={false} />
+											</label>
+
+											{mcpTransport !== "stdio" ? (
+												<label className="block">
+													<span className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Request headers</span>
+													<textarea value={mcpHeaders} onChange={(event) => setMcpHeaders(event.target.value)} placeholder="Authorization=Bearer ..." className="mt-2 min-h-28 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm text-[#171717] placeholder:text-slate-400 outline-none transition focus:border-slate-500" spellCheck={false} />
+												</label>
+											) : null}
+
+											<button type="submit" className="w-full border border-black bg-black px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer" disabled={mcpActionServerId !== null}>
+												{mcpActionServerId === (mcpEditingServerId ?? "new") ? (mcpEditingServerId ? "Saving..." : "Creating...") : (mcpEditingServerId ? "Save MCP Server" : "Create MCP Server")}
+											</button>
+										</form>
+
+										<section className="space-y-3">
+											<div>
+												<p className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.14em] text-slate-400">Inventory</p>
+												<h3 className="mt-1 text-[1rem] font-bold text-slate-900">Stored MCP servers</h3>
+											</div>
+
+											{mcpServers.length === 0 ? (
+												<p className="border border-dashed border-slate-300 py-5 text-center text-sm font-semibold text-slate-500">No MCP servers configured yet.</p>
+											) : (
+												<ul className="space-y-2.5">
+													{mcpServers.map((server) => {
+														const isBusy = mcpActionServerId === server.id;
+														return (
+															<li key={server.id} className={`border p-4 ${server.enabled ? "border-slate-300 bg-white" : "border-slate-200 bg-slate-50"}`}>
+																<div className="flex flex-wrap items-start justify-between gap-3">
+																	<div className="min-w-0">
+																		<div className="flex flex-wrap items-center gap-2">
+																			<p className="text-[0.94rem] font-bold text-slate-900">{server.name}</p>
+																			<span className={`border px-2 py-0.5 font-mono text-[0.63rem] font-semibold uppercase tracking-[0.1em] ${server.enabled ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-500"}`}>{server.enabled ? "Enabled" : "Disabled"}</span>
+																			<span className="border border-slate-300 bg-white px-2 py-0.5 font-mono text-[0.63rem] font-semibold uppercase tracking-[0.1em] text-slate-500">{server.transport}</span>
+																			{renderStatusPill(getMcpRuntimeLabel(server), getMcpRuntimeTone(server))}
+																		</div>
+																		<p className="mt-2 break-all font-mono text-[0.73rem] text-slate-500">
+																			{server.transport === "stdio" ? `${server.command ?? "No command"}${server.args.length > 0 ? ` ${server.args.join(" ")}` : ""}` : server.url ?? "No URL"}
+																		</p>
+																	</div>
+																	<div className="flex flex-wrap items-center gap-2">
+																		<button type="button" className="border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer" onClick={() => handleEditMcpServer(server)} disabled={mcpActionServerId !== null}>Edit</button>
+																		<button type="button" className="border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer" onClick={() => { void handleToggleMcpServer(server); }} disabled={mcpActionServerId !== null}>{isBusy ? "Saving..." : server.enabled ? "Disable" : "Enable"}</button>
+																		<button type="button" className="border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer" onClick={() => { void handleDeleteSelectedMcpServer(server.id); }} disabled={mcpActionServerId !== null}>{isBusy ? "Deleting..." : "Delete"}</button>
+																	</div>
+																</div>
+																<div className="mt-3 grid gap-3 text-[0.78rem] text-slate-600 min-[720px]:grid-cols-2">
+																	<div>
+																		<p className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.12em] text-slate-400">Runtime</p>
+																		<p className="mt-1">
+																			{server.runtime?.toolCount ?? 0} tool{(server.runtime?.toolCount ?? 0) === 1 ? "" : "s"} discovered
+																		</p>
+																		{server.runtime?.lastError ? (
+																			<p className="mt-1 text-slate-700">{server.runtime.lastError}</p>
+																		) : null}
+																	</div>
+																	<div>
+																		<p className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.12em] text-slate-400">Environment</p>
+																		<p className="mt-1">{Object.keys(server.env).length} variable{Object.keys(server.env).length === 1 ? "" : "s"}</p>
+																	</div>
+																	<div>
+																		<p className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.12em] text-slate-400">Headers</p>
+																		<p className="mt-1">{Object.keys(server.headers).length} header{Object.keys(server.headers).length === 1 ? "" : "s"}</p>
+																	</div>
+																</div>
+															</li>
+														);
+													})}
+												</ul>
+											)}
+										</section>
+									</div>
 								</div>
 							</div>
 						)}

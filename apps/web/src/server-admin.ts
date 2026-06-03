@@ -1,12 +1,18 @@
 import {
+	ADMIN_MCP_PATH,
+	ADMIN_MCP_REFRESH_PATH,
 	ADMIN_PROVIDER_API_KEY_PATH,
 	ADMIN_PROVIDER_LOGIN_PATH,
 	ADMIN_PROVIDERS_PATH,
 	ADMIN_RELAY_REAUTHENTICATE_PATH,
 	ADMIN_STATUS_PATH,
+	type CreateMcpServerRequest,
 	type AvailableSkill,
 	type AvailableTool,
 	type LocalWebAdminStatus,
+	type McpServerConfig,
+	type McpServerRuntimeStatus,
+	type McpServersResponse,
 	type ProviderApiKeyRequest,
 	type ProviderApiKeyResponse,
 	type ProviderLoginRequest,
@@ -17,11 +23,13 @@ import {
 	type RelayReauthenticateRequest,
 	type RelayReauthenticateResponse,
 	type SetDefaultModelRequest,
+	type UpdateMcpServerRequest,
 } from "@apreal/shared";
 import type { ScheduledJobDetails, SessionSummary } from "./chatTypes";
 
 const ADMIN_JOBS_PATH = "/api/admin/jobs";
 const ADMIN_JOB_RUNS_PATH_SUFFIX = "/runs";
+const ADMIN_MCP_PATH_PREFIX = `${ADMIN_MCP_PATH}/`;
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -382,6 +390,58 @@ function parseProvidersResponse(payload: unknown): ProvidersResponse {
 	};
 }
 
+function parseMcpServer(payload: unknown): McpServerConfig {
+	if (
+		!isObjectRecord(payload) ||
+		typeof payload.id !== "string" ||
+		typeof payload.name !== "string" ||
+		(payload.transport !== "stdio" && payload.transport !== "http" && payload.transport !== "sse") ||
+		typeof payload.enabled !== "boolean" ||
+		!(payload.command === null || typeof payload.command === "string") ||
+		!Array.isArray(payload.args) ||
+		payload.args.some((entry) => typeof entry !== "string") ||
+		!isObjectRecord(payload.env) ||
+		Object.values(payload.env).some((entry) => typeof entry !== "string") ||
+		!(payload.url === null || typeof payload.url === "string") ||
+		!isObjectRecord(payload.headers) ||
+		Object.values(payload.headers).some((entry) => typeof entry !== "string") ||
+		!(payload.runtime === undefined || payload.runtime === null || isObjectRecord(payload.runtime)) ||
+		typeof payload.createdAt !== "number" ||
+		typeof payload.updatedAt !== "number"
+	) {
+		throw new Error("MCP servers response returned an invalid format.");
+	}
+
+	let runtime: McpServerRuntimeStatus | undefined;
+	if (payload.runtime !== undefined && payload.runtime !== null) {
+		if (
+			(payload.runtime.state !== "idle" && payload.runtime.state !== "connecting" && payload.runtime.state !== "ready" && payload.runtime.state !== "error" && payload.runtime.state !== "disabled") ||
+			typeof payload.runtime.toolCount !== "number" ||
+			!(payload.runtime.lastError === null || typeof payload.runtime.lastError === "string") ||
+			!(payload.runtime.updatedAt === null || typeof payload.runtime.updatedAt === "number")
+		) {
+			throw new Error("MCP servers response returned an invalid format.");
+		}
+
+		runtime = payload.runtime as McpServerRuntimeStatus;
+	}
+
+	return {
+		...(payload as McpServerConfig),
+		runtime,
+	};
+}
+
+function parseMcpServersResponse(payload: unknown): McpServersResponse {
+	if (!isObjectRecord(payload) || !Array.isArray(payload.servers)) {
+		throw new Error("MCP servers response returned an invalid format.");
+	}
+
+	return {
+		servers: payload.servers.map(parseMcpServer),
+	};
+}
+
 export async function readProviders(): Promise<ProvidersResponse> {
 	const response = await fetch(ADMIN_PROVIDERS_PATH, {
 		method: "GET",
@@ -461,4 +521,81 @@ export async function saveProviderApiKey(provider: string, apiKey: string): Prom
 		...parseProvidersResponse(payload),
 		provider: payload.provider,
 	};
+}
+
+export async function readMcpServers(): Promise<McpServersResponse> {
+	const response = await fetch(ADMIN_MCP_PATH, {
+		method: "GET",
+		headers: { accept: "application/json" },
+	});
+	const payload = await parseJsonResponse(response);
+	if (!response.ok) {
+		throw new Error(getResponseMessage(payload, `MCP servers request failed with status ${response.status}`));
+	}
+
+	return parseMcpServersResponse(payload);
+}
+
+export async function createMcpServer(requestBody: CreateMcpServerRequest): Promise<McpServersResponse> {
+	const response = await fetch(ADMIN_MCP_PATH, {
+		method: "POST",
+		headers: {
+			"content-type": "application/json",
+			accept: "application/json",
+		},
+		body: JSON.stringify(requestBody),
+	});
+	const payload = await parseJsonResponse(response);
+	if (!response.ok) {
+		throw new Error(getResponseMessage(payload, `MCP server create failed with status ${response.status}`));
+	}
+
+	return parseMcpServersResponse(payload);
+}
+
+export async function updateMcpServer(serverId: string, requestBody: UpdateMcpServerRequest): Promise<McpServersResponse> {
+	const response = await fetch(`${ADMIN_MCP_PATH_PREFIX}${encodeURIComponent(serverId)}`, {
+		method: "PATCH",
+		headers: {
+			"content-type": "application/json",
+			accept: "application/json",
+		},
+		body: JSON.stringify(requestBody),
+	});
+	const payload = await parseJsonResponse(response);
+	if (!response.ok) {
+		throw new Error(getResponseMessage(payload, `MCP server update failed with status ${response.status}`));
+	}
+
+	return parseMcpServersResponse(payload);
+}
+
+export async function deleteMcpServer(serverId: string): Promise<McpServersResponse> {
+	const response = await fetch(`${ADMIN_MCP_PATH_PREFIX}${encodeURIComponent(serverId)}`, {
+		method: "DELETE",
+		headers: {
+			accept: "application/json",
+		},
+	});
+	const payload = await parseJsonResponse(response);
+	if (!response.ok) {
+		throw new Error(getResponseMessage(payload, `MCP server delete failed with status ${response.status}`));
+	}
+
+	return parseMcpServersResponse(payload);
+}
+
+export async function refreshMcpServers(): Promise<McpServersResponse> {
+	const response = await fetch(ADMIN_MCP_REFRESH_PATH, {
+		method: "POST",
+		headers: {
+			accept: "application/json",
+		},
+	});
+	const payload = await parseJsonResponse(response);
+	if (!response.ok) {
+		throw new Error(getResponseMessage(payload, `MCP server refresh failed with status ${response.status}`));
+	}
+
+	return parseMcpServersResponse(payload);
 }

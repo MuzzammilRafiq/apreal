@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LOCAL_CLIENT_ID_QUERY_PARAM, type LocalWebAdminStatus, type ProvidersResponse } from "@apreal/shared";
+import { LOCAL_CLIENT_ID_QUERY_PARAM, type CreateMcpServerRequest, type LocalWebAdminStatus, type McpServerConfig, type ProvidersResponse, type UpdateMcpServerRequest } from "@apreal/shared";
 import { Composer } from "./components/Composer";
 import { ScheduledJobsPage } from "./components/ScheduledJobsPage";
 import { SettingsPage } from "./components/SettingsPage";
@@ -17,13 +17,18 @@ import {
 } from "./session-cache";
 import {
 	deleteScheduledJob as deleteScheduledJobRequest,
+	createMcpServer as createMcpServerRequest,
+	deleteMcpServer as deleteMcpServerRequest,
+	refreshMcpServers as refreshMcpServersRequest,
 	readLocalAdminStatus,
+	readMcpServers,
 	readProviders,
 	readScheduledJobRuns,
 	readScheduledJobs,
 	saveProviderApiKey as saveProviderApiKeyRequest,
 	startProviderLogin as startProviderLoginRequest,
 	submitRelayReauthentication,
+	updateMcpServer as updateMcpServerRequest,
 	updateDefaultModel as updateDefaultModelRequest,
 	updateScheduledJob as updateScheduledJobRequest,
 } from "./server-admin";
@@ -242,6 +247,9 @@ export function App() {
 	const [adminStatusError, setAdminStatusError] = useState<string | null>(null);
 	const [providers, setProviders] = useState<ProvidersResponse | null>(null);
 	const [providersError, setProvidersError] = useState<string | null>(null);
+	const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([]);
+	const [mcpServersError, setMcpServersError] = useState<string | null>(null);
+	const [loadingMcpServers, setLoadingMcpServers] = useState(false);
 	const [scheduledJobs, setScheduledJobs] = useState<ScheduledJobDetails[]>([]);
 	const [scheduledJobsError, setScheduledJobsError] = useState<string | null>(null);
 	const [loadingScheduledJobs, setLoadingScheduledJobs] = useState(false);
@@ -544,6 +552,36 @@ export function App() {
 		} catch (error) {
 			setProvidersError(error instanceof Error ? error.message : "Failed to load providers.");
 			throw error;
+		}
+	}, []);
+
+	const refreshMcpServers = useCallback(async () => {
+		setLoadingMcpServers(true);
+		try {
+			const response = await readMcpServers();
+			setMcpServers(response.servers);
+			setMcpServersError(null);
+			return response.servers;
+		} catch (error) {
+			setMcpServersError(getErrorMessage(error));
+			throw error;
+		} finally {
+			setLoadingMcpServers(false);
+		}
+	}, []);
+
+	const reloadMcpServers = useCallback(async () => {
+		setLoadingMcpServers(true);
+		try {
+			const response = await refreshMcpServersRequest();
+			setMcpServers(response.servers);
+			setMcpServersError(null);
+			return response.servers;
+		} catch (error) {
+			setMcpServersError(getErrorMessage(error));
+			throw error;
+		} finally {
+			setLoadingMcpServers(false);
 		}
 	}, []);
 
@@ -1024,6 +1062,24 @@ export function App() {
 		setProvidersError(null);
 	}, []);
 
+	const handleCreateMcpServer = useCallback(async (requestBody: CreateMcpServerRequest) => {
+		const response = await createMcpServerRequest(requestBody);
+		setMcpServers(response.servers);
+		setMcpServersError(null);
+	}, []);
+
+	const handleUpdateMcpServer = useCallback(async (serverId: string, requestBody: UpdateMcpServerRequest) => {
+		const response = await updateMcpServerRequest(serverId, requestBody);
+		setMcpServers(response.servers);
+		setMcpServersError(null);
+	}, []);
+
+	const handleDeleteMcpServer = useCallback(async (serverId: string) => {
+		const response = await deleteMcpServerRequest(serverId);
+		setMcpServers(response.servers);
+		setMcpServersError(null);
+	}, []);
+
 	useEffect(() => {
 		if (route !== "jobs" && route !== "settings") {
 			return;
@@ -1033,6 +1089,16 @@ export function App() {
 			// The error state is already captured for rendering.
 		});
 	}, [refreshScheduledJobs, route]);
+
+	useEffect(() => {
+		if (route !== "settings") {
+			return;
+		}
+
+		void refreshMcpServers().catch(() => {
+			// MCP errors are already captured for rendering.
+		});
+	}, [refreshMcpServers, route]);
 
 	useEffect(() => {
 		if (route !== "settings") {
@@ -1062,6 +1128,9 @@ export function App() {
 				statusError={adminStatusError}
 				providers={providers}
 				providersError={providersError}
+				mcpServers={mcpServers}
+				mcpServersError={mcpServersError}
+				isLoadingMcpServers={loadingMcpServers}
 				isSubmitting={submittingPairingCode}
 				submissionMessage={settingsMessage}
 				submissionError={settingsError}
@@ -1089,6 +1158,14 @@ export function App() {
 				onSetDefaultModel={handleSetDefaultModel}
 				onStartProviderLogin={handleStartProviderLogin}
 				onSaveProviderApiKey={handleSaveProviderApiKey}
+				onCreateMcpServer={handleCreateMcpServer}
+				onUpdateMcpServer={handleUpdateMcpServer}
+				onDeleteMcpServer={handleDeleteMcpServer}
+				onRefreshMcpServers={() => {
+					void reloadMcpServers().catch(() => {
+						// MCP errors are already captured for rendering.
+					});
+				}}
 				onSubmitPairingCode={handleSubmitPairingCode}
 			/>
 		);
