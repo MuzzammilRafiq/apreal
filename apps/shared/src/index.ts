@@ -2,6 +2,7 @@ export const CLIENT_EVENT_STREAM_PATH = "/api/client/stream";
 export const CLIENT_MESSAGE_PATH = "/api/client/message";
 export const ADMIN_STATUS_PATH = "/api/admin/status";
 export const ADMIN_RELAY_REAUTHENTICATE_PATH = "/api/admin/relay/reauthenticate";
+export const ADMIN_APPEND_SYSTEM_PROMPT_PATH = "/api/admin/system-prompt";
 export const ADMIN_PROVIDER_LOGIN_PATH = "/api/admin/providers/login";
 export const ADMIN_PROVIDER_API_KEY_PATH = "/api/admin/providers/api-key";
 export const ADMIN_MCP_PATH = "/api/admin/mcp";
@@ -167,12 +168,22 @@ export type LocalWebAdminStatus = {
 	reauthRunning: boolean;
 	webUiReady: boolean;
 	webUiPath: string;
+	appendSystemPrompt: string;
+	appendSystemPromptPath: string;
 	availableTools: AvailableTool[];
 	availableSkills: AvailableSkill[];
 };
 
 export type RelayReauthenticateRequest = {
 	pairingCode: string;
+};
+
+export type UpdateAppendSystemPromptRequest = {
+	appendSystemPrompt: string;
+};
+
+export type UpdateAppendSystemPromptResponse = {
+	status: LocalWebAdminStatus;
 };
 
 export const ADMIN_PROVIDERS_PATH = "/api/admin/providers";

@@ -1,9 +1,10 @@
 import { createInterface } from "node:readline";
-import { access, readFile, stat } from "node:fs/promises";
+import { access, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import type { Server as HttpServer } from "node:http";
 import { AuthStorage } from "@earendil-works/pi-coding-agent";
 import {
+	ADMIN_APPEND_SYSTEM_PROMPT_PATH,
 	ADMIN_MCP_PATH,
 	ADMIN_MCP_REFRESH_PATH,
 	ADMIN_PROVIDER_API_KEY_PATH,
@@ -28,6 +29,8 @@ import {
 	type RelayReauthenticateRequest,
 	type RelayReauthenticateResponse,
 	type SetDefaultModelRequest,
+	type UpdateAppendSystemPromptRequest,
+	type UpdateAppendSystemPromptResponse,
 	type UpdateMcpServerRequest,
 } from "@apreal/shared";
 import { createChatStore } from "../chat-store.ts";
@@ -79,6 +82,7 @@ const WEB_DIST_DIR = resolve(SERVER_SRC_DIR, "..", "..", "..", "web", "dist");
 const WEB_INDEX_PATH = join(WEB_DIST_DIR, "index.html");
 const APREAL_AGENT_AUTH_PATH = getAprealAgentPath("auth.json");
 const APREAL_AGENT_MCP_PATH = getAprealAgentPath("mcp.json");
+const APREAL_AGENT_APPEND_SYSTEM_PROMPT_PATH = getAprealAgentPath("APPEND_SYSTEM.md");
 const ADMIN_JOBS_PATH = "/api/admin/jobs";
 const ADMIN_JOBS_PATH_PREFIX = `${ADMIN_JOBS_PATH}/`;
 const ADMIN_MCP_PATH_PREFIX = `${ADMIN_MCP_PATH}/`;
@@ -120,6 +124,28 @@ async function fileExists(filePath: string): Promise<boolean> {
 	} catch {
 		return false;
 	}
+}
+
+async function readAppendSystemPrompt(): Promise<string> {
+	try {
+		return await readFile(APREAL_AGENT_APPEND_SYSTEM_PROMPT_PATH, "utf8");
+	} catch (error) {
+		if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+			return "";
+		}
+		throw error;
+	}
+}
+
+async function writeAppendSystemPrompt(value: string): Promise<void> {
+	const normalizedValue = value.trim();
+	if (!normalizedValue) {
+		await rm(APREAL_AGENT_APPEND_SYSTEM_PROMPT_PATH, { force: true });
+		return;
+	}
+
+	await mkdir(getAprealAgentPath(), { recursive: true });
+	await writeFile(APREAL_AGENT_APPEND_SYSTEM_PROMPT_PATH, normalizedValue, "utf8");
 }
 
 function parseAdminJobRoute(pathname: string): { jobId: string; subpath: "runs" | null } | null {
@@ -482,9 +508,25 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 			reauthRunning: relayState.reauthRunning,
 			webUiReady,
 			webUiPath: WEB_DIST_DIR,
+			appendSystemPrompt: await readAppendSystemPrompt(),
+			appendSystemPromptPath: APREAL_AGENT_APPEND_SYSTEM_PROMPT_PATH,
 			availableTools: inventory.availableTools,
 			availableSkills: inventory.availableSkills,
 		};
+	};
+
+	const recycleIdleSessionControllers = () => {
+		for (const session of sessions.values()) {
+			if (session.busy) {
+				continue;
+			}
+
+			session.unsubscribe?.();
+			session.unsubscribe = null;
+			session.controller?.dispose();
+			session.controller = null;
+			session.controllerPromise = null;
+		}
 	};
 
 	const withMcpRuntime = (response: McpServersResponse): McpServersResponse => ({
@@ -700,6 +742,63 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 					return json(await buildStatusPayload(), {
 						headers: createCorsHeaders(),
 					});
+				}
+
+				if (url.pathname === ADMIN_APPEND_SYSTEM_PROMPT_PATH) {
+					const localOnlyResponse = assertLocalAdminRequest(request);
+					if (localOnlyResponse) {
+						return localOnlyResponse;
+					}
+
+					if (request.method === "OPTIONS") {
+						return new Response(null, {
+							status: 204,
+							headers: createCorsHeaders(),
+						});
+					}
+
+					if (request.method !== "POST") {
+						return new Response("Method Not Allowed", {
+							status: 405,
+							headers: createCorsHeaders(),
+						});
+					}
+
+					let payload: unknown;
+					try {
+						payload = await request.json();
+					} catch {
+						return json(
+							{ message: "Request body must be valid JSON." },
+							{ status: 400, headers: createCorsHeaders() },
+						);
+					}
+
+					const appendSystemPrompt = typeof (payload as UpdateAppendSystemPromptRequest | null)?.appendSystemPrompt === "string"
+						? (payload as UpdateAppendSystemPromptRequest).appendSystemPrompt
+						: null;
+					if (appendSystemPrompt === null) {
+						return json(
+							{ message: "appendSystemPrompt must be a string." },
+							{ status: 400, headers: createCorsHeaders() },
+						);
+					}
+
+					try {
+						await writeAppendSystemPrompt(appendSystemPrompt);
+						recycleIdleSessionControllers();
+						const response: UpdateAppendSystemPromptResponse = {
+							status: await buildStatusPayload(),
+						};
+						return json(response, {
+							headers: createCorsHeaders(),
+						});
+					} catch (error) {
+						return json(
+							{ message: getErrorMessage(error) },
+							{ status: 500, headers: createCorsHeaders() },
+						);
+					}
 				}
 
 				if (url.pathname === ADMIN_PROVIDER_API_KEY_PATH) {

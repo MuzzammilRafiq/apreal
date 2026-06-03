@@ -1,4 +1,5 @@
 import {
+	ADMIN_APPEND_SYSTEM_PROMPT_PATH,
 	ADMIN_MCP_PATH,
 	ADMIN_MCP_REFRESH_PATH,
 	ADMIN_PROVIDER_API_KEY_PATH,
@@ -23,6 +24,8 @@ import {
 	type RelayReauthenticateRequest,
 	type RelayReauthenticateResponse,
 	type SetDefaultModelRequest,
+	type UpdateAppendSystemPromptRequest,
+	type UpdateAppendSystemPromptResponse,
 	type UpdateMcpServerRequest,
 } from "@apreal/shared";
 import type { ScheduledJobDetails, SessionSummary } from "./chatTypes";
@@ -100,6 +103,8 @@ function parseStatus(payload: unknown): LocalWebAdminStatus {
 		typeof payload.reauthRunning !== "boolean" ||
 		typeof payload.webUiReady !== "boolean" ||
 		typeof payload.webUiPath !== "string" ||
+		typeof payload.appendSystemPrompt !== "string" ||
+		typeof payload.appendSystemPromptPath !== "string" ||
 		!Array.isArray(payload.availableTools) ||
 		!Array.isArray(payload.availableSkills)
 	) {
@@ -244,6 +249,33 @@ export async function submitRelayReauthentication(
 	};
 }
 
+export async function saveAppendSystemPrompt(
+	appendSystemPrompt: string,
+	requestUrl = ADMIN_APPEND_SYSTEM_PROMPT_PATH,
+): Promise<UpdateAppendSystemPromptResponse> {
+	const requestBody: UpdateAppendSystemPromptRequest = { appendSystemPrompt };
+	const response = await fetch(requestUrl, {
+		method: "POST",
+		headers: {
+			"content-type": "application/json",
+			accept: "application/json",
+		},
+		body: JSON.stringify(requestBody),
+	});
+	const payload = await parseJsonResponse(response);
+	if (!response.ok) {
+		throw new Error(getResponseMessage(payload, `System prompt update failed with status ${response.status}`));
+	}
+
+	if (!isObjectRecord(payload) || !("status" in payload)) {
+		throw new Error("System prompt update returned an invalid response.");
+	}
+
+	return {
+		status: parseStatus(payload.status),
+	};
+}
+
 export async function readScheduledJobs(requestUrl = ADMIN_JOBS_PATH): Promise<ScheduledJobDetails[]> {
 	const response = await fetch(requestUrl, {
 		method: "GET",
@@ -312,6 +344,7 @@ export async function deleteScheduledJob(jobId: string): Promise<void> {
 }
 
 export {
+	ADMIN_APPEND_SYSTEM_PROMPT_PATH,
 	ADMIN_PROVIDER_API_KEY_PATH,
 	ADMIN_PROVIDER_LOGIN_PATH,
 	ADMIN_JOBS_PATH,

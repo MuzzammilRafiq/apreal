@@ -26,6 +26,7 @@ import {
 	readScheduledJobRuns,
 	readScheduledJobs,
 	saveProviderApiKey as saveProviderApiKeyRequest,
+	saveAppendSystemPrompt as saveAppendSystemPromptRequest,
 	startProviderLogin as startProviderLoginRequest,
 	submitRelayReauthentication,
 	updateMcpServer as updateMcpServerRequest,
@@ -259,6 +260,9 @@ export function App() {
 	const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
 	const [settingsError, setSettingsError] = useState<string | null>(null);
 	const [submittingPairingCode, setSubmittingPairingCode] = useState(false);
+	const [appendPromptMessage, setAppendPromptMessage] = useState<string | null>(null);
+	const [appendPromptError, setAppendPromptError] = useState<string | null>(null);
+	const [savingAppendPrompt, setSavingAppendPrompt] = useState(false);
 	const [connectionError, setConnectionError] = useState<string | null>(null);
 	const [streamRequested, setStreamRequested] = useState(false);
 	const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1040,6 +1044,28 @@ export function App() {
 			});
 	}, []);
 
+	const handleSaveAppendSystemPrompt = useCallback((appendSystemPrompt: string) => {
+		setSavingAppendPrompt(true);
+		setAppendPromptError(null);
+		setAppendPromptMessage(null);
+		void saveAppendSystemPromptRequest(appendSystemPrompt)
+			.then((response) => {
+				setAdminStatus(response.status);
+				setAdminStatusError(null);
+				setAppendPromptMessage(
+					appendSystemPrompt.trim().length > 0
+						? "Appended system prompt saved. Idle sessions will reload it on the next prompt."
+						: "Appended system prompt cleared. Idle sessions will use the default prompt on the next prompt.",
+				);
+			})
+			.catch((error) => {
+				setAppendPromptError(getErrorMessage(error));
+			})
+			.finally(() => {
+				setSavingAppendPrompt(false);
+			});
+	}, []);
+
 	const handleSetDefaultModel = useCallback(async (provider: string, modelId: string) => {
 		const nextProviders = await updateDefaultModelRequest({ provider, modelId });
 		setProviders(nextProviders);
@@ -1134,6 +1160,9 @@ export function App() {
 				isSubmitting={submittingPairingCode}
 				submissionMessage={settingsMessage}
 				submissionError={settingsError}
+				isSavingAppendPrompt={savingAppendPrompt}
+				appendPromptSubmissionMessage={appendPromptMessage}
+				appendPromptSubmissionError={appendPromptError}
 				jobs={scheduledJobs}
 				jobRuns={scheduledJobRuns}
 				sessionCache={sessionCache}
@@ -1167,6 +1196,7 @@ export function App() {
 					});
 				}}
 				onSubmitPairingCode={handleSubmitPairingCode}
+				onSaveAppendSystemPrompt={handleSaveAppendSystemPrompt}
 			/>
 		);
 	}
