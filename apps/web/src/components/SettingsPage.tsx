@@ -834,7 +834,7 @@ export function SettingsPage({
 											<dt className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Web UI Build State</dt>
 											<dd className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-slate-800">
 												<span className={`h-2 w-2 rounded-full ${adminStatus?.webUiReady ? "bg-slate-900" : "bg-slate-400"}`} />
-												{adminStatus?.webUiReady ? "Ready (Vite compiler online)" : "Awaiting Vite compiler output"}
+												{adminStatus?.webUiReady ? "Built assets available" : "Built assets missing"}
 												{adminStatus?.webUiPath ? <span className="text-[#64748b] font-mono text-[0.78rem] font-normal"> · {adminStatus.webUiPath}</span> : ""}
 											</dd>
 										</div>

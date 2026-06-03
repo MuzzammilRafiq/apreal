@@ -21,25 +21,22 @@ Use Node.js 20.6 or newer.
 
 ## Development
 
-Run the Node server:
-
-```bash
-pnpm dev:server
-```
-
-Run the React web app:
-
-```bash
-pnpm dev:web
-```
-
-Run both together:
+Run both the Node server and the React web app together:
 
 ```bash
 pnpm dev
 ```
 
 `pnpm dev` uses Turbo's TUI so the server and web tasks show up as separate selectable streams in the terminal.
+
+This is the only development mode with frontend hot reload. Edit files under `apps/web/src`, keep the browser open at `http://localhost:5173`, and Vite will reload without rebuilding `apps/web/dist` or restarting the server.
+
+If you want to run just one side, use:
+
+```bash
+pnpm dev:server
+pnpm dev:web
+```
 
 If you want plain prefixed terminal output instead of the TUI, use:
 
@@ -66,7 +63,7 @@ The server listens on `http://localhost:3000` by default and exposes:
 - `POST /api/client/message`
 - `POST /api/relay/connection`
 
-The browser UI is only served by the Vite app at `http://localhost:5173` in development. The Node server does not serve frontend assets. The browser should point `VITE_PI_RELAY_URL` at the relay host, and the Pi server opens an outbound authenticated stream to that relay for browser traffic.
+In development, the browser UI should be opened from the Vite app at `http://localhost:5173` so HMR works. The Node server still serves built frontend assets from `apps/web/dist` when that bundle exists, but that path does not hot reload.
 
 ## Build And Checks
 

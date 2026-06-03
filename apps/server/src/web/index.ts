@@ -231,7 +231,7 @@ function createMissingWebUiResponse(request: Request, port: number): Response {
 <body>
   <h1>Apreal server is running</h1>
   <p>The browser UI bundle is not available at this origin yet.</p>
-  <p>Run <code>pnpm --dir apps/web dev</code> and open <a href="http://localhost:5173">http://localhost:5173</a>, or build <code>apps/web</code> to serve it from this server.</p>
+  <p>Run <code>pnpm dev</code> for hot reload at <a href="http://localhost:5173">http://localhost:5173</a>, or build <code>apps/web</code> to serve it from this server.</p>
   <p><a href="/health">Health check</a></p>
   <p><a href="${ADMIN_STATUS_PATH}">Server status</a></p>
   <p>Expected build output: <code>${WEB_DIST_DIR}</code></p>
@@ -1335,7 +1335,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		console.log(`Frontend UI: http://localhost:${listeningPort}`);
 	} else {
 		console.log(`Frontend setup page: http://localhost:${listeningPort}`);
-		console.log("Browser UI bundle missing. Run `pnpm --dir apps/web dev` for the Vite UI at http://localhost:5173, or build apps/web for same-origin serving.");
+		console.log("Browser UI bundle missing. Run `pnpm dev` for the Vite UI with hot reload at http://localhost:5173, or build apps/web for same-origin serving.");
 	}
 	console.log(`Health check: http://localhost:${listeningPort}/health`);
 	console.log(`Settings API: http://localhost:${listeningPort}${ADMIN_STATUS_PATH}`);
