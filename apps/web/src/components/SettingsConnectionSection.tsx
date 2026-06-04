@@ -1,6 +1,36 @@
+import type { ReactNode } from "react";
+
 import { renderStatusPill } from "./settings-helpers";
 
 type SettingsConnectionSectionProps = Record<string, any>;
+
+function ConnectionMetricCard({ label, value }: { label: string; value: string }) {
+	return (
+		<div className="min-w-0 border border-slate-200 bg-slate-50 px-3 py-2">
+			<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">{label}</p>
+			<p className="mt-1 text-[0.95rem] font-bold leading-tight text-slate-900 [overflow-wrap:anywhere]">{value}</p>
+		</div>
+	);
+}
+
+function ConnectionValueRow({
+	label,
+	value,
+	className = "",
+	valueClassName = "",
+}: {
+	label: string;
+	value: ReactNode;
+	className?: string;
+	valueClassName?: string;
+}) {
+	return (
+		<div className={`grid min-w-0 gap-x-3 gap-y-1 border-b border-slate-200 py-2 last:border-b-0 min-[700px]:grid-cols-[10rem_minmax(0,1fr)] ${className}`.trim()}>
+			<dt className="min-w-0 font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">{label}</dt>
+			<dd className={`min-w-0 text-[0.9rem] leading-[1.45] text-slate-800 [overflow-wrap:anywhere] ${valueClassName}`.trim()}>{value}</dd>
+		</div>
+	);
+}
 
 export function SettingsConnectionSection({
 	activeSection,
@@ -52,60 +82,62 @@ export function SettingsConnectionSection({
 										</p>
 									) : null}
 
-									<div className="mt-4 grid gap-3 min-[700px]:grid-cols-3">
-										<div className="border border-slate-200 bg-slate-50 px-3.5 py-3">
-											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Local Server</p>
-											<p className="mt-2 text-base font-bold text-slate-900">
-												{adminStatus ? `Online on :${adminStatus.port}` : "Offline"}
-											</p>
-										</div>
-										<div className="border border-slate-200 bg-slate-50 px-3.5 py-3">
-											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Relay Pairing</p>
-											<p className="mt-2 text-base font-bold text-slate-900">{relayReady ? "Paired" : "Awaiting pairing"}</p>
-										</div>
-										<div className="border border-slate-200 bg-slate-50 px-3.5 py-3">
-											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Gateway Transport</p>
-											<p className="mt-2 text-base font-bold text-slate-900">
-												{adminStatus?.relayTransportConnected ? "Connected" : "Idle"}
-											</p>
-										</div>
+									<div className="mt-4 grid gap-2 min-[700px]:grid-cols-3">
+										<ConnectionMetricCard
+											label="Local Server"
+											value={adminStatus ? `Online on :${adminStatus.port}` : "Offline"}
+										/>
+										<ConnectionMetricCard label="Relay Pairing" value={relayReady ? "Paired" : "Awaiting pairing"} />
+										<ConnectionMetricCard
+											label="Gateway Transport"
+											value={adminStatus?.relayTransportConnected ? "Connected" : "Idle"}
+										/>
 									</div>
 
-									<dl className="mt-4 grid gap-3 text-sm leading-[1.5] min-[700px]:grid-cols-2">
-										<div className="border border-slate-200 bg-slate-50 px-3.5 py-3">
-											<dt className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Active Port</dt>
-											<dd className="mt-2 text-base font-bold text-slate-900 font-mono">{adminStatus?.port ?? "Unavailable"}</dd>
-										</div>
-										<div className="border border-slate-200 bg-slate-50 px-3.5 py-3">
-											<dt className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Local Agent ID</dt>
-											<dd className="mt-2 break-all text-[0.92rem] font-semibold text-slate-800 font-mono">{adminStatus?.agentId ?? "Not registered"}</dd>
-										</div>
-										<div className="border border-slate-200 bg-slate-50 px-3.5 py-3">
-											<dt className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Connected Clients</dt>
-											<dd className="mt-2 text-base font-bold text-slate-900 font-mono">{adminStatus?.clients ?? "Unavailable"}</dd>
-										</div>
-										<div className="border border-slate-200 bg-slate-50 px-3.5 py-3">
-											<dt className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Stored Sessions</dt>
-											<dd className="mt-2 text-base font-bold text-slate-900 font-mono">{adminStatus?.sessions ?? "Unavailable"}</dd>
-										</div>
-										<div className="border border-slate-200 bg-slate-50 px-3.5 py-3 min-[700px]:col-span-2">
-											<dt className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Root Workspace CWD</dt>
-											<dd className="mt-2 break-all text-[0.86rem] font-medium text-slate-700 font-mono">{adminStatus?.cwd ?? "Unavailable"}</dd>
-										</div>
-										<div className="border border-slate-200 bg-slate-50 px-3.5 py-3 min-[700px]:col-span-2">
-											<dt className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Web UI Build State</dt>
-											<dd className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-slate-800">
-												<span className={`h-2 w-2 rounded-full ${adminStatus?.webUiReady ? "bg-slate-900" : "bg-slate-400"}`} />
-												{adminStatus?.webUiReady ? "Built assets available" : "Built assets missing"}
-												{adminStatus?.webUiPath ? <span className="text-[#64748b] font-mono text-[0.78rem] font-normal"> · {adminStatus.webUiPath}</span> : ""}
-											</dd>
-										</div>
-										<div className="border border-slate-200 bg-slate-50 px-3.5 py-3 min-[700px]:col-span-2">
-											<dt className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Relay Gateway URL</dt>
-											<dd className="mt-2 break-all text-[0.86rem] font-medium text-slate-700 font-mono">{adminStatus?.relayUrl ?? "Unavailable"}</dd>
-										</div>
+									<dl className="mt-4 border-y border-slate-200">
+										<ConnectionValueRow
+											label="Active Port"
+											value={adminStatus?.port ?? "Unavailable"}
+											valueClassName="font-mono font-semibold text-slate-900"
+										/>
+										<ConnectionValueRow
+											label="Local Agent ID"
+											value={adminStatus?.agentId ?? "Not registered"}
+											valueClassName="font-mono font-semibold"
+										/>
+										<ConnectionValueRow
+											label="Connected Clients"
+											value={adminStatus?.clients ?? "Unavailable"}
+											valueClassName="font-mono font-semibold text-slate-900"
+										/>
+										<ConnectionValueRow
+											label="Stored Sessions"
+											value={adminStatus?.sessions ?? "Unavailable"}
+											valueClassName="font-mono font-semibold text-slate-900"
+										/>
+										<ConnectionValueRow
+											label="Root Workspace CWD"
+											value={adminStatus?.cwd ?? "Unavailable"}
+											valueClassName="font-mono text-[0.84rem] font-medium text-slate-700"
+										/>
+										<ConnectionValueRow
+											label="Web UI Build State"
+											valueClassName="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[0.9rem] font-semibold"
+											value={
+												<>
+													<span className={`h-2 w-2 rounded-full ${adminStatus?.webUiReady ? "bg-slate-900" : "bg-slate-400"}`} />
+													{adminStatus?.webUiReady ? "Built assets available" : "Built assets missing"}
+													{adminStatus?.webUiPath ? <span className="font-mono text-[0.78rem] font-normal text-[#64748b]">· {adminStatus.webUiPath}</span> : ""}
+												</>
+											}
+										/>
+										<ConnectionValueRow
+											label="Relay Gateway URL"
+											value={adminStatus?.relayUrl ?? "Unavailable"}
+											valueClassName="font-mono text-[0.84rem] font-medium text-slate-700"
+										/>
 										{adminStatus?.relayStartupError ? (
-											<div className="border border-slate-300 bg-slate-100 px-3.5 py-3 min-[700px]:col-span-2">
+											<div className="mt-2 border border-slate-300 bg-slate-100 px-3 py-2.5">
 												<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-slate-700">Gateway startup error</p>
 												<p className="mt-2 text-[0.84rem] leading-[1.5] text-slate-800 font-medium">{adminStatus.relayStartupError}</p>
 											</div>
