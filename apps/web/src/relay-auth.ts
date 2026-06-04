@@ -7,6 +7,7 @@ import {
 	type RelayClientHeartbeatRequest,
 	type RelayClientHeartbeatResponse,
 } from "@apreal/shared";
+import { createBrowserUuid } from "./local-client";
 
 const RELAY_CLIENT_AUTH_STORAGE_KEY = "pi-browser-relay-auth";
 
@@ -91,8 +92,8 @@ function createClientIdentity(relayUrl: string): StoredRelayClientAuth {
 	const existing = readStoredRelayClientAuth(relayUrl);
 	return {
 		relayUrl,
-		clientId: existing?.clientId ?? `client-${crypto.randomUUID()}`,
-		clientKey: existing?.clientKey ?? `key-${crypto.randomUUID()}`,
+		clientId: existing?.clientId ?? `client-${createBrowserUuid()}`,
+		clientKey: existing?.clientKey ?? `key-${createBrowserUuid()}`,
 		token: existing?.token ?? "",
 		expiresAt: existing?.expiresAt ?? 0,
 		pairingCode: existing?.pairingCode ?? null,

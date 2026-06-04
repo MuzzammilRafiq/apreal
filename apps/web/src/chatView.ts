@@ -38,7 +38,7 @@ export function getSessionCardClassName(isActive: boolean): string {
 }
 
 export function getMessageClassName(message: TranscriptMessage): string {
-	const baseClassName = "flex w-full flex-col gap-2.5 animate-message-enter max-[860px]:max-w-full min-[861px]:max-w-[85%]";
+	const baseClassName = "flex w-full flex-col gap-2.5 animate-message-enter max-w-full min-[861px]:max-w-[85%]";
 
 		switch (message.role) {
 			case "user":
@@ -46,7 +46,7 @@ export function getMessageClassName(message: TranscriptMessage): string {
 			case "assistant":
 				return `${baseClassName} mr-auto border-b border-line-soft pb-5`;
 			case "system":
-				return `${baseClassName} mx-auto max-w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3.5 text-center`;
+				return `${baseClassName} mx-auto rounded-lg border border-slate-200 bg-slate-50 px-4 py-3.5 text-center`;
 			case "error":
 				return `${baseClassName} mr-auto rounded-lg border border-slate-300 bg-slate-100 px-4 py-3.5`;
 			default:

@@ -91,6 +91,7 @@ export function SettingsPage({
 	onSaveAppendSystemPrompt,
 }: SettingsPageProps) {
 	const [activeSection, setActiveSection] = useState<SettingsSection>("connection");
+	const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 	const [pairingCode, setPairingCode] = useState("");
 	const [modelQuery, setModelQuery] = useState("");
 	const [providerQuery, setProviderQuery] = useState("");
@@ -407,34 +408,121 @@ export function SettingsPage({
 	const readyMcpServerCount = mcpServers.filter((server) => server.runtime?.state === "ready").length;
 	const mcpToolCount = mcpServers.reduce((total, server) => total + (server.runtime?.toolCount ?? 0), 0);
 
+	useEffect(() => {
+		if (!mobileMenuOpen) {
+			return;
+		}
+
+		const previousOverflow = document.body.style.overflow;
+		document.body.style.overflow = "hidden";
+		return () => {
+			document.body.style.overflow = previousOverflow;
+		};
+	}, [mobileMenuOpen]);
+
 	return (
 		<main className="min-h-svh bg-[#f3f3f1] text-[#171717] selection:bg-black/10 selection:text-black">
 			<div className="flex min-h-svh w-full flex-col">
 				{/* ---- Main layout: sidebar + content ---- */}
 				<div className="grid flex-1 min-[961px]:grid-cols-[280px_minmax(0,1fr)] min-[1320px]:grid-cols-[300px_minmax(0,1fr)]">
-					{/* ======== SIDEBAR ======== */}
-					<nav className="flex flex-col gap-3 border-b border-black/10 bg-[#101010] min-[961px]:sticky min-[961px]:top-0 min-[961px]:min-h-svh min-[961px]:self-start min-[961px]:border-r min-[961px]:border-b-0">
-						{/* Mobile: horizontal scroll tabs */}
-						<div className="flex gap-1 overflow-x-auto px-3 py-3 min-[961px]:hidden scrollbar-thin">
-							{SECTIONS.map((section) => (
-								<button
-									key={section.id}
-									type="button"
-									onClick={() => setActiveSection(section.id)}
-									className={`flex shrink-0 items-center gap-2 border px-3 py-2 text-sm font-semibold transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer ${
-										activeSection === section.id
-											? "border-black bg-black text-white"
-											: "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-									}`}
-								>
-									<SectionIcon section={section.id} />
-									{section.label}
-								</button>
-							))}
+					<div className="z-30 flex items-center justify-between gap-3 border-b border-black/8 bg-white px-3 py-3 min-[961px]:hidden">
+						<button
+							type="button"
+							className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-900 transition-colors duration-150 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+							onClick={() => setMobileMenuOpen(true)}
+							aria-label="Open settings menu"
+						>
+							<svg viewBox="0 0 20 20" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth="2.2">
+								<path d="M3.333 5h13.334M3.333 10h13.334M3.333 15h13.334" strokeLinecap="round" strokeLinejoin="round" />
+							</svg>
+						</button>
+						<div className="min-w-0 flex-1">
+							<p className="font-mono text-[0.64rem] font-semibold uppercase tracking-[0.14em] text-slate-500">Settings</p>
+							<p className="truncate text-[0.9rem] font-semibold tracking-tight text-slate-900">{activeSectionTitle}</p>
 						</div>
+						<button
+							type="button"
+							className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-black bg-black text-white transition-colors duration-150 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+							onClick={onBack}
+							aria-label="Back to chat"
+						>
+							<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+								<path strokeLinecap="round" strokeLinejoin="round" d="M19 12H5M12 19l-7-7 7-7" />
+							</svg>
+						</button>
+					</div>
 
+					{mobileMenuOpen ? (
+						<div className="fixed inset-0 z-50 bg-black/40 min-[961px]:hidden" aria-hidden="true">
+							<button
+								type="button"
+								className="absolute inset-0 h-full w-full cursor-default"
+								onClick={() => setMobileMenuOpen(false)}
+								aria-label="Close settings menu"
+							/>
+							<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden bg-[#101010] text-white shadow-2xl">
+								<div className="border-b border-white/8 px-4 py-4">
+									<div className="flex items-center justify-between gap-3">
+										<div>
+											<p className="font-mono text-[0.66rem] font-semibold uppercase tracking-[0.14em] text-white/50">Navigation</p>
+											<h2 className="mt-1 text-lg font-semibold tracking-tight text-white">Settings</h2>
+										</div>
+										<button
+											type="button"
+											className="flex h-10 w-10 items-center justify-center rounded-md border border-white/10 bg-white/4 text-white/70 transition-colors duration-150 hover:border-white/16 hover:bg-white/8 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+											onClick={() => setMobileMenuOpen(false)}
+											aria-label="Close settings menu"
+										>
+											<svg viewBox="0 0 20 20" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth="2.2">
+												<path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" strokeLinejoin="round" />
+											</svg>
+										</button>
+									</div>
+								</div>
+								<div className="flex flex-1 flex-col py-2">
+									{SECTIONS.map((section) => (
+										<button
+											key={section.id}
+											type="button"
+											onClick={() => {
+												setActiveSection(section.id);
+												setMobileMenuOpen(false);
+											}}
+											className={`flex items-center gap-3 border-l-2 px-5 py-3 text-left transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white cursor-pointer ${
+												activeSection === section.id
+													? "border-white bg-white text-black"
+													: "border-transparent text-white/78 hover:bg-white/6 hover:text-white"
+											}`}
+										>
+											<span className={`mt-0.5 shrink-0 ${activeSection === section.id ? "text-black" : "text-white/40"}`}>
+												<SectionIcon section={section.id} />
+											</span>
+											<span className={`text-[0.92rem] font-semibold leading-tight ${activeSection === section.id ? "text-black" : "text-white"}`}>
+												{section.label}
+											</span>
+										</button>
+									))}
+									<div className="mt-auto border-t border-white/8 px-5 py-4">
+										<button
+											type="button"
+											className="inline-flex w-full items-center justify-center gap-2 border border-white/12 bg-white/6 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white cursor-pointer"
+											onClick={onBack}
+										>
+											<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+												<path strokeLinecap="round" strokeLinejoin="round" d="M19 12H5M12 19l-7-7 7-7" />
+											</svg>
+											Back to chat
+										</button>
+									</div>
+								</div>
+							</aside>
+						</div>
+					) : null}
+
+					{/* ======== SIDEBAR ======== */}
+					<nav className="hidden flex-col gap-3 border-b border-black/10 bg-[#101010] min-[961px]:sticky min-[961px]:top-0 min-[961px]:flex min-[961px]:min-h-svh min-[961px]:self-start min-[961px]:border-r min-[961px]:border-b-0">
 						{/* Desktop: vertical sidebar */}
-						<div className="hidden text-white min-[961px]:flex min-[961px]:min-h-svh min-[961px]:flex-col">
+						<div className="text-white min-[961px]:flex min-[961px]:min-h-svh min-[961px]:flex-col">
 							<div className="border-b border-white/8 px-5 py-4">
 								<h2 className="text-[1rem] font-semibold tracking-tight text-white">
 									Settings
@@ -477,14 +565,24 @@ export function SettingsPage({
 					</nav>
 
 					{/* ======== CONTENT ======== */}
-					<div className="min-w-0 bg-white p-4 min-[961px]:min-h-svh min-[961px]:p-6">
-						<header className="flex flex-wrap items-start justify-between gap-4 border-b border-black/8 pb-4">
+					<div className="min-w-0 bg-white px-3 py-4 min-[961px]:min-h-svh min-[961px]:p-6">
+						<header className="flex flex-col gap-3 border-b border-black/8 pb-4 min-[961px]:flex-row min-[961px]:items-start min-[961px]:justify-between min-[961px]:gap-4">
 							<div>
 								<h1 className="text-[1.45rem] font-bold tracking-tight leading-none text-slate-900 min-[961px]:text-[1.7rem]">
 									{activeSectionTitle}
 								</h1>
 							</div>
-							<div className="flex shrink-0 flex-wrap items-center gap-2.5">
+							<div className="flex w-full shrink-0 flex-wrap items-center gap-2.5 min-[961px]:w-auto">
+								<div className="inline-flex w-full items-center gap-2 border border-black/8 bg-slate-50 px-3 py-2 text-[0.72rem] font-medium text-slate-600 min-[1100px]:hidden">
+									<span className={`inline-block h-2 w-2 rounded-full ${isOnline ? "bg-slate-900" : "bg-slate-400"}`} />
+									<span className="font-mono uppercase tracking-[0.1em]">
+										{isOnline ? `Server :${adminStatus?.port ?? ""}` : "Server offline"}
+									</span>
+									<span className="text-slate-300">/</span>
+									<span className="font-mono uppercase tracking-[0.1em]">
+										{relayReady ? "Paired" : "Awaiting pairing"}
+									</span>
+								</div>
 								<div className="hidden items-center gap-2 border border-black/8 bg-white px-3 py-2 text-[0.74rem] font-medium text-slate-500 min-[1100px]:inline-flex">
 									<span className={`inline-block h-2 w-2 rounded-full ${isOnline ? "bg-slate-900" : "bg-slate-400"}`} />
 									<span className="font-mono uppercase tracking-[0.1em]">
@@ -498,7 +596,7 @@ export function SettingsPage({
 								{activeSection === "jobs" ? (
 									<button
 										type="button"
-										className="inline-flex items-center gap-2 border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-[#171717] transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer"
+										className="inline-flex w-full items-center justify-center gap-2 border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-[#171717] transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[961px]:w-auto"
 										onClick={onRefreshJobs}
 									>
 										<svg className={`h-4 w-4 ${isLoadingJobs ? "animate-spin text-slate-700" : "text-[#525252]"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
@@ -510,7 +608,7 @@ export function SettingsPage({
 								) : activeSection === "mcp" ? (
 									<button
 										type="button"
-										className="inline-flex items-center gap-2 border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-[#171717] transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer"
+										className="inline-flex w-full items-center justify-center gap-2 border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-[#171717] transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[961px]:w-auto"
 										onClick={onRefreshMcpServers}
 										disabled={isLoadingMcpServers}
 									>
@@ -522,7 +620,7 @@ export function SettingsPage({
 								) : (
 									<button
 										type="button"
-										className="inline-flex items-center gap-2 border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-[#171717] transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer"
+										className="inline-flex w-full items-center justify-center gap-2 border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-[#171717] transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[961px]:w-auto"
 										onClick={onRefresh}
 									>
 										<svg className="h-4 w-4 text-[#525252]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
@@ -533,7 +631,7 @@ export function SettingsPage({
 								)}
 								<button
 									type="button"
-									className="inline-flex items-center gap-2 border border-black bg-black px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[961px]:hidden"
+									className="hidden"
 									onClick={onBack}
 								>
 									<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>

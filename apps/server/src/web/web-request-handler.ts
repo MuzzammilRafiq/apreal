@@ -4,7 +4,7 @@ import { ADMIN_APPEND_SYSTEM_PROMPT_PATH, ADMIN_MCP_PATH, ADMIN_MCP_REFRESH_PATH
 import { setDefaultProviderModel, getErrorMessage } from "../session.ts";
 import { createCorsHeaders, json } from "./utils.ts";
 export function createWebRequestHandler(context: any) {
-	const { logger, authenticateBrowserRequest, clientManager, handleHttpClientMessage, assertLocalAdminRequest, buildStatusPayload, writeAppendSystemPrompt, recycleIdleSessionControllers, saveProviderApiKey, startProviderLogin, buildProvidersPayloadWithLoginState, cwd, readProviderLoginState, refreshMcpServers, readMcpServers, createMcpServer, rebuildCustomTools, updateMcpServer, deleteMcpServer, jobStore, sessions, scheduler, relay, createStaticResponse, createMissingWebUiResponse, webUiReady, getListeningPort } = context;
+	const { logger, authenticateBrowserRequest, clientManager, handleHttpClientMessage, assertLocalAdminRequest, buildStatusPayload, writeAppendSystemPrompt, recycleIdleSessionControllers, saveProviderApiKey, startProviderLogin, buildProvidersPayloadWithLoginState, cwd, readProviderLoginState, refreshMcpServers, readMcpServers, createMcpServer, rebuildCustomTools, updateMcpServer, deleteMcpServer, ADMIN_JOBS_PATH, parseAdminMcpRoute, parseAdminJobRoute, listScheduledJobRuns, jobStore, sessions, scheduler, relay, createStaticResponse, createMissingWebUiResponse, webUiReady, getListeningPort } = context;
 	return async (request: Request) => {
 	const url = new URL(request.url);
 	logger.debug("incoming request", {

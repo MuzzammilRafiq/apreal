@@ -41,9 +41,9 @@ export function ScheduledJobsPage({
 }: ScheduledJobsPageProps) {
 	return (
 		<main className="min-h-svh bg-[#f3f3f3] text-[#171717] selection:bg-black/10 selection:text-black">
-			<div className="mx-auto flex min-h-svh w-full max-w-7xl flex-col px-4 py-6 min-[860px]:px-5 min-[1180px]:px-6">
+			<div className="mx-auto flex min-h-svh w-full max-w-7xl flex-col px-3 py-4 min-[860px]:px-5 min-[860px]:py-6 min-[1180px]:px-6">
 				{/* ---- Header ---- */}
-				<header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
+				<header className="flex flex-col gap-3 border-b border-slate-200 pb-4 min-[860px]:flex-row min-[860px]:items-center min-[860px]:justify-between min-[860px]:gap-4">
 					<div>
 						<div className="flex items-center gap-2.5">
 							<p className="font-mono text-[0.72rem] uppercase tracking-[0.16em] text-[#64748b] font-bold">Job Dashboard</p>
@@ -58,10 +58,10 @@ export function ScheduledJobsPage({
 							Manage recurring background schedules, inspect active run logs, and review deep history execution transcripts.
 						</p>
 					</div>
-					<div className="flex items-center gap-2.5 shrink-0">
+					<div className="flex w-full flex-col gap-2.5 shrink-0 min-[520px]:flex-row min-[520px]:items-center min-[860px]:w-auto">
 						<button
 							type="button"
-							className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-[#171717] transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer"
+							className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-[#171717] transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[520px]:w-auto"
 							onClick={onRefreshJobs}
 						>
 							<svg className={`h-4 w-4 ${isLoadingJobs ? "animate-spin text-slate-700" : "text-[#525252]"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
@@ -71,7 +71,7 @@ export function ScheduledJobsPage({
 						</button>
 						<button
 							type="button"
-							className="inline-flex items-center gap-2 rounded-md border border-black bg-black px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer"
+							className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-black bg-black px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[520px]:w-auto"
 							onClick={onBack}
 						>
 							<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>

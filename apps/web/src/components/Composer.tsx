@@ -105,14 +105,14 @@ export const Composer = memo(function Composer({
 	return (
 		<div
 			className={[
-				"pointer-events-auto mx-auto flex w-full max-w-[52rem] flex-col gap-1.5 rounded-lg border bg-white/92 px-3 py-2.5 transition-colors duration-150 backdrop-blur-md",
+				"pointer-events-auto mx-auto flex w-full max-w-[52rem] flex-col gap-1.5 rounded-lg border bg-white/92 px-3 py-2.5 transition-colors duration-150 backdrop-blur-md min-[861px]:px-3.5",
 				isFocused
 					? "border-slate-400 bg-white"
 					: "border-slate-300/90",
 			].join(" ")}
 		>
 			{currentContextLabel ? (
-				<div className="flex items-center justify-between gap-2 px-1 pb-1.5 border-b border-slate-200">
+				<div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-1 pb-1.5">
 					<span className="flex items-center gap-1.5 font-mono text-[0.66rem] font-semibold uppercase tracking-[0.12em] text-slate-500">
 						<svg viewBox="0 0 24 24" className="h-3 w-3 text-slate-500" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
@@ -124,7 +124,7 @@ export const Composer = memo(function Composer({
           </span>
         </div>
       ) : null}
-			<div className="flex items-end gap-2.5">
+			<div className="flex items-end gap-2">
         <textarea
           ref={promptInputRef}
           id="prompt-input"
@@ -153,7 +153,7 @@ export const Composer = memo(function Composer({
                   ? "Continue this session with the next task, follow-up, or code request..."
                   : "Describe what you want Pi to inspect, fix, or build..."
           }
-				className="min-h-[calc(1.65em+1rem)] max-h-[calc(11.55em+1rem)] flex-1 resize-none overflow-hidden border-none bg-transparent px-1.5 py-1.5 text-[0.94rem] leading-[1.6] text-slate-900 outline-none placeholder:text-slate-400 focus-visible:outline-none"
+				className="min-h-[calc(1.65em+1rem)] max-h-[calc(11.55em+1rem)] flex-1 resize-none overflow-hidden border-none bg-transparent px-1 py-1.5 text-[0.94rem] leading-[1.6] text-slate-900 outline-none placeholder:text-slate-400 focus-visible:outline-none min-[861px]:px-1.5"
 			/>
 			<button
 				type="button"

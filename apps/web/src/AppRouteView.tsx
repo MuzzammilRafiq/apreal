@@ -154,7 +154,7 @@ export function AppRouteView({
 	}
 
 	return (
-		<main className="grid h-svh w-full overflow-hidden grid-cols-1 font-ui text-ink min-[721px]:grid-cols-[240px_minmax(0,1fr)] min-[1221px]:grid-cols-[280px_minmax(0,1fr)]">
+		<main className="grid h-svh w-full overflow-hidden grid-cols-1 grid-rows-[auto_minmax(0,1fr)] font-ui text-ink min-[721px]:grid-cols-[240px_minmax(0,1fr)] min-[721px]:grid-rows-1 min-[1221px]:grid-cols-[280px_minmax(0,1fr)]">
 			<Sidebar
 				pendingDraft={pendingDraft}
 				sessions={visibleSessions}
@@ -167,7 +167,7 @@ export function AppRouteView({
 				onLoadMoreSessions={onLoadMoreSessions}
 			/>
 
-			<section className="relative flex h-svh min-w-0 flex-col overflow-hidden">
+			<section className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
 				<TranscriptPanel
 					transcriptRef={transcriptRef}
 					activeSession={activeSession}
@@ -175,7 +175,7 @@ export function AppRouteView({
 					emptyState={emptyState}
 					connectionError={connectionError}
 				/>
-				<div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-3 pb-3 max-[860px]:px-2.5">
+				<div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-3 pb-3 max-[860px]:px-2 max-[860px]:pb-2">
 					<Composer
 						connected={connected}
 						serverReady={serverReady}

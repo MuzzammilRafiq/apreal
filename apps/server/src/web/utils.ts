@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -152,9 +153,47 @@ export function isLoopbackAddress(value: string): boolean {
 	return normalized === "::1" || normalized === "127.0.0.1" || normalized === "::ffff:127.0.0.1";
 }
 
+function normalizeIpAddress(value: string): string {
+	const normalized = value.trim().toLowerCase();
+	return normalized.startsWith("::ffff:") ? normalized.slice("::ffff:".length) : normalized;
+}
+
+export function isPrivateNetworkAddress(value: string): boolean {
+	const normalized = normalizeIpAddress(value);
+
+	if (normalized === "localhost" || isLoopbackAddress(normalized)) {
+		return true;
+	}
+
+	if (isIP(normalized) === 4) {
+		if (normalized.startsWith("10.") || normalized.startsWith("192.168.")) {
+			return true;
+		}
+
+		if (normalized.startsWith("172.")) {
+			const [, secondOctet = ""] = normalized.split(".");
+			const secondOctetNumber = Number.parseInt(secondOctet, 10);
+			return secondOctetNumber >= 16 && secondOctetNumber <= 31;
+		}
+
+		return normalized.startsWith("169.254.");
+	}
+
+	if (isIP(normalized) === 6) {
+		return normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("fe80:");
+	}
+
+	return false;
+}
+
 export function isLoopbackClientRequest(request: Request): boolean {
 	const remoteAddress = getRequestRemoteAddress(request);
 	return remoteAddress ? isLoopbackAddress(remoteAddress) : false;
+}
+
+export function isPrivateNetworkClientRequest(request: Request): boolean {
+	const remoteAddress = getRequestRemoteAddress(request);
+	return remoteAddress ? isPrivateNetworkAddress(remoteAddress) : false;
 }
 
 export function isDirectExecution(moduleUrl: string) {

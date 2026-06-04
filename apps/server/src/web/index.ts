@@ -65,8 +65,9 @@ import {
 } from "./relay.ts";
 import {
 	createCorsHeaders,
-	isLoopbackClientRequest,
 	isDirectExecution,
+	isLoopbackClientRequest,
+	isPrivateNetworkClientRequest,
 	json,
 	parsePort,
 	DEFAULT_PORT,
@@ -438,13 +439,22 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		return readMcpServers();
 	};
 
+	const allowPrivateNetworkAdmin = process.env.APREAL_ALLOW_PRIVATE_NETWORK_ADMIN?.trim() === "true";
 	const assertLocalAdminRequest = (request: Request): Response | null => {
 		if (isLoopbackClientRequest(request)) {
 			return null;
 		}
 
+		if (allowPrivateNetworkAdmin && isPrivateNetworkClientRequest(request)) {
+			return null;
+		}
+
 		return json(
-			{ message: "The local admin API is only available from this machine." },
+			{
+				message: allowPrivateNetworkAdmin
+					? "The local admin API is only available from this machine or the private network."
+					: "The local admin API is only available from this machine. Set APREAL_ALLOW_PRIVATE_NETWORK_ADMIN=true to allow same-Wi-Fi access.",
+			},
 			{ status: 403, headers: createCorsHeaders() },
 		);
 	};
@@ -569,13 +579,18 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 			return { clientId: localClientId };
 		}
 
+		if (localClientId && allowPrivateNetworkAdmin && isPrivateNetworkClientRequest(request)) {
+			return { clientId: localClientId };
+		}
+
 		return relay.authenticateClientRequest(request);
 	};
 	try {
-		const handleWebRequest = createWebRequestHandler({
+	const handleWebRequest = createWebRequestHandler({
 		logger, authenticateBrowserRequest, clientManager, handleHttpClientMessage, assertLocalAdminRequest, buildStatusPayload,
 		writeAppendSystemPrompt, recycleIdleSessionControllers, saveProviderApiKey, startProviderLogin, buildProvidersPayloadWithLoginState,
 		cwd, readProviderLoginState, refreshMcpServers, readMcpServers, createMcpServer, rebuildCustomTools, updateMcpServer, deleteMcpServer,
+		ADMIN_JOBS_PATH, parseAdminMcpRoute, parseAdminJobRoute, listScheduledJobRuns,
 		jobStore, sessions, scheduler, relay, createStaticResponse, createMissingWebUiResponse, webUiReady, getListeningPort: () => listeningPort,
 	});
 		const startedServer = await startHttpServer(port, handleWebRequest);
@@ -637,6 +652,9 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	}
 	console.log(`Health check: http://localhost:${listeningPort}/health`);
 	console.log(`Settings API: http://localhost:${listeningPort}${ADMIN_STATUS_PATH}`);
+	if (allowPrivateNetworkAdmin) {
+		console.log("Private-network admin access: enabled");
+	}
 	console.log(`Relay auth: ${relayUrl}`);
 	console.log(`Agent id: ${relayState.auth?.agentId ?? "not registered"}`);
 	console.log(`Scheduled jobs: ${activeJobCount} active`);

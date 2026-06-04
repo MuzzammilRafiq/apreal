@@ -12,7 +12,7 @@ web:
 
 server:
 	pnpm run build:web
-	pnpm run dev:server
+	APREAL_ALLOW_PRIVATE_NETWORK_ADMIN=true pnpm run dev:server
 
 run:
 	pnpm run dev

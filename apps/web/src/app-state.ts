@@ -1,4 +1,5 @@
 import type { SessionCacheEntry, SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "./chatTypes";
+import { createBrowserUuid } from "./local-client";
 import { getWebTransportConfig } from "./transport-config";
 
 export const ACTIVE_SESSION_STORAGE_KEY = "pi-browser-active-session";
@@ -173,7 +174,7 @@ export function appendAssistantDeltaToMessage(
 		}
 	} else {
 		segments = insertSegmentInOrder(message.segments, {
-			id: crypto.randomUUID(),
+			id: createBrowserUuid(),
 			type: segmentType,
 			content: delta,
 			contentIndex,

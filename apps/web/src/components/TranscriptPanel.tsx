@@ -176,13 +176,13 @@ export function TranscriptPanel({ transcriptRef, activeTranscript, emptyState, c
 			<div
 				ref={transcriptRef}
 				id="transcript"
-				className="flex h-full flex-col gap-6 overflow-y-auto px-6 pt-6 pb-32 max-[860px]:px-4 max-[860px]:pb-36"
+				className="flex h-full flex-col gap-5 overflow-y-auto px-3 pt-4 pb-28 min-[861px]:gap-6 min-[861px]:px-6 min-[861px]:pt-6 min-[861px]:pb-32"
 				aria-live="polite"
 			>
 				{connectionError ? (
 					<div
 						role="alert"
-					className="mr-auto flex w-full max-w-3xl items-start gap-3 rounded-lg border border-slate-300 bg-slate-100 px-4 py-3 text-[0.9rem] font-medium leading-[1.6] text-slate-800"
+					className="mr-auto flex w-full items-start gap-3 rounded-lg border border-slate-300 bg-slate-100 px-4 py-3 text-[0.9rem] font-medium leading-[1.6] text-slate-800 min-[861px]:max-w-3xl"
 				>
 						<svg viewBox="0 0 24 24" className="mt-0.5 h-4.5 w-4.5 shrink-0 text-slate-600" fill="none" stroke="currentColor" strokeWidth="2.2">
 							<circle cx="12" cy="12" r="10" />
@@ -192,7 +192,7 @@ export function TranscriptPanel({ transcriptRef, activeTranscript, emptyState, c
 					</div>
 				) : null}
 				{emptyState ? (
-					<div className="mx-auto my-auto flex max-w-xl flex-col items-center justify-center gap-4 px-4 py-[10vh] text-center">
+					<div className="mx-auto my-auto flex w-full flex-col items-center justify-center gap-4 px-2 py-[8vh] text-center min-[861px]:max-w-xl min-[861px]:px-4 min-[861px]:py-[10vh]">
 						<div className="flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-white">
 							<svg viewBox="0 0 24 24" className="h-6 w-6 text-slate-700" fill="none" stroke="currentColor" strokeWidth="2.2">
 								<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" strokeLinecap="round" strokeLinejoin="round" />
@@ -202,7 +202,7 @@ export function TranscriptPanel({ transcriptRef, activeTranscript, emptyState, c
 							<h1 className="text-[clamp(1.55rem,3.5vw,2.1rem)] font-bold leading-tight tracking-tight text-slate-900">
 								{emptyState.title}
 							</h1>
-							<p className="mx-auto mt-2 max-w-md text-[0.92rem] font-medium leading-[1.65] text-slate-500">
+							<p className="mx-auto mt-2 w-full text-[0.92rem] font-medium leading-[1.65] text-slate-500 min-[861px]:max-w-md">
 								{emptyState.body}
 							</p>
 						</div>
