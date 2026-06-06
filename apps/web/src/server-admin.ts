@@ -7,9 +7,11 @@ import {
 	ADMIN_PROVIDERS_PATH,
 	ADMIN_RELAY_AUTHENTICATE_PATH,
 	ADMIN_STATUS_PATH,
+	LOCAL_AUTH_SESSION_PATH,
 	type CreateMcpServerRequest,
 	type AvailableSkill,
 	type AvailableTool,
+	type LocalAuthSessionResponse,
 	type LocalWebAdminStatus,
 	type McpServerConfig,
 	type McpServerRuntimeStatus,
@@ -245,6 +247,42 @@ export async function authenticateRelayWithOwnerGrant(
 	return {
 		status: parseStatus(payload.status),
 	};
+}
+
+export async function readLocalAuthSession(
+	requestUrl = LOCAL_AUTH_SESSION_PATH,
+): Promise<LocalAuthSessionResponse> {
+	const response = await fetch(requestUrl, {
+		method: "GET",
+		headers: {
+			accept: "application/json",
+		},
+	});
+	const payload = await parseJsonResponse(response);
+	if (!response.ok) {
+		throw new Error(getResponseMessage(payload, `Local auth status failed with status ${response.status}`));
+	}
+
+	if (!isObjectRecord(payload) || typeof payload.authenticated !== "boolean") {
+		throw new Error("Local auth status returned an invalid response.");
+	}
+
+	return {
+		authenticated: payload.authenticated,
+	};
+}
+
+export async function clearLocalAuthSession(requestUrl = LOCAL_AUTH_SESSION_PATH): Promise<void> {
+	const response = await fetch(requestUrl, {
+		method: "DELETE",
+		headers: {
+			accept: "application/json",
+		},
+	});
+	const payload = await parseJsonResponse(response);
+	if (!response.ok) {
+		throw new Error(getResponseMessage(payload, `Local auth sign-out failed with status ${response.status}`));
+	}
 }
 
 export async function saveAppendSystemPrompt(

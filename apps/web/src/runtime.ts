@@ -7,6 +7,7 @@ import {
 	type LocalWebAdminStatus,
 } from "@apreal/shared";
 import { authBaseUrl } from "./auth/auth-client";
+import { ensureLocalBrowserAuthSession } from "./local-auth";
 import { readOrCreateLocalClientId } from "./local-client";
 import { ensureRelayClientAuth, readRelayClientHeartbeat } from "./relay-auth";
 import { readLocalAdminStatus } from "./server-admin";
@@ -127,11 +128,13 @@ export function createLocalWebRuntime(): WebRuntime {
 				};
 			},
 			openEventStream: async () => {
+				await ensureLocalBrowserAuthSession();
 				const eventStreamUrl = new URL(streamUrl);
 				eventStreamUrl.searchParams.set(LOCAL_CLIENT_ID_QUERY_PARAM, localClientId);
 				return new EventSource(eventStreamUrl.toString());
 			},
 			sendMessage: async (message) => {
+				await ensureLocalBrowserAuthSession();
 				const response = await fetch(messageUrl, {
 					method: "POST",
 					headers: {

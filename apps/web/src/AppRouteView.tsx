@@ -42,6 +42,7 @@ type AppRouteViewProps = {
 	connected: boolean;
 	serverReady: boolean;
 	streamRequested: boolean;
+	composerBlockedReason: string | null;
 	capabilities: WebCapabilities;
 	connectionLabel: string;
 	promptInputRef: RefObject<HTMLTextAreaElement | null>;
@@ -75,6 +76,7 @@ export function AppRouteView({
 	scheduledJobs, scheduledJobRuns, sessionCache, scheduledJobsError, scheduledJobRunsError, loadingScheduledJobs, loadingScheduledJobRuns,
 	connectionError, pendingDraft, visibleSessions, loadingMoreSessions, canLoadMoreSessions, activeSessionId, activeSession, activeTranscript,
 	emptyState, connected, serverReady, streamRequested, capabilities, connectionLabel, promptInputRef, transcriptRef, onRouteChange, onRefreshAdminStatus,
+	composerBlockedReason,
 	onRefreshJobs, onRefreshJobRuns, onUpdateJobInterval, onToggleJobEnabled, onDeleteJob, onEnsureSessionLoaded, onSetDefaultModel,
 	onStartProviderLogin, onSaveProviderApiKey, onCreateMcpServer, onUpdateMcpServer, onDeleteMcpServer, onRefreshMcpServers,
 	onSaveAppendSystemPrompt, onStartNewChat, onActivateSession, onLoadMoreSessions, onSendPrompt, onAbort,
@@ -174,6 +176,7 @@ export function AppRouteView({
 						connected={connected}
 						serverReady={serverReady}
 						streamRequested={streamRequested}
+						blockedReason={composerBlockedReason}
 						connectionLabel={connectionLabel}
 						activeSession={activeSession}
 						activeSessionId={activeSessionId}

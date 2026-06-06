@@ -37,3 +37,27 @@
 
 - Add a production security review pass before launch.
   Verify origin allowlists, cookie behavior, OAuth configuration, relay authorization, token storage, and secret handling end to end.
+
+- Lock down the local web server against cross-origin localhost abuse.
+  The local server currently returns permissive CORS headers and accepts caller-chosen local client IDs for browser chat/auth flows. Require strict `Origin` validation plus an unguessable local session secret or CSRF token for all browser-facing local endpoints instead of trusting loopback/private-network source address alone.
+
+- Put the local-only authorization gate on every MCP admin route.
+  `/api/admin/mcp`, `/api/admin/mcp/refresh`, and per-server PATCH/DELETE routes currently bypass `assertLocalAdminRequest`. Because MCP config can add arbitrary stdio commands and outbound URLs, this is an unauthenticated config-tampering, SSRF, and potential local RCE path if the port is reachable.
+
+- Stop using query-string or caller-supplied IDs as the only credential for local browser chat transport.
+  Replace `clientId` query/header auth on the local SSE/message endpoints with a server-minted nonce or signed token bound to the browser session, and avoid putting bearer-style credentials in URLs.
+
+- Fix relay CORS for credentialed browser requests.
+  The relay currently reflects arbitrary request origins when `RELAY_CORS_ALLOW_ORIGIN` is unset while also sending `Access-Control-Allow-Credentials: true`. Change this to an explicit allowlist for `/api/auth/*`, `/api/relay/auth/*`, and `/api/relay/connection` so third-party sites cannot use a signed-in browser session to read owner grants or mint paired client tokens.
+
+- Remove long-lived relay bearer material from `localStorage`.
+  The remote web app persists `clientKey` and the relay bearer token in browser storage. Move to HttpOnly cookies or short-lived in-memory access tokens with refresh, because any XSS or browser-extension compromise currently exposes durable relay access.
+
+- Shorten relay token lifetime and separate relay signing from Better Auth signing.
+  Relay JWTs currently last 180 days, and Better Auth falls back to `JWT_SECRET` when `BETTER_AUTH_SECRET` is unset. Use separate secrets and shorter-lived access tokens so one secret leak or browser token theft does not grant months of relay or session forgery.
+
+- Tighten filesystem handling for stored auth material.
+  `relay-auth.json`, the relay-issued token store, and the Better Auth SQLite database should be created with user-only permissions and reviewed for safe storage location, because they currently hold reusable credentials in plaintext on disk.
+
+- Bind the laptop-local web server to loopback by default unless LAN access is explicitly enabled.
+  Today the HTTP server listens without a host restriction, which broadens the impact of any missed auth check on local admin endpoints.

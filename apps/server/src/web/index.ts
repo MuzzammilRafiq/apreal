@@ -44,6 +44,7 @@ import { buildProvidersPayload, getAvailableSkills, getErrorMessage, prewarmAgen
 import { createClientManager, type Logger } from "./client-manager.ts";
 import { createHandlers } from "./handlers.ts";
 import { startHttpServer } from "./http-server.ts";
+import { hasLocalBrowserAuthSession } from "./local-browser-auth.ts";
 import { WEB_DIST_DIR, WEB_INDEX_PATH, createMissingWebUiResponse, createStaticResponse } from "./web-static.ts";
 import { createWebRequestHandler } from "./web-request-handler.ts";
 import { buildSessionSummary, type SharedSessionState } from "./session-state.ts";
@@ -539,10 +540,16 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	const authenticateBrowserRequest = async (request: Request): Promise<{ clientId: string }> => {
 		const localClientId = readLocalClientId(request);
 		if (localClientId && isLoopbackClientRequest(request)) {
+			if (!hasLocalBrowserAuthSession(request)) {
+				throw new Error("Sign in locally before using chat.");
+			}
 			return { clientId: localClientId };
 		}
 
 		if (localClientId && allowPrivateNetworkAdmin && isPrivateNetworkClientRequest(request)) {
+			if (!hasLocalBrowserAuthSession(request)) {
+				throw new Error("Sign in locally before using chat.");
+			}
 			return { clientId: localClientId };
 		}
 

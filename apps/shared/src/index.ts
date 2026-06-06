@@ -1,5 +1,6 @@
 export const CLIENT_EVENT_STREAM_PATH = "/api/client/stream";
 export const CLIENT_MESSAGE_PATH = "/api/client/message";
+export const LOCAL_AUTH_SESSION_PATH = "/api/local-auth/session";
 export const ADMIN_STATUS_PATH = "/api/admin/status";
 export const ADMIN_RELAY_AUTHENTICATE_PATH = "/api/admin/relay/authenticate";
 export const ADMIN_APPEND_SYSTEM_PROMPT_PATH = "/api/admin/system-prompt";
@@ -258,6 +259,10 @@ export type ServerProvidersMessage = {
 
 export type RelayAuthenticateResponse = {
 	status: LocalWebAdminStatus;
+};
+
+export type LocalAuthSessionResponse = {
+	authenticated: boolean;
 };
 
 export type RelayAgentCommand =

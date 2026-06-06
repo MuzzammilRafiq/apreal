@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { authBaseUrl, authClient } from "../auth/auth-client";
-import { requestRelayAgentOwnerGrant } from "../relay-auth";
-import { authenticateRelayWithOwnerGrant } from "../server-admin";
+import { clearLocalBrowserAuthSession, ensureLocalBrowserAuthSession } from "../local-auth";
 
 declare const __APREAL_WEB_TARGET__: "local" | "remote";
 
@@ -17,6 +16,12 @@ export function AccountAuthButton({ onAfterAction }: AccountAuthButtonProps) {
 	const user = session?.user;
 
 	useEffect(() => {
+		if (!user?.id) {
+			linkedUserRef.current = null;
+		}
+	}, [user?.id]);
+
+	useEffect(() => {
 		if (__APREAL_WEB_TARGET__ !== "local" || isPending || !user?.id) {
 			return;
 		}
@@ -29,8 +34,7 @@ export function AccountAuthButton({ onAfterAction }: AccountAuthButtonProps) {
 		linkedUserRef.current = user.id;
 		setRelayLinking(true);
 		setRelayLinkError(null);
-		void requestRelayAgentOwnerGrant(authBaseUrl)
-			.then((grant) => authenticateRelayWithOwnerGrant(grant.ownerGrant))
+		void ensureLocalBrowserAuthSession()
 			.catch((error) => {
 				if (!cancelled) {
 					linkedUserRef.current = null;
@@ -57,6 +61,14 @@ export function AccountAuthButton({ onAfterAction }: AccountAuthButtonProps) {
 	};
 
 	const handleSignOut = async () => {
+		if (__APREAL_WEB_TARGET__ === "local") {
+			try {
+				await clearLocalBrowserAuthSession();
+			} catch {
+				// Clearing the local browser session is best-effort before remote sign-out.
+			}
+			linkedUserRef.current = null;
+		}
 		await authClient.signOut();
 		onAfterAction?.();
 	};

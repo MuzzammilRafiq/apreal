@@ -1,8 +1,13 @@
 // @ts-nocheck
 import { extname } from "node:path";
-import { ADMIN_APPEND_SYSTEM_PROMPT_PATH, ADMIN_MCP_PATH, ADMIN_MCP_REFRESH_PATH, ADMIN_PROVIDER_API_KEY_PATH, ADMIN_PROVIDER_LOGIN_PATH, ADMIN_PROVIDERS_PATH, ADMIN_RELAY_AUTHENTICATE_PATH, ADMIN_STATUS_PATH, CLIENT_EVENT_STREAM_PATH, CLIENT_MESSAGE_PATH, type RelayAuthenticateRequest, type RelayAuthenticateResponse } from "@apreal/shared";
+import { ADMIN_APPEND_SYSTEM_PROMPT_PATH, ADMIN_MCP_PATH, ADMIN_MCP_REFRESH_PATH, ADMIN_PROVIDER_API_KEY_PATH, ADMIN_PROVIDER_LOGIN_PATH, ADMIN_PROVIDERS_PATH, ADMIN_RELAY_AUTHENTICATE_PATH, ADMIN_STATUS_PATH, CLIENT_EVENT_STREAM_PATH, CLIENT_MESSAGE_PATH, LOCAL_AUTH_SESSION_PATH, type LocalAuthSessionResponse, type RelayAuthenticateRequest, type RelayAuthenticateResponse } from "@apreal/shared";
 import { setDefaultProviderModel, getErrorMessage } from "../session.ts";
 import { createCorsHeaders, json } from "./utils.ts";
+import {
+	createClearedLocalBrowserAuthSessionCookieHeader,
+	createLocalBrowserAuthSessionCookieHeader,
+	hasLocalBrowserAuthSession,
+} from "./local-browser-auth.ts";
 export function createWebRequestHandler(context: any) {
 	const { logger, authenticateBrowserRequest, clientManager, handleHttpClientMessage, assertLocalAdminRequest, buildStatusPayload, writeAppendSystemPrompt, recycleIdleSessionControllers, saveProviderApiKey, startProviderLogin, buildProvidersPayloadWithLoginState, cwd, readProviderLoginState, refreshMcpServers, readMcpServers, createMcpServer, rebuildCustomTools, updateMcpServer, deleteMcpServer, ADMIN_JOBS_PATH, parseAdminMcpRoute, parseAdminJobRoute, listScheduledJobRuns, jobStore, sessions, scheduler, relay, createStaticResponse, createMissingWebUiResponse, webUiReady, getListeningPort } = context;
 	return async (request: Request) => {
@@ -44,6 +49,41 @@ export function createWebRequestHandler(context: any) {
 				{ status: relay.getClientAuthErrorStatus(error), headers: createCorsHeaders() },
 			);
 		}
+	}
+	if (url.pathname === LOCAL_AUTH_SESSION_PATH) {
+		const localOnlyResponse = assertLocalAdminRequest(request);
+		if (localOnlyResponse) {
+			return localOnlyResponse;
+		}
+		if (request.method === "OPTIONS") {
+			return new Response(null, {
+				status: 204,
+				headers: createCorsHeaders(),
+			});
+		}
+		if (request.method === "GET") {
+			const response: LocalAuthSessionResponse = {
+				authenticated: hasLocalBrowserAuthSession(request),
+			};
+			return json(response, {
+				headers: createCorsHeaders(),
+			});
+		}
+		if (request.method === "DELETE") {
+			return json(
+				{ ok: true },
+				{
+					headers: {
+						...createCorsHeaders(),
+						"set-cookie": createClearedLocalBrowserAuthSessionCookieHeader(),
+					},
+				},
+			);
+		}
+		return new Response("Method Not Allowed", {
+			status: 405,
+			headers: createCorsHeaders(),
+		});
 	}
 	if (url.pathname === ADMIN_STATUS_PATH) {
 		const localOnlyResponse = assertLocalAdminRequest(request);
@@ -602,7 +642,10 @@ export function createWebRequestHandler(context: any) {
 				status: await buildStatusPayload(),
 			};
 			return json(response, {
-				headers: createCorsHeaders(),
+				headers: {
+					...createCorsHeaders(),
+					"set-cookie": createLocalBrowserAuthSessionCookieHeader(),
+				},
 			});
 		} catch (error) {
 			return json(

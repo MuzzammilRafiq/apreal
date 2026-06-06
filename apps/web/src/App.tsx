@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppRouteView } from "./AppRouteView";
+import { authClient } from "./auth/auth-client";
 import type { ScheduledJobDetails, SessionCacheEntry, SessionSummary, TranscriptMessage } from "./chatTypes";
 import {
 	clearCachedSessions,
@@ -36,6 +37,7 @@ type AppProps = {
 };
 
 export function App({ runtime }: AppProps) {
+	const { data: authSession, isPending: authSessionPending } = authClient.useSession();
 	const [route, setRoute] = useState<AppRoute>(() => coerceRouteForCapabilities(readCurrentRoute(), runtime.capabilities));
 	const [connected, setConnected] = useState(false);
 	const [pendingDraft, setPendingDraft] = useState(false);
@@ -95,6 +97,14 @@ export function App({ runtime }: AppProps) {
 	const activeTranscript = activeSessionCacheEntry?.transcriptLoaded ? activeSessionCacheEntry.transcript : [];
 	const activeTranscriptLoaded = activeSessionCacheEntry?.transcriptLoaded ?? false;
 	const serverReady = transportReady;
+	const localSignInPending = runtime.target === "local" && authSessionPending;
+	const localSignInRequired = runtime.target === "local" && !authSessionPending && !authSession?.user;
+	const composerBlockedReason = localSignInPending
+		? "Checking your local sign-in status..."
+		: localSignInRequired
+			? "Sign in with Google before sending messages from the local app."
+			: null;
+	const chatTransportReady = serverReady && !composerBlockedReason;
 	const relayReady = Boolean(adminStatus?.relayReady);
 	const relayTransportConnected = Boolean(adminStatus?.relayTransportConnected);
 	const isBusy = pendingDraft || Boolean(activeSession?.busy);
@@ -339,13 +349,17 @@ export function App({ runtime }: AppProps) {
 
 
 	useEffect(() => {
-		if (serverReady) {
+		if (chatTransportReady) {
 			setStreamRequested(true);
+			return;
 		}
-	}, [serverReady]);
+
+		setStreamRequested(false);
+		setConnected(false);
+	}, [chatTransportReady]);
 
 	useEffect(() => {
-		if (!serverReady || !streamRequested) {
+		if (!chatTransportReady || !streamRequested) {
 			setConnected(false);
 			return;
 		}
@@ -593,7 +607,7 @@ export function App({ runtime }: AppProps) {
 			eventSource?.close();
 			setConnected(false);
 		};
-	}, [runtime, serverReady, streamGeneration, streamRequested]);
+	}, [chatTransportReady, runtime, streamGeneration, streamRequested]);
 
 	const handleLoadMoreSessions = useCallback(() => {
 		const nextVisibleLimit = visibleSessionLimitRef.current + SESSION_PAGE_SIZE;
@@ -615,7 +629,7 @@ export function App({ runtime }: AppProps) {
 	}, [requestSessionPage, serverLoadedSessionCount, totalSessionCount]);
 
 	const submitPrompt = useCallback((trimmedPrompt: string) => {
-		if (!trimmedPrompt || isBusy || !serverReady) {
+		if (!trimmedPrompt || isBusy || !chatTransportReady) {
 			return false;
 		}
 
@@ -631,7 +645,7 @@ export function App({ runtime }: AppProps) {
 		});
 		focusPrompt();
 		return true;
-	}, [activeSessionId, focusPrompt, isBusy, sendClientMessage, serverReady]);
+	}, [activeSessionId, chatTransportReady, focusPrompt, isBusy, sendClientMessage]);
 
 	const handleAbort = useCallback(() => {
 		if (!activeSession?.busy) {
@@ -645,12 +659,16 @@ export function App({ runtime }: AppProps) {
 
 	const emptyState = !activeSession
 		? {
-			title: !serverReady
+			title: composerBlockedReason
+				? "Sign in required"
+				: !serverReady
 				? runtime.transport.unavailableTitle
 				: connected
 						? (pendingDraft ? "Creating session..." : "Ready when you are")
 						: streamRequested ? "Connecting..." : "Ready when you are",
-			body: !serverReady
+			body: composerBlockedReason
+				? composerBlockedReason
+				: !serverReady
 				? (adminStatusError ?? transportStatusMessage ?? runtime.transport.unavailableBody)
 				: connected
 				? "Start with a coding task, file request, or bug report. The first prompt creates a reusable session that stays available in the left rail."
@@ -687,6 +705,7 @@ export function App({ runtime }: AppProps) {
 			loadingMoreSessions={loadingMoreSessions} canLoadMoreSessions={canLoadMoreSessions}
 			activeSessionId={activeSessionId} activeSession={activeSession} activeTranscript={activeTranscript}
 			emptyState={emptyState} connected={connected} serverReady={serverReady} streamRequested={streamRequested}
+			composerBlockedReason={composerBlockedReason}
 			capabilities={runtime.capabilities}
 			connectionLabel={runtime.transport.label}
 			promptInputRef={promptInputRef}

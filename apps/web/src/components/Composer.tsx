@@ -35,6 +35,7 @@ type ComposerProps = {
   connected: boolean;
   serverReady: boolean;
   streamRequested: boolean;
+  blockedReason: string | null;
   connectionLabel: string;
   activeSession: SessionSummary | null;
   activeSessionId: string | null;
@@ -47,6 +48,7 @@ export const Composer = memo(function Composer({
   connected,
   serverReady,
   streamRequested,
+  blockedReason,
   connectionLabel,
   activeSession,
   activeSessionId,
@@ -56,7 +58,7 @@ export const Composer = memo(function Composer({
 }: ComposerProps) {
   const [prompt, setPrompt] = useState("");
   const [isFocused, setIsFocused] = useState(false);
-  const canSend = serverReady && !activeSession?.busy && prompt.trim().length > 0;
+  const canSend = serverReady && !blockedReason && !activeSession?.busy && prompt.trim().length > 0;
   const currentContextLabel = formatCurrentContext(activeSession);
 
   function resizePromptInput() {
@@ -82,14 +84,14 @@ export const Composer = memo(function Composer({
   }, [prompt]);
 
   useEffect(() => {
-    if (!serverReady) {
+    if (!serverReady || blockedReason) {
 			return;
 		}
 
     window.requestAnimationFrame(() => {
       promptInputRef.current?.focus();
     });
-  }, [activeSessionId, promptInputRef, serverReady]);
+  }, [activeSessionId, blockedReason, promptInputRef, serverReady]);
 
   function submitPrompt() {
     const trimmedPrompt = prompt.trim();
@@ -140,10 +142,12 @@ export const Composer = memo(function Composer({
               submitPrompt();
             }
           }}
-          disabled={!serverReady}
+          disabled={!serverReady || Boolean(blockedReason)}
           onInput={resizePromptInput}
           placeholder={
-            !serverReady
+            blockedReason
+              ? blockedReason
+              : !serverReady
               ? "Start the local server to begin chatting..."
               : !connected
                 ? streamRequested
@@ -164,7 +168,7 @@ export const Composer = memo(function Composer({
 						? "bg-slate-700 text-white hover:bg-black"
 						: "bg-black text-white hover:bg-slate-800",
 				].join(" ")}
-          disabled={!serverReady || (!canSend && !activeSession?.busy)}
+          disabled={!serverReady || Boolean(blockedReason) || (!canSend && !activeSession?.busy)}
           aria-label={activeSession?.busy ? "Stop run" : "Send prompt"}
           onClick={() => {
             if (activeSession?.busy) {
