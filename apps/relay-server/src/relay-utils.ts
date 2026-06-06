@@ -36,6 +36,7 @@ import {
 import { config } from "dotenv";
 import { RelayTokenStore, type StoredRelayToken } from "./token-store.ts";
 
+config({ path: ".env.local" });
 config();
 
 
@@ -162,9 +163,13 @@ export function readUrlField(value: unknown): string | null {
 	}
 }
 
-export function createCorsHeaders(): Record<string, string> {
+export function createCorsHeaders(request?: IncomingMessage): Record<string, string> {
+	const configuredOrigin = process.env.RELAY_CORS_ALLOW_ORIGIN?.trim();
+	const requestOrigin = typeof request?.headers.origin === "string" ? request.headers.origin.trim() : "";
+
 	return {
-		"access-control-allow-origin": process.env.RELAY_CORS_ALLOW_ORIGIN?.trim() || "*",
+		"access-control-allow-origin": configuredOrigin || requestOrigin || "*",
+		"access-control-allow-credentials": "true",
 		"access-control-allow-methods": "GET, POST, OPTIONS",
 		"access-control-allow-headers": "authorization, content-type",
 	};

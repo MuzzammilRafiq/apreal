@@ -20,6 +20,10 @@ import {
 
 type RelayServerModule = typeof import("../index.ts");
 
+process.env.BETTER_AUTH_SECRET = "";
+process.env.BETTER_AUTH_GOOGLE_CLIENT_ID = "";
+process.env.BETTER_AUTH_GOOGLE_CLIENT_SECRET = "";
+
 const relayEntryPoint = fileURLToPath(import.meta.url).includes(`${sep}dist${sep}`)
 	? "../index.js"
 	: "../index.ts";

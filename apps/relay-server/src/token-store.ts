@@ -22,6 +22,7 @@ type IssueTokenInput = {
 	targetId?: string;
 	targetType?: RelayPrincipalType;
 	serverUrl?: string;
+	ownerUserId?: string;
 };
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -153,6 +154,7 @@ export class RelayTokenStore {
 			id: entry.payload.id,
 			key: entry.payload.key,
 			pairingCode,
+			ownerUserId: entry.payload.ownerUserId,
 		});
 	}
 

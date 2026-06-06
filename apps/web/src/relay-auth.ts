@@ -159,6 +159,7 @@ export async function ensureRelayClientAuth(relayUrl: string): Promise<StoredRel
 
 	const response = await fetch(new URL(RELAY_CLIENT_AUTH_PATH, relayUrl), {
 		method: "POST",
+		credentials: "include",
 		headers: {
 			"content-type": "application/json",
 		},
@@ -205,6 +206,7 @@ export async function readRelayClientHeartbeat(relayUrl: string): Promise<RelayC
 
 	const response = await fetch(new URL(RELAY_CLIENT_HEARTBEAT_PATH, relayUrl), {
 		method: "POST",
+		credentials: "include",
 		headers: {
 			"content-type": "application/json",
 		},
