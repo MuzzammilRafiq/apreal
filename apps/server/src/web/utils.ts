@@ -30,6 +30,7 @@ export type ClientConnection = {
 	ready: boolean;
 	transport: ClientTransport;
 	send(payload: ServerMessage): boolean | void;
+	close?(reason: string): void;
 };
 
 export {

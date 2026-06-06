@@ -48,6 +48,7 @@ export function App({ runtime }: AppProps) {
 	const [activeSessionId, setActiveSessionId] = useState<string | null>(() => readStoredSessionId());
 	const [connectionError, setConnectionError] = useState<string | null>(null);
 	const [streamRequested, setStreamRequested] = useState(false);
+	const [streamGeneration, setStreamGeneration] = useState(0);
 	const {
 		adminStatus, adminStatusError, transportStatusMessage, transportReady, providers, providersError, mcpServers, mcpServersError, loadingMcpServers,
 		scheduledJobs, scheduledJobsError, loadingScheduledJobs, scheduledJobRuns, scheduledJobRunsError, loadingScheduledJobRuns,
@@ -152,6 +153,24 @@ export function App({ runtime }: AppProps) {
 		});
 	}, [connected]);
 
+	const waitForNextConnectionAttempt = useCallback((timeoutMs = 1200) => new Promise<void>((resolve) => {
+		let timeoutId = 0;
+		const finish = () => {
+			window.clearTimeout(timeoutId);
+			pendingConnectionResolversRef.current.delete(finish);
+			resolve();
+		};
+
+		timeoutId = window.setTimeout(finish, timeoutMs);
+		pendingConnectionResolversRef.current.add(finish);
+	}), []);
+
+	const restartEventStream = useCallback(() => {
+		setConnected(false);
+		setStreamRequested(true);
+		setStreamGeneration((current) => current + 1);
+	}, []);
+
 	const ensureClientTransport = useCallback(async () => {
 		if (!serverReady) {
 			throw new Error(adminStatusError ?? transportStatusMessage ?? runtime.transport.unavailableBody);
@@ -176,13 +195,14 @@ export function App({ runtime }: AppProps) {
 			await runtime.transport.sendMessage(message);
 		} catch (error) {
 			if (getErrorMessage(error) === STREAM_REQUIRED_MESSAGE) {
-				await waitForConnectionAttempt();
+				restartEventStream();
+				await waitForNextConnectionAttempt(2_000);
 				await runtime.transport.sendMessage(message);
 				return;
 			}
 			throw error;
 		}
-	}, [adminStatusError, ensureClientTransport, runtime, serverReady, transportStatusMessage, waitForConnectionAttempt]);
+	}, [adminStatusError, ensureClientTransport, restartEventStream, runtime, serverReady, transportStatusMessage, waitForNextConnectionAttempt]);
 
 	const requestSessionPage = useCallback((offset = 0, limit = SESSION_PAGE_SIZE) => {
 		void sendClientMessage({ type: "load_sessions_page", offset, limit }).catch((error) => {
@@ -573,7 +593,7 @@ export function App({ runtime }: AppProps) {
 			eventSource?.close();
 			setConnected(false);
 		};
-	}, [runtime, serverReady, streamRequested]);
+	}, [runtime, serverReady, streamGeneration, streamRequested]);
 
 	const handleLoadMoreSessions = useCallback(() => {
 		const nextVisibleLimit = visibleSessionLimitRef.current + SESSION_PAGE_SIZE;

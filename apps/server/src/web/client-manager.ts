@@ -38,7 +38,12 @@ export interface ClientActions {
 	broadcastSessionSummaryUpdated(session: SharedSessionState): void;
 	sendSessionSnapshot(targetClientId: string, session: SharedSessionState): void;
 	broadcastSessionSnapshot(session: SharedSessionState): void;
-	registerClientConnection(clientId: string, transport: ClientTransport, sendPayload: ClientConnection["send"]): ClientConnection;
+	registerClientConnection(
+		clientId: string,
+		transport: ClientTransport,
+		sendPayload: ClientConnection["send"],
+		close?: ClientConnection["close"],
+	): ClientConnection;
 	removeClientConnection(clientId: string, reason: string): void;
 	normalizeSessionPageLimit(limit?: number): number;
 	listSessions(): SessionSummary[];
@@ -97,13 +102,11 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 		clientId: string,
 		transport: ClientTransport,
 		sendPayload: ClientConnection["send"],
+		close?: ClientConnection["close"],
 	) {
 		const existing = clients.get(clientId);
 		if (existing) {
-			existing.closed = false;
-			existing.transport = transport;
-			existing.send = sendPayload;
-			return existing;
+			existing.close?.("client_replaced");
 		}
 
 		const connection: ClientConnection = {
@@ -112,6 +115,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 			ready: false,
 			transport,
 			send: sendPayload,
+			close,
 		};
 		clients.set(clientId, connection);
 		logger.info("client transport connected", {
@@ -266,7 +270,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 			closeStream("http_stream_open_failed");
 		});
 
-		const client = registerClientConnection(clientId, "http", sendPayload);
+		const client = registerClientConnection(clientId, "http", sendPayload, closeStream);
 		client.ready = true;
 		sendConnected(clientId);
 
