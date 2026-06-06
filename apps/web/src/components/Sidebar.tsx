@@ -10,7 +10,7 @@ type SidebarProps = {
 	canLoadMoreSessions: boolean;
 	activeSessionId: string | null;
 	onStartNewChat: () => void;
-	onOpenSettings: () => void;
+	onOpenSettings: (() => void) | null;
 	onActivateSession: (sessionId: string) => void;
 	onLoadMoreSessions: () => void;
 };
@@ -66,19 +66,21 @@ function SidebarContent({
 					</svg>
 					<span className="truncate">Start new chat</span>
 				</button>
-				<button
-					type="button"
-					className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-md border border-white/10 bg-white/4 px-3.5 py-2.5 text-center text-[0.8rem] font-semibold text-[#b5b5b5] transition-colors duration-150 hover:border-white/16 hover:bg-white/8 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-					onClick={() => {
-						onOpenSettings();
-						onClose?.();
-					}}
-				>
-					<svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2">
-						<path d="M3.333 10h13.334M3.333 5h13.334M3.333 15h13.334" strokeLinecap="round" strokeLinejoin="round" />
-					</svg>
-					<span className="truncate">Dashboard & Settings</span>
-				</button>
+				{onOpenSettings ? (
+					<button
+						type="button"
+						className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-md border border-white/10 bg-white/4 px-3.5 py-2.5 text-center text-[0.8rem] font-semibold text-[#b5b5b5] transition-colors duration-150 hover:border-white/16 hover:bg-white/8 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+						onClick={() => {
+							onOpenSettings();
+							onClose?.();
+						}}
+					>
+						<svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2">
+							<path d="M3.333 10h13.334M3.333 5h13.334M3.333 15h13.334" strokeLinecap="round" strokeLinejoin="round" />
+						</svg>
+						<span className="truncate">Dashboard & Settings</span>
+					</button>
+				) : null}
 				<div className="mt-2.5">
 					<AccountAuthButton onAfterAction={onClose} />
 				</div>

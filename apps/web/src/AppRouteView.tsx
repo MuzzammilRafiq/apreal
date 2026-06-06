@@ -7,6 +7,7 @@ import { Sidebar } from "./components/Sidebar";
 import { TranscriptPanel } from "./components/TranscriptPanel";
 import type { ScheduledJobDetails, SessionCacheEntry, SessionSummary, TranscriptMessage } from "./chatTypes";
 import type { AppRoute } from "./app-state";
+import type { WebCapabilities } from "./runtime";
 
 type EmptyState = { title: string; body: string } | null;
 
@@ -19,9 +20,6 @@ type AppRouteViewProps = {
 	mcpServers: McpServerConfig[];
 	mcpServersError: string | null;
 	loadingMcpServers: boolean;
-	submittingPairingCode: boolean;
-	settingsMessage: string | null;
-	settingsError: string | null;
 	savingAppendPrompt: boolean;
 	appendPromptMessage: string | null;
 	appendPromptError: string | null;
@@ -44,6 +42,7 @@ type AppRouteViewProps = {
 	connected: boolean;
 	serverReady: boolean;
 	streamRequested: boolean;
+	capabilities: WebCapabilities;
 	connectionLabel: string;
 	promptInputRef: RefObject<HTMLTextAreaElement | null>;
 	transcriptRef: RefObject<HTMLDivElement | null>;
@@ -62,7 +61,6 @@ type AppRouteViewProps = {
 	onUpdateMcpServer: (serverId: string, request: UpdateMcpServerRequest) => Promise<void>;
 	onDeleteMcpServer: (serverId: string) => Promise<void>;
 	onRefreshMcpServers: () => void;
-	onSubmitPairingCode: (pairingCode: string) => void;
 	onSaveAppendSystemPrompt: (appendSystemPrompt: string) => void;
 	onStartNewChat: () => void;
 	onActivateSession: (sessionId: string | null) => void;
@@ -73,15 +71,15 @@ type AppRouteViewProps = {
 
 export function AppRouteView({
 	route, adminStatus, adminStatusError, providers, providersError, mcpServers, mcpServersError, loadingMcpServers,
-	submittingPairingCode, settingsMessage, settingsError, savingAppendPrompt, appendPromptMessage, appendPromptError,
+	savingAppendPrompt, appendPromptMessage, appendPromptError,
 	scheduledJobs, scheduledJobRuns, sessionCache, scheduledJobsError, scheduledJobRunsError, loadingScheduledJobs, loadingScheduledJobRuns,
 	connectionError, pendingDraft, visibleSessions, loadingMoreSessions, canLoadMoreSessions, activeSessionId, activeSession, activeTranscript,
-	emptyState, connected, serverReady, streamRequested, connectionLabel, promptInputRef, transcriptRef, onRouteChange, onRefreshAdminStatus,
+	emptyState, connected, serverReady, streamRequested, capabilities, connectionLabel, promptInputRef, transcriptRef, onRouteChange, onRefreshAdminStatus,
 	onRefreshJobs, onRefreshJobRuns, onUpdateJobInterval, onToggleJobEnabled, onDeleteJob, onEnsureSessionLoaded, onSetDefaultModel,
 	onStartProviderLogin, onSaveProviderApiKey, onCreateMcpServer, onUpdateMcpServer, onDeleteMcpServer, onRefreshMcpServers,
-	onSubmitPairingCode, onSaveAppendSystemPrompt, onStartNewChat, onActivateSession, onLoadMoreSessions, onSendPrompt, onAbort,
+	onSaveAppendSystemPrompt, onStartNewChat, onActivateSession, onLoadMoreSessions, onSendPrompt, onAbort,
 }: AppRouteViewProps) {
-	if (route === "settings") {
+	if (route === "settings" && capabilities.settings) {
 		return (
 			<SettingsPage
 				adminStatus={adminStatus}
@@ -91,9 +89,6 @@ export function AppRouteView({
 				mcpServers={mcpServers}
 				mcpServersError={mcpServersError}
 				isLoadingMcpServers={loadingMcpServers}
-				isSubmitting={submittingPairingCode}
-				submissionMessage={settingsMessage}
-				submissionError={settingsError}
 				isSavingAppendPrompt={savingAppendPrompt}
 				appendPromptSubmissionMessage={appendPromptMessage}
 				appendPromptSubmissionError={appendPromptError}
@@ -124,13 +119,12 @@ export function AppRouteView({
 				onRefreshMcpServers={() => {
 					void onRefreshMcpServers();
 				}}
-				onSubmitPairingCode={onSubmitPairingCode}
 				onSaveAppendSystemPrompt={onSaveAppendSystemPrompt}
 			/>
 		);
 	}
 
-	if (route === "jobs") {
+	if (route === "jobs" && capabilities.jobs) {
 		return (
 			<ScheduledJobsPage
 				adminStatus={adminStatus}
@@ -162,7 +156,7 @@ export function AppRouteView({
 				canLoadMoreSessions={canLoadMoreSessions}
 				activeSessionId={activeSessionId}
 				onStartNewChat={onStartNewChat}
-				onOpenSettings={() => onRouteChange("settings")}
+				onOpenSettings={capabilities.settings ? () => onRouteChange("settings") : null}
 				onActivateSession={(sessionId) => onActivateSession(sessionId)}
 				onLoadMoreSessions={onLoadMoreSessions}
 			/>

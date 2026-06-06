@@ -17,9 +17,6 @@ type SettingsPageProps = {
 	mcpServers: McpServerConfig[];
 	mcpServersError: string | null;
 	isLoadingMcpServers: boolean;
-	isSubmitting: boolean;
-	submissionMessage: string | null;
-	submissionError: string | null;
 	isSavingAppendPrompt: boolean;
 	appendPromptSubmissionMessage: string | null;
 	appendPromptSubmissionError: string | null;
@@ -46,7 +43,6 @@ type SettingsPageProps = {
 	onUpdateMcpServer: (serverId: string, request: UpdateMcpServerRequest) => Promise<void>;
 	onDeleteMcpServer: (serverId: string) => Promise<void>;
 	onRefreshMcpServers: () => void;
-	onSubmitPairingCode: (pairingCode: string) => void;
 	onSaveAppendSystemPrompt: (appendSystemPrompt: string) => void;
 };
 
@@ -58,9 +54,6 @@ export function SettingsPage({
 	mcpServers,
 	mcpServersError,
 	isLoadingMcpServers,
-	isSubmitting,
-	submissionMessage,
-	submissionError,
 	isSavingAppendPrompt,
 	appendPromptSubmissionMessage,
 	appendPromptSubmissionError,
@@ -87,12 +80,10 @@ export function SettingsPage({
 	onUpdateMcpServer,
 	onDeleteMcpServer,
 	onRefreshMcpServers,
-	onSubmitPairingCode,
 	onSaveAppendSystemPrompt,
 }: SettingsPageProps) {
 	const [activeSection, setActiveSection] = useState<SettingsSection>("connection");
 	const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-	const [pairingCode, setPairingCode] = useState("");
 	const [modelQuery, setModelQuery] = useState("");
 	const [providerQuery, setProviderQuery] = useState("");
 	const [showAllProviders, setShowAllProviders] = useState(false);
@@ -119,12 +110,6 @@ export function SettingsPage({
 	const [appendSystemPromptDirty, setAppendSystemPromptDirty] = useState(false);
 
 	useEffect(() => {
-		if (submissionMessage) {
-			setPairingCode("");
-		}
-	}, [submissionMessage]);
-
-	useEffect(() => {
 		if (!appendSystemPromptDirty) {
 			setAppendSystemPromptDraft(adminStatus?.appendSystemPrompt ?? "");
 		}
@@ -147,11 +132,6 @@ export function SettingsPage({
 		setMcpEnv("");
 		setMcpUrl("");
 		setMcpHeaders("");
-	};
-
-	const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-		event.preventDefault();
-		onSubmitPairingCode(pairingCode);
 	};
 
 	const handleAppendSystemPromptSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -580,7 +560,7 @@ export function SettingsPage({
 									</span>
 									<span className="text-slate-300">/</span>
 									<span className="font-mono uppercase tracking-[0.1em]">
-										{relayReady ? "Paired" : "Awaiting pairing"}
+										{relayReady ? "Linked" : "Sign in to link"}
 									</span>
 								</div>
 								<div className="hidden items-center gap-2 border border-black/8 bg-white px-3 py-2 text-[0.74rem] font-medium text-slate-500 min-[1100px]:inline-flex">
@@ -590,7 +570,7 @@ export function SettingsPage({
 									</span>
 									<span className="text-slate-300">/</span>
 									<span className="font-mono uppercase tracking-[0.1em]">
-										{relayReady ? "Paired" : "Awaiting pairing"}
+										{relayReady ? "Linked" : "Sign in to link"}
 									</span>
 								</div>
 								{activeSection === "jobs" ? (
@@ -650,12 +630,6 @@ export function SettingsPage({
 							connectionError={connectionError}
 							relayReady={relayReady}
 							isOnline={isOnline}
-							pairingCode={pairingCode}
-							setPairingCode={setPairingCode}
-							handleSubmit={handleSubmit}
-							isSubmitting={isSubmitting}
-							submissionMessage={submissionMessage}
-							submissionError={submissionError}
 							handleAppendSystemPromptSubmit={handleAppendSystemPromptSubmit}
 							appendSystemPromptDraft={appendSystemPromptDraft}
 							setAppendSystemPromptDraft={setAppendSystemPromptDraft}

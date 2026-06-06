@@ -1,4 +1,9 @@
+import { useEffect, useRef, useState } from "react";
 import { authBaseUrl, authClient } from "../auth/auth-client";
+import { requestRelayAgentOwnerGrant } from "../relay-auth";
+import { authenticateRelayWithOwnerGrant } from "../server-admin";
+
+declare const __APREAL_WEB_TARGET__: "local" | "remote";
 
 type AccountAuthButtonProps = {
 	onAfterAction?: () => void;
@@ -6,7 +11,42 @@ type AccountAuthButtonProps = {
 
 export function AccountAuthButton({ onAfterAction }: AccountAuthButtonProps) {
 	const { data: session, isPending } = authClient.useSession();
+	const [relayLinkError, setRelayLinkError] = useState<string | null>(null);
+	const [relayLinking, setRelayLinking] = useState(false);
+	const linkedUserRef = useRef<string | null>(null);
 	const user = session?.user;
+
+	useEffect(() => {
+		if (__APREAL_WEB_TARGET__ !== "local" || isPending || !user?.id) {
+			return;
+		}
+
+		if (linkedUserRef.current === user.id) {
+			return;
+		}
+
+		let cancelled = false;
+		linkedUserRef.current = user.id;
+		setRelayLinking(true);
+		setRelayLinkError(null);
+		void requestRelayAgentOwnerGrant(authBaseUrl)
+			.then((grant) => authenticateRelayWithOwnerGrant(grant.ownerGrant))
+			.catch((error) => {
+				if (!cancelled) {
+					linkedUserRef.current = null;
+					setRelayLinkError(error instanceof Error ? error.message : "Failed to link the local relay agent.");
+				}
+			})
+			.finally(() => {
+				if (!cancelled) {
+					setRelayLinking(false);
+				}
+			});
+
+		return () => {
+			cancelled = true;
+		};
+	}, [isPending, user?.id]);
 
 	const handleSignIn = async () => {
 		await authClient.signIn.social({
@@ -53,6 +93,12 @@ export function AccountAuthButton({ onAfterAction }: AccountAuthButtonProps) {
 			<div className="min-w-0">
 				<p className="truncate text-[0.82rem] font-semibold text-white">{user.name || user.email || "Signed in"}</p>
 				{user.email ? <p className="truncate text-[0.7rem] font-medium text-[#9ca3af]">{user.email}</p> : null}
+				{__APREAL_WEB_TARGET__ === "local" && relayLinking ? (
+					<p className="mt-1 truncate text-[0.68rem] font-medium text-[#9ca3af]">Linking local relay...</p>
+				) : null}
+				{__APREAL_WEB_TARGET__ === "local" && relayLinkError ? (
+					<p className="mt-1 text-[0.68rem] font-medium leading-4 text-[#fca5a5]">{relayLinkError}</p>
+				) : null}
 			</div>
 			<button
 				type="button"

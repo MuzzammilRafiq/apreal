@@ -38,13 +38,6 @@ export function SettingsConnectionSection({
 	statusError,
 	connectionError,
 	relayReady,
-	isOnline,
-	pairingCode,
-	setPairingCode,
-	handleSubmit,
-	isSubmitting,
-	submissionMessage,
-	submissionError,
 	handleAppendSystemPromptSubmit,
 	appendSystemPromptDraft,
 	setAppendSystemPromptDraft,
@@ -61,7 +54,7 @@ export function SettingsConnectionSection({
 									<div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-4">
 										<div>
 											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Connection Overview</p>
-											<h2 className="mt-1 text-base font-bold text-slate-900">Runtime, pairing, and gateway state</h2>
+											<h2 className="mt-1 text-base font-bold text-slate-900">Runtime, account link, and gateway state</h2>
 										</div>
 										{adminStatus
 											? renderStatusPill(
@@ -87,7 +80,7 @@ export function SettingsConnectionSection({
 											label="Local Server"
 											value={adminStatus ? `Online on :${adminStatus.port}` : "Offline"}
 										/>
-										<ConnectionMetricCard label="Relay Pairing" value={relayReady ? "Paired" : "Awaiting pairing"} />
+										<ConnectionMetricCard label="Relay Account" value={relayReady ? "Linked" : "Sign in to link"} />
 										<ConnectionMetricCard
 											label="Gateway Transport"
 											value={adminStatus?.relayTransportConnected ? "Connected" : "Idle"}
@@ -144,44 +137,6 @@ export function SettingsConnectionSection({
 										) : null}
 									</dl>
 								</div>
-
-								<form className="border border-black/8 bg-white p-5" onSubmit={handleSubmit}>
-									<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Pairing</p>
-									<h2 className="mt-1 text-base font-bold text-slate-900">Configure relay pairing code</h2>
-
-									<label className="mt-4 block">
-										<span className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Six-character pairing code</span>
-										<input
-											type="text"
-											value={pairingCode}
-											onChange={(event) => setPairingCode(event.target.value.toUpperCase())}
-											placeholder="ABC123"
-											className="mt-2 w-full border border-slate-300 bg-[#f8f8f8] px-3 py-2.5 font-mono text-[1rem] font-bold tracking-[0.22em] text-[#171717] placeholder:text-slate-300 outline-none transition focus:border-slate-500 focus:bg-white"
-											autoComplete="off"
-											autoCapitalize="characters"
-											spellCheck={false}
-										/>
-									</label>
-
-									<button
-										type="submit"
-										className="mt-4 w-full flex items-center justify-center border border-black bg-black px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer"
-										disabled={isSubmitting || pairingCode.trim().length === 0}
-									>
-										{isSubmitting ? "Syncing handshake..." : "Reauthenticate & Sync pairing"}
-									</button>
-
-									{submissionMessage ? (
-										<p className="mt-3 border border-slate-300 bg-white p-3 text-[0.84rem] leading-[1.5] text-slate-700 font-medium">
-											{submissionMessage}
-										</p>
-									) : null}
-									{submissionError ? (
-										<p className="mt-3 border border-slate-300 bg-slate-100 p-3 text-[0.84rem] leading-[1.5] text-slate-800 font-medium">
-											{submissionError}
-										</p>
-									) : null}
-								</form>
 
 								<form className="border border-black/8 bg-white p-5" onSubmit={handleAppendSystemPromptSubmit}>
 									<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Prompt Layering</p>

@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import type { CreateMcpServerRequest, LocalWebAdminStatus, McpServerConfig, ProvidersResponse, UpdateMcpServerRequest } from "@apreal/shared";
 import type { ScheduledJobDetails, SessionSummary } from "./chatTypes";
-import { ADMIN_STATUS_REFRESH_INTERVAL_MS, getErrorMessage, transportConfig, type AppRoute } from "./app-state";
+import { ADMIN_STATUS_REFRESH_INTERVAL_MS, getErrorMessage, type AppRoute } from "./app-state";
+import type { WebRuntime } from "./runtime";
 import {
 	deleteScheduledJob as deleteScheduledJobRequest,
 	createMcpServer as createMcpServerRequest,
 	deleteMcpServer as deleteMcpServerRequest,
 	refreshMcpServers as refreshMcpServersRequest,
-	readLocalAdminStatus,
 	readMcpServers,
 	readProviders,
 	readScheduledJobRuns,
@@ -15,7 +15,6 @@ import {
 	saveProviderApiKey as saveProviderApiKeyRequest,
 	saveAppendSystemPrompt as saveAppendSystemPromptRequest,
 	startProviderLogin as startProviderLoginRequest,
-	submitRelayReauthentication,
 	updateMcpServer as updateMcpServerRequest,
 	updateDefaultModel as updateDefaultModelRequest,
 	updateScheduledJob as updateScheduledJobRequest,
@@ -23,13 +22,16 @@ import {
 
 type UseAppAdminOptions = {
 	route: AppRoute;
+	runtime: WebRuntime;
 	setConnected: Dispatch<SetStateAction<boolean>>;
 	setStreamRequested: Dispatch<SetStateAction<boolean>>;
 };
 
-export function useAppAdmin({ route, setConnected, setStreamRequested }: UseAppAdminOptions) {
+export function useAppAdmin({ route, runtime, setConnected, setStreamRequested }: UseAppAdminOptions) {
 	const [adminStatus, setAdminStatus] = useState<LocalWebAdminStatus | null>(null);
 	const [adminStatusError, setAdminStatusError] = useState<string | null>(null);
+	const [transportStatusMessage, setTransportStatusMessage] = useState<string | null>(null);
+	const [transportReady, setTransportReady] = useState(false);
 	const [providers, setProviders] = useState<ProvidersResponse | null>(null);
 	const [providersError, setProvidersError] = useState<string | null>(null);
 	const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([]);
@@ -41,9 +43,6 @@ export function useAppAdmin({ route, setConnected, setStreamRequested }: UseAppA
 	const [scheduledJobRuns, setScheduledJobRuns] = useState<SessionSummary[]>([]);
 	const [scheduledJobRunsError, setScheduledJobRunsError] = useState<string | null>(null);
 	const [loadingScheduledJobRuns, setLoadingScheduledJobRuns] = useState(false);
-	const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
-	const [settingsError, setSettingsError] = useState<string | null>(null);
-	const [submittingPairingCode, setSubmittingPairingCode] = useState(false);
 	const [appendPromptMessage, setAppendPromptMessage] = useState<string | null>(null);
 	const [appendPromptError, setAppendPromptError] = useState<string | null>(null);
 	const [savingAppendPrompt, setSavingAppendPrompt] = useState(false);
@@ -90,14 +89,18 @@ export function useAppAdmin({ route, setConnected, setStreamRequested }: UseAppA
 	}, []);
 
 	const refreshAdminStatus = useCallback(async () => {
-		const nextStatus = await readLocalAdminStatus(transportConfig.statusUrl);
-		setAdminStatus(nextStatus);
+		const nextStatus = await runtime.transport.readStatus();
+		setAdminStatus(nextStatus.adminStatus);
 		setAdminStatusError(null);
-		void refreshProviders().catch(() => {
-			// Provider errors are already captured in UI state.
-		});
+		setTransportStatusMessage(nextStatus.message);
+		setTransportReady(nextStatus.transportReady);
+		if (runtime.capabilities.providers) {
+			void refreshProviders().catch(() => {
+				// Provider errors are already captured in UI state.
+			});
+		}
 		return nextStatus;
-	}, [refreshProviders]);
+	}, [refreshProviders, runtime]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -111,9 +114,6 @@ export function useAppAdmin({ route, setConnected, setStreamRequested }: UseAppA
 				}
 
 				setStreamRequested(true);
-				if (!nextStatus.relayReady) {
-					setSettingsMessage(null);
-				}
 			} catch (error) {
 				if (cancelled) {
 					return;
@@ -121,6 +121,8 @@ export function useAppAdmin({ route, setConnected, setStreamRequested }: UseAppA
 
 				setAdminStatus(null);
 				setAdminStatusError(getErrorMessage(error));
+				setTransportStatusMessage(null);
+				setTransportReady(false);
 				setConnected(false);
 			} finally {
 				if (!cancelled) {
@@ -137,7 +139,7 @@ export function useAppAdmin({ route, setConnected, setStreamRequested }: UseAppA
 				window.clearTimeout(refreshTimer);
 			}
 		};
-	}, [refreshAdminStatus]);
+	}, [refreshAdminStatus, setConnected, setStreamRequested]);
 
 	const refreshScheduledJobs = useCallback(async () => {
 		setLoadingScheduledJobs(true);
@@ -206,35 +208,16 @@ export function useAppAdmin({ route, setConnected, setStreamRequested }: UseAppA
 	}, [refreshScheduledJobRuns]);
 
 
-	const handleSubmitPairingCode = useCallback((pairingCode: string) => {
-		const trimmedPairingCode = pairingCode.trim();
-		if (!trimmedPairingCode) {
-			setSettingsError("A pairing code is required.");
-			setSettingsMessage(null);
-			return;
-		}
-
-		setSubmittingPairingCode(true);
-		setSettingsError(null);
-		setSettingsMessage(null);
-		void submitRelayReauthentication(transportConfig.relayReauthenticateUrl, trimmedPairingCode)
-			.then((response) => {
-				setAdminStatus(response.status);
-				setAdminStatusError(null);
-				setSettingsMessage("Relay pairing updated. The server restarted its relay transport.");
-			})
-			.catch((error) => {
-				setSettingsError(getErrorMessage(error));
-			})
-			.finally(() => {
-				setSubmittingPairingCode(false);
-			});
-	}, []);
-
 	const handleSaveAppendSystemPrompt = useCallback((appendSystemPrompt: string) => {
 		setSavingAppendPrompt(true);
 		setAppendPromptError(null);
 		setAppendPromptMessage(null);
+		if (!runtime.capabilities.systemPrompt) {
+			setAppendPromptError("System prompt editing is not available in this web target.");
+			setSavingAppendPrompt(false);
+			return;
+		}
+
 		void saveAppendSystemPromptRequest(appendSystemPrompt)
 			.then((response) => {
 				setAdminStatus(response.status);
@@ -251,7 +234,7 @@ export function useAppAdmin({ route, setConnected, setStreamRequested }: UseAppA
 			.finally(() => {
 				setSavingAppendPrompt(false);
 			});
-	}, []);
+	}, [runtime]);
 
 	const handleSetDefaultModel = useCallback(async (provider: string, modelId: string) => {
 		const nextProviders = await updateDefaultModelRequest({ provider, modelId });
@@ -298,24 +281,33 @@ export function useAppAdmin({ route, setConnected, setStreamRequested }: UseAppA
 		if (route !== "jobs" && route !== "settings") {
 			return;
 		}
+		if (!runtime.capabilities.jobs) {
+			return;
+		}
 
 		void refreshScheduledJobs().catch(() => {
 			// The error state is already captured for rendering.
 		});
-	}, [refreshScheduledJobs, route]);
+	}, [refreshScheduledJobs, route, runtime.capabilities.jobs]);
 
 	useEffect(() => {
 		if (route !== "settings") {
+			return;
+		}
+		if (!runtime.capabilities.mcpServers) {
 			return;
 		}
 
 		void refreshMcpServers().catch(() => {
 			// MCP errors are already captured for rendering.
 		});
-	}, [refreshMcpServers, route]);
+	}, [refreshMcpServers, route, runtime.capabilities.mcpServers]);
 
 	useEffect(() => {
 		if (route !== "settings") {
+			return;
+		}
+		if (!runtime.capabilities.providers) {
 			return;
 		}
 
@@ -333,15 +325,16 @@ export function useAppAdmin({ route, setConnected, setStreamRequested }: UseAppA
 		return () => {
 			window.clearInterval(pollId);
 		};
-	}, [providers, refreshProviders, route]);
+	}, [providers, refreshProviders, route, runtime.capabilities.providers]);
 
 
 	return {
-		adminStatus, adminStatusError, providers, providersError, mcpServers, mcpServersError, loadingMcpServers,
+		adminStatus, adminStatusError, transportStatusMessage, transportReady,
+		providers, providersError, mcpServers, mcpServersError, loadingMcpServers,
 		scheduledJobs, scheduledJobsError, loadingScheduledJobs, scheduledJobRuns, scheduledJobRunsError, loadingScheduledJobRuns,
-		settingsMessage, settingsError, submittingPairingCode, appendPromptMessage, appendPromptError, savingAppendPrompt,
+		appendPromptMessage, appendPromptError, savingAppendPrompt,
 		setAdminStatus, setAdminStatusError, refreshAdminStatus, reloadMcpServers, handleRefreshJobs, handleRefreshJobRuns,
-		updateScheduledJob, toggleScheduledJobEnabled, deleteScheduledJob, handleSubmitPairingCode, handleSaveAppendSystemPrompt,
+		updateScheduledJob, toggleScheduledJobEnabled, deleteScheduledJob, handleSaveAppendSystemPrompt,
 		handleSetDefaultModel, handleStartProviderLogin, handleSaveProviderApiKey, handleCreateMcpServer, handleUpdateMcpServer, handleDeleteMcpServer,
 	};
 }

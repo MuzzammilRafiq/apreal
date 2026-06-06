@@ -1,13 +1,11 @@
 import type { SessionCacheEntry, SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "./chatTypes";
 import { createBrowserUuid } from "./local-client";
-import { getWebTransportConfig } from "./transport-config";
 
 export const ACTIVE_SESSION_STORAGE_KEY = "pi-browser-active-session";
 export const SESSION_PAGE_SIZE = 50;
 export const STREAM_DISCONNECTED_MESSAGE = "Disconnected from the server stream. Reconnecting...";
 export const STREAM_REQUIRED_MESSAGE = "Client event stream is not connected.";
 export const ADMIN_STATUS_REFRESH_INTERVAL_MS = 3_000;
-export const transportConfig = getWebTransportConfig();
 
 export type AppRoute = "chat" | "settings" | "jobs";
 

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LOCAL_CLIENT_ID_QUERY_PARAM } from "@apreal/shared";
 import { AppRouteView } from "./AppRouteView";
 import type { ScheduledJobDetails, SessionCacheEntry, SessionSummary, TranscriptMessage } from "./chatTypes";
 import {
@@ -19,21 +18,25 @@ import {
 	cloneTranscript,
 	createSummaryOnlyCacheEntry,
 	getErrorMessage,
-	isObjectRecord,
 	isScheduledSessionSummary,
 	navigateToRoute,
 	parseServerMessage,
 	readCurrentRoute,
 	readStoredSessionId,
 	storeActiveSessionId,
-	transportConfig,
 	upsertSessionInList,
 	type AppRoute,
 	type ClientMessage,
 } from "./app-state";
+import { coerceRouteForCapabilities, type WebRuntime } from "./runtime";
 import { useAppAdmin } from "./useAppAdmin";
-export function App() {
-	const [route, setRoute] = useState<AppRoute>(() => readCurrentRoute());
+
+type AppProps = {
+	runtime: WebRuntime;
+};
+
+export function App({ runtime }: AppProps) {
+	const [route, setRoute] = useState<AppRoute>(() => coerceRouteForCapabilities(readCurrentRoute(), runtime.capabilities));
 	const [connected, setConnected] = useState(false);
 	const [pendingDraft, setPendingDraft] = useState(false);
 	const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -46,13 +49,13 @@ export function App() {
 	const [connectionError, setConnectionError] = useState<string | null>(null);
 	const [streamRequested, setStreamRequested] = useState(false);
 	const {
-		adminStatus, adminStatusError, providers, providersError, mcpServers, mcpServersError, loadingMcpServers,
+		adminStatus, adminStatusError, transportStatusMessage, transportReady, providers, providersError, mcpServers, mcpServersError, loadingMcpServers,
 		scheduledJobs, scheduledJobsError, loadingScheduledJobs, scheduledJobRuns, scheduledJobRunsError, loadingScheduledJobRuns,
-		settingsMessage, settingsError, submittingPairingCode, appendPromptMessage, appendPromptError, savingAppendPrompt,
+		appendPromptMessage, appendPromptError, savingAppendPrompt,
 		setAdminStatus, setAdminStatusError, refreshAdminStatus, reloadMcpServers, handleRefreshJobs, handleRefreshJobRuns,
-		updateScheduledJob, toggleScheduledJobEnabled, deleteScheduledJob, handleSubmitPairingCode, handleSaveAppendSystemPrompt,
+		updateScheduledJob, toggleScheduledJobEnabled, deleteScheduledJob, handleSaveAppendSystemPrompt,
 		handleSetDefaultModel, handleStartProviderLogin, handleSaveProviderApiKey, handleCreateMcpServer, handleUpdateMcpServer, handleDeleteMcpServer,
-	} = useAppAdmin({ route, setConnected, setStreamRequested });
+	} = useAppAdmin({ route, runtime, setConnected, setStreamRequested });
 	const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
 	const transcriptRef = useRef<HTMLDivElement | null>(null);
 	const sessionsRef = useRef(sessions);
@@ -90,7 +93,7 @@ export function App() {
 	const activeSessionCacheEntry = activeSessionId ? sessionCache.get(activeSessionId) ?? null : null;
 	const activeTranscript = activeSessionCacheEntry?.transcriptLoaded ? activeSessionCacheEntry.transcript : [];
 	const activeTranscriptLoaded = activeSessionCacheEntry?.transcriptLoaded ?? false;
-	const serverReady = adminStatus !== null;
+	const serverReady = transportReady;
 	const relayReady = Boolean(adminStatus?.relayReady);
 	const relayTransportConnected = Boolean(adminStatus?.relayTransportConnected);
 	const isBusy = pendingDraft || Boolean(activeSession?.busy);
@@ -110,14 +113,22 @@ export function App() {
 
 	useEffect(() => {
 		const handlePopState = () => {
-			setRoute(readCurrentRoute());
+			setRoute(coerceRouteForCapabilities(readCurrentRoute(), runtime.capabilities));
 		};
 
 		window.addEventListener("popstate", handlePopState);
 		return () => {
 			window.removeEventListener("popstate", handlePopState);
 		};
-	}, []);
+	}, [runtime.capabilities]);
+
+	useEffect(() => {
+		const supportedRoute = coerceRouteForCapabilities(readCurrentRoute(), runtime.capabilities);
+		if (supportedRoute !== readCurrentRoute()) {
+			navigateToRoute(supportedRoute);
+		}
+		setRoute(supportedRoute);
+	}, [runtime.capabilities]);
 
 	useEffect(() => {
 		resolvePendingConnectionsRef.current = resolvePendingConnections;
@@ -143,7 +154,7 @@ export function App() {
 
 	const ensureClientTransport = useCallback(async () => {
 		if (!serverReady) {
-			throw new Error(adminStatusError ?? "The local server is not ready yet.");
+			throw new Error(adminStatusError ?? transportStatusMessage ?? runtime.transport.unavailableBody);
 		}
 
 		if (connected) {
@@ -152,55 +163,26 @@ export function App() {
 
 		setStreamRequested(true);
 		await waitForConnectionAttempt();
-	}, [adminStatusError, connected, serverReady, waitForConnectionAttempt]);
+	}, [adminStatusError, connected, runtime, serverReady, transportStatusMessage, waitForConnectionAttempt]);
 
 	const sendClientMessage = useCallback(async (message: ClientMessage) => {
 		if (!serverReady) {
-			throw new Error(adminStatusError ?? "The local server is not ready yet.");
+			throw new Error(adminStatusError ?? transportStatusMessage ?? runtime.transport.unavailableBody);
 		}
 
 		await ensureClientTransport();
 
-		const performRequest = () => fetch(transportConfig.messageUrl, {
-			method: "POST",
-			headers: {
-				"content-type": "application/json",
-				"x-pi-local-client-id": transportConfig.localClientId,
-			},
-			body: JSON.stringify(message),
-		});
-
-		let response = await performRequest();
-		if (response.status === 409) {
-			let payload: unknown = null;
-			try {
-				payload = await response.json();
-			} catch {
-				// Ignore malformed error bodies.
-			}
-
-			if (isObjectRecord(payload) && payload.message === STREAM_REQUIRED_MESSAGE) {
-				await waitForConnectionAttempt();
-				response = await performRequest();
-			}
-		}
-
-		if (response.ok) {
-			return;
-		}
-
-		let errorMessage = `request failed with status ${response.status}`;
 		try {
-			const payload: unknown = await response.json();
-			if (isObjectRecord(payload) && typeof payload.message === "string") {
-				errorMessage = payload.message;
+			await runtime.transport.sendMessage(message);
+		} catch (error) {
+			if (getErrorMessage(error) === STREAM_REQUIRED_MESSAGE) {
+				await waitForConnectionAttempt();
+				await runtime.transport.sendMessage(message);
+				return;
 			}
-		} catch {
-			// Ignore malformed error bodies.
+			throw error;
 		}
-
-		throw new Error(errorMessage);
-	}, [adminStatusError, ensureClientTransport, serverReady, waitForConnectionAttempt]);
+	}, [adminStatusError, ensureClientTransport, runtime, serverReady, transportStatusMessage, waitForConnectionAttempt]);
 
 	const requestSessionPage = useCallback((offset = 0, limit = SESSION_PAGE_SIZE) => {
 		void sendClientMessage({ type: "load_sessions_page", offset, limit }).catch((error) => {
@@ -348,17 +330,32 @@ export function App() {
 			return;
 		}
 
-		const streamUrl = new URL(transportConfig.streamUrl);
-		streamUrl.searchParams.set(LOCAL_CLIENT_ID_QUERY_PARAM, transportConfig.localClientId);
-		const eventSource = new EventSource(streamUrl.toString());
+		let eventSource: EventSource | null = null;
+		let cancelled = false;
 
-		eventSource.onopen = () => {
-			setConnected(true);
-			setConnectionError(null);
-			resolvePendingConnectionsRef.current();
-		};
+		const connect = async () => {
+			try {
+				eventSource = await runtime.transport.openEventStream();
+			} catch (error) {
+				if (!cancelled) {
+					setConnected(false);
+					setConnectionError(getErrorMessage(error));
+				}
+				return;
+			}
 
-		eventSource.onmessage = (event) => {
+			if (cancelled) {
+				eventSource.close();
+				return;
+			}
+
+			eventSource.onopen = () => {
+				setConnected(true);
+				setConnectionError(null);
+				resolvePendingConnectionsRef.current();
+			};
+
+			eventSource.onmessage = (event) => {
 			const message = parseServerMessage(event.data);
 			if (!message) {
 				return;
@@ -561,18 +558,22 @@ export function App() {
 					break;
 				}
 			}
+			};
+
+			eventSource.onerror = () => {
+				setConnected(false);
+				setConnectionError((current) => current ?? STREAM_DISCONNECTED_MESSAGE);
+			};
 		};
 
-		eventSource.onerror = () => {
-			setConnected(false);
-			setConnectionError((current) => current ?? STREAM_DISCONNECTED_MESSAGE);
-		};
+		void connect();
 
 		return () => {
-			eventSource.close();
+			cancelled = true;
+			eventSource?.close();
 			setConnected(false);
 		};
-	}, [serverReady, streamRequested]);
+	}, [runtime, serverReady, streamRequested]);
 
 	const handleLoadMoreSessions = useCallback(() => {
 		const nextVisibleLimit = visibleSessionLimitRef.current + SESSION_PAGE_SIZE;
@@ -625,30 +626,31 @@ export function App() {
 	const emptyState = !activeSession
 		? {
 			title: !serverReady
-				? "Waiting for local server"
+				? runtime.transport.unavailableTitle
 				: connected
 						? (pendingDraft ? "Creating session..." : "Ready when you are")
 						: streamRequested ? "Connecting..." : "Ready when you are",
 			body: !serverReady
-				? (adminStatusError ?? "Start the local server to expose the browser UI and chat API.")
+				? (adminStatusError ?? transportStatusMessage ?? runtime.transport.unavailableBody)
 				: connected
 				? "Start with a coding task, file request, or bug report. The first prompt creates a reusable session that stays available in the left rail."
 				: !streamRequested
-					? "Opening the local server event stream."
-					: "Reconnecting to the local server event stream.",
+					? `Opening the ${runtime.transport.label} event stream.`
+					: runtime.transport.connectingBody,
 		}
 		: !activeTranscriptLoaded
 			? {
 				title: "Loading session...",
-				body: `Fetching the latest transcript from the ${transportConfig.label}.`,
+				body: `Fetching the latest transcript from the ${runtime.transport.label}.`,
 			}
 			: null;
 	const canLoadMoreSessions = visibleSessionLimit < Math.max(totalSessionCount ?? 0, sessions.length);
 
 	const handleRouteChange = useCallback((nextRoute: AppRoute) => {
-		navigateToRoute(nextRoute);
-		setRoute(nextRoute);
-	}, []);
+		const supportedRoute = coerceRouteForCapabilities(nextRoute, runtime.capabilities);
+		navigateToRoute(supportedRoute);
+		setRoute(supportedRoute);
+	}, [runtime.capabilities]);
 
 
 
@@ -657,7 +659,6 @@ export function App() {
 			route={route}
 			adminStatus={adminStatus} adminStatusError={adminStatusError} providers={providers} providersError={providersError}
 			mcpServers={mcpServers} mcpServersError={mcpServersError} loadingMcpServers={loadingMcpServers}
-			submittingPairingCode={submittingPairingCode} settingsMessage={settingsMessage} settingsError={settingsError}
 			savingAppendPrompt={savingAppendPrompt} appendPromptMessage={appendPromptMessage} appendPromptError={appendPromptError}
 			scheduledJobs={scheduledJobs} scheduledJobRuns={scheduledJobRuns} sessionCache={sessionCache}
 			scheduledJobsError={scheduledJobsError} scheduledJobRunsError={scheduledJobRunsError}
@@ -666,7 +667,8 @@ export function App() {
 			loadingMoreSessions={loadingMoreSessions} canLoadMoreSessions={canLoadMoreSessions}
 			activeSessionId={activeSessionId} activeSession={activeSession} activeTranscript={activeTranscript}
 			emptyState={emptyState} connected={connected} serverReady={serverReady} streamRequested={streamRequested}
-			connectionLabel={transportConfig.label}
+			capabilities={runtime.capabilities}
+			connectionLabel={runtime.transport.label}
 			promptInputRef={promptInputRef}
 			transcriptRef={transcriptRef}
 			onRouteChange={handleRouteChange}
@@ -687,7 +689,7 @@ export function App() {
 					// MCP errors are already captured for rendering.
 				});
 			}}
-			onSubmitPairingCode={handleSubmitPairingCode} onSaveAppendSystemPrompt={handleSaveAppendSystemPrompt}
+			onSaveAppendSystemPrompt={handleSaveAppendSystemPrompt}
 			onStartNewChat={handleStartNewChat} onActivateSession={activateSession} onLoadMoreSessions={handleLoadMoreSessions}
 			onSendPrompt={submitPrompt} onAbort={handleAbort}
 		/>

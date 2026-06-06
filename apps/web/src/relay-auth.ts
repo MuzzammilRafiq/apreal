@@ -1,6 +1,8 @@
 import {
 	RELAY_CLIENT_AUTH_PATH,
+	RELAY_AGENT_OWNER_GRANT_PATH,
 	RELAY_CLIENT_HEARTBEAT_PATH,
+	type RelayAgentOwnerGrantResponse,
 	type RelayAuthTarget,
 	type RelayClientAuthRequest,
 	type RelayClientAuthResponse,
@@ -17,7 +19,6 @@ export type StoredRelayClientAuth = {
 	clientKey: string;
 	token: string;
 	expiresAt: number;
-	pairingCode: string | null;
 	target: RelayAuthTarget | null;
 	updatedAt: number;
 };
@@ -30,6 +31,17 @@ export type RelayClientHeartbeatStatus = {
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseAgentOwnerGrantResponse(payload: unknown): RelayAgentOwnerGrantResponse {
+	if (!isObjectRecord(payload) || typeof payload.ownerGrant !== "string" || typeof payload.expiresAt !== "number") {
+		throw new Error("relay owner grant returned an invalid response");
+	}
+
+	return {
+		ownerGrant: payload.ownerGrant,
+		expiresAt: payload.expiresAt,
+	};
 }
 
 function parseStoredTarget(value: unknown): RelayAuthTarget | null {
@@ -75,7 +87,6 @@ export function readStoredRelayClientAuth(relayUrl: string): StoredRelayClientAu
 			clientKey,
 			token: typeof parsed.token === "string" ? parsed.token : "",
 			expiresAt: typeof parsed.expiresAt === "number" ? parsed.expiresAt : 0,
-			pairingCode: typeof parsed.pairingCode === "string" && parsed.pairingCode.trim() ? parsed.pairingCode : null,
 			target: parseStoredTarget(parsed.target),
 			updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
 		};
@@ -96,7 +107,6 @@ function createClientIdentity(relayUrl: string): StoredRelayClientAuth {
 		clientKey: existing?.clientKey ?? `key-${createBrowserUuid()}`,
 		token: existing?.token ?? "",
 		expiresAt: existing?.expiresAt ?? 0,
-		pairingCode: existing?.pairingCode ?? null,
 		target: existing?.target ?? null,
 		updatedAt: Date.now(),
 	};
@@ -113,7 +123,6 @@ function parseClientAuthResponse(payload: unknown): RelayClientAuthResponse {
 		typeof payload.clientKey !== "string" ||
 		typeof payload.token !== "string" ||
 		typeof payload.expiresAt !== "number" ||
-		(payload.pairingCode !== null && typeof payload.pairingCode !== "string") ||
 		typeof payload.paired !== "boolean" ||
 		(payload.target !== null && !target)
 	) {
@@ -125,7 +134,6 @@ function parseClientAuthResponse(payload: unknown): RelayClientAuthResponse {
 		clientKey: payload.clientKey,
 		token: payload.token,
 		expiresAt: payload.expiresAt,
-		pairingCode: payload.pairingCode,
 		target,
 		paired: payload.paired,
 	};
@@ -187,12 +195,37 @@ export async function ensureRelayClientAuth(relayUrl: string): Promise<StoredRel
 		clientKey: issuedAuth.clientKey,
 		token: issuedAuth.token,
 		expiresAt: issuedAuth.expiresAt,
-		pairingCode: issuedAuth.pairingCode,
 		target: issuedAuth.target,
 		updatedAt: Date.now(),
 	};
 	writeStoredRelayClientAuth(nextAuth);
 	return nextAuth;
+}
+
+export async function requestRelayAgentOwnerGrant(relayUrl: string): Promise<RelayAgentOwnerGrantResponse> {
+	const response = await fetch(new URL(RELAY_AGENT_OWNER_GRANT_PATH, relayUrl), {
+		method: "POST",
+		credentials: "include",
+		headers: {
+			accept: "application/json",
+		},
+	});
+
+	let payload: unknown = null;
+	try {
+		payload = await response.json();
+	} catch {
+		// Ignore malformed bodies and use the status fallback below.
+	}
+
+	if (!response.ok) {
+		const message = isObjectRecord(payload) && typeof payload.message === "string"
+			? payload.message
+			: `relay owner grant failed with status ${response.status}`;
+		throw new Error(message);
+	}
+
+	return parseAgentOwnerGrantResponse(payload);
 }
 
 export async function readRelayClientHeartbeat(relayUrl: string): Promise<RelayClientHeartbeatStatus> {
@@ -234,7 +267,6 @@ export async function readRelayClientHeartbeat(relayUrl: string): Promise<RelayC
 		clientKey: heartbeat.clientKey,
 		token: heartbeat.token,
 		expiresAt: heartbeat.expiresAt,
-		pairingCode: heartbeat.pairingCode,
 		target: heartbeat.target,
 		updatedAt: Date.now(),
 	};

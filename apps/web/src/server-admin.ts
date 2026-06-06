@@ -5,7 +5,7 @@ import {
 	ADMIN_PROVIDER_API_KEY_PATH,
 	ADMIN_PROVIDER_LOGIN_PATH,
 	ADMIN_PROVIDERS_PATH,
-	ADMIN_RELAY_REAUTHENTICATE_PATH,
+	ADMIN_RELAY_AUTHENTICATE_PATH,
 	ADMIN_STATUS_PATH,
 	type CreateMcpServerRequest,
 	type AvailableSkill,
@@ -21,8 +21,8 @@ import {
 	type ProviderLoginState,
 	type ProviderLoginStatus,
 	type ProvidersResponse,
-	type RelayReauthenticateRequest,
-	type RelayReauthenticateResponse,
+	type RelayAuthenticateRequest,
+	type RelayAuthenticateResponse,
 	type SetDefaultModelRequest,
 	type UpdateAppendSystemPromptRequest,
 	type UpdateAppendSystemPromptResponse,
@@ -99,8 +99,6 @@ function parseStatus(payload: unknown): LocalWebAdminStatus {
 		typeof payload.relayUrl !== "string" ||
 		typeof payload.relayReady !== "boolean" ||
 		typeof payload.relayTransportConnected !== "boolean" ||
-		typeof payload.reauthPending !== "boolean" ||
-		typeof payload.reauthRunning !== "boolean" ||
 		typeof payload.webUiReady !== "boolean" ||
 		typeof payload.webUiPath !== "string" ||
 		typeof payload.appendSystemPrompt !== "string" ||
@@ -222,11 +220,11 @@ export async function readLocalAdminStatus(statusUrl: string): Promise<LocalWebA
 	return parseStatus(payload);
 }
 
-export async function submitRelayReauthentication(
-	requestUrl: string,
-	pairingCode: string,
-): Promise<RelayReauthenticateResponse> {
-	const requestBody: RelayReauthenticateRequest = { pairingCode };
+export async function authenticateRelayWithOwnerGrant(
+	ownerGrant: string,
+	requestUrl = ADMIN_RELAY_AUTHENTICATE_PATH,
+): Promise<RelayAuthenticateResponse> {
+	const requestBody: RelayAuthenticateRequest = { ownerGrant };
 	const response = await fetch(requestUrl, {
 		method: "POST",
 		headers: {
@@ -237,11 +235,11 @@ export async function submitRelayReauthentication(
 	});
 	const payload = await parseJsonResponse(response);
 	if (!response.ok) {
-		throw new Error(getResponseMessage(payload, `Relay reauthentication failed with status ${response.status}`));
+		throw new Error(getResponseMessage(payload, `Relay authentication failed with status ${response.status}`));
 	}
 
 	if (!isObjectRecord(payload) || !("status" in payload)) {
-		throw new Error("Relay reauthentication returned an invalid response.");
+		throw new Error("Relay authentication returned an invalid response.");
 	}
 
 	return {
@@ -349,7 +347,7 @@ export {
 	ADMIN_PROVIDER_LOGIN_PATH,
 	ADMIN_JOBS_PATH,
 	ADMIN_PROVIDERS_PATH,
-	ADMIN_RELAY_REAUTHENTICATE_PATH,
+	ADMIN_RELAY_AUTHENTICATE_PATH,
 	ADMIN_STATUS_PATH,
 };
 
