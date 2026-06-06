@@ -36,6 +36,7 @@ If you want to run just one side, use:
 ```bash
 pnpm dev:server
 pnpm dev:web
+pnpm dev:web:remote
 ```
 
 If you want plain prefixed terminal output instead of the TUI, use:
@@ -65,11 +66,20 @@ The server listens on `http://localhost:3000` by default and exposes:
 
 In development, the browser UI should be opened from the Vite app at `http://localhost:5173` so HMR works. The Node server still serves built frontend assets from `apps/web/dist` when that bundle exists, but that path does not hot reload.
 
+The web app has two build targets. The local server UI remains the default and builds to `apps/web/dist`; the remote/mobile-browser UI builds separately to `apps/web/dist-remote`.
+
 ## Build And Checks
 
 ```bash
 pnpm build
 pnpm typecheck
+```
+
+For targeted web builds:
+
+```bash
+pnpm build:web:local
+pnpm build:web:remote
 ```
 
 ## Runtime Notes
@@ -79,6 +89,10 @@ pnpm typecheck
 - `LOG_LEVEL` supports `debug`, `info`, `warn`, and `error`.
 - The browser talks only to the relay host for auth plus chat transport.
 - The browser talks only to the relay host. The Pi server keeps an outbound authenticated stream open to the relay, and browser messages are forwarded over that live channel.
-- `JWT_SECRET` is only required by `apps/relay-server` for relay token verification and local token generation.
+- `apps/relay-server` owns hosted Google OAuth through Better Auth at `/api/auth/*`.
+- Relay auth env: `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `BETTER_AUTH_GOOGLE_CLIENT_ID`, and `BETTER_AUTH_GOOGLE_CLIENT_SECRET`.
+- Optional relay auth env: `BETTER_AUTH_SQLITE_PATH` and comma-separated `BETTER_AUTH_TRUSTED_ORIGINS`.
+- `JWT_SECRET` is still used by `apps/relay-server` for relay token verification and local token generation. `BETTER_AUTH_SECRET` may fall back to `JWT_SECRET` in development, but production should use a dedicated high-entropy auth secret.
+- When Better Auth is configured, relay client auth and heartbeat require a signed-in user session. Pairing a laptop server through that client code binds both client and agent relay tokens to the same Better Auth user id.
 - Browser chats stay shared in memory across tabs while the server is running.
 - CLI mode was removed; configuration now flows through the web client only.
