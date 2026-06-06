@@ -8,7 +8,7 @@
 | `/health` | `GET` | health payload including token store metadata |
 | `/api/relay/auth/client` | `POST` | issue or refresh client auth |
 | `/api/relay/heartbeat` | `POST` | return client auth plus readiness flags |
-| `/api/relay/auth/agent` | `POST` | issue or refresh agent auth and pairing |
+| `/api/relay/auth/agent` | `POST` | issue or refresh agent auth for an owner-bound laptop agent |
 | `/api/relay/agent/stream` | `GET` | relay-to-agent SSE command stream |
 | `/api/relay/agent/message` | `POST` | agent-to-relay upstream message path |
 | `/api/client/stream` | `GET` | relay-to-browser SSE message stream |
@@ -28,7 +28,7 @@ These are not the same thing.
 
 ### `serverReady`
 
-The relay reports `serverReady = true` when there is an active, non-expired agent token for the paired target in the token store.
+The relay reports `serverReady = true` when there is an active, non-expired agent token for the targeted agent in the token store.
 
 This means the agent has authenticated successfully at least recently.
 
@@ -40,8 +40,8 @@ This means the Pi server's outbound SSE stream is currently connected.
 
 That distinction is important for debugging:
 
-- `serverReady = true`, `transportReady = false` means pairing and auth exist, but the live agent transport is down.
-- both false means the relay does not currently know a live or active paired agent.
+- `serverReady = true`, `transportReady = false` means auth and target resolution exist, but the live agent transport is down.
+- both false means the relay does not currently know a live or active target agent.
 
 ## 3. Replacement Rules
 
@@ -64,6 +64,7 @@ The relay:
 
 1. removes that browser client from `browserClients`
 2. sends `client_disconnect` to the paired agent
+2. sends `client_disconnect` to the targeted agent
 3. ends the HTTP response if needed
 
 ### When an agent stream closes
@@ -71,7 +72,7 @@ The relay:
 The relay:
 
 1. removes that agent from `agentConnections`
-2. closes every browser client paired to that agent
+2. closes every browser client targeted to that agent
 3. ends the agent HTTP response if needed
 
 So an agent transport failure cascades to all currently attached browser streams for that agent.
@@ -111,7 +112,7 @@ Not supported by the relay today:
 - event ids or replay cursors
 - multi-node shared connection state
 - distributed session replication
-- durable pairing workflows beyond token persistence
+- durable owner-to-agent assignment workflows beyond token persistence
 
 ## 7. Leftovers From The Older Architecture
 
@@ -139,7 +140,7 @@ That is practical, but risky because query strings leak into logs and proxies mo
 
 ### Long-lived JWTs
 
-A 180 day TTL is convenient for development and pairing stability, but it increases the blast radius of token theft.
+A 180 day TTL is convenient for development and stable reconnection, but it increases the blast radius of token theft.
 
 ### Broad CORS
 
@@ -153,4 +154,4 @@ A relay restart drops all live connections immediately. Recovery depends entirel
 
 The best short description of the current relay is:
 
-> A public HTTP plus SSE broker that authenticates and pairs browser clients with private Pi servers, then forwards transport events while leaving real session execution on the Pi server.
+> A public HTTP plus SSE broker that authenticates browser clients and private Pi servers, resolves the right target agent, and forwards transport events while leaving real session execution on the Pi server.

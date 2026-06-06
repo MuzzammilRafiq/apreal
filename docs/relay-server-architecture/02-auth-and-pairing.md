@@ -1,4 +1,4 @@
-# Part 2: Auth And Pairing
+# Part 2: Auth And Owner Binding
 
 ## 1. Shared Contract
 
@@ -33,9 +33,9 @@ type AuthTokenPayload = {
   type: "client" | "agent";
   id: string;
   key: string;
-  pairingCode?: string;
   targetId?: string;
   targetType?: "client" | "agent";
+  ownerUserId?: string;
   serverUrl?: string;
   iat: number;
   exp: number;
@@ -47,7 +47,7 @@ Important details:
 - `id` is the stable principal identity.
 - `key` is the stable credential used to reissue tokens for that same principal.
 - `targetId` and `targetType` scope the token to a specific peer.
-- `pairingCode` exists mainly for unpaired or newly paired flows.
+- `ownerUserId` binds the principal to the Better Auth account that owns it.
 - `iat` and `exp` are required and validated.
 
 The relay uses HS256 and currently issues long-lived tokens with a 180 day TTL.
@@ -73,12 +73,13 @@ That gives the store a simple model:
 
 ## 4. Client Authentication Flow
 
-The browser or mobile client calls `POST /api/relay/auth/client` with:
+The browser client calls `POST /api/relay/auth/client` with:
 
 ```json
 {
   "clientId": "client-...",
-  "clientKey": "key-..."
+  "clientKey": "key-...",
+  "ownerGrant": "signed-owner-grant"
 }
 ```
 
@@ -87,8 +88,9 @@ The relay then:
 1. looks for the newest token for that `clientId` and `clientKey`
 2. refreshes it if it is near expiry
 3. otherwise issues a new token if none exists
-4. creates a pairing code if the client is still unpaired
-5. returns token, expiry, pairing state, and target data
+4. resolves the owner from the Better Auth session or the supplied owner grant
+5. if an active agent token exists for that owner, reissues the client token targeted to that agent
+6. returns token, expiry, targeting state, and target data
 
 The browser identity is durable on the client side. The web app stores `clientId` and `clientKey` in local storage in `apps/web/src/relay-auth.ts`.
 
@@ -100,20 +102,18 @@ The Pi server calls `POST /api/relay/auth/agent` with:
 {
   "agentId": "agent-...",
   "agentKey": "key-...",
-  "pairingCode": "ABCDEFGH"
+  "ownerGrant": "signed-owner-grant"
 }
 ```
 
 The relay then:
 
-1. finds the pending client for that pairing code
-2. reissues the client token with `targetId = agentId` and `targetType = "agent"`
-3. issues or refreshes the agent token with `targetId = clientId` and `targetType = "client"`
-4. returns the agent token bound to that client
+1. validates the short-lived owner grant issued by the relay to a signed-in browser
+2. issues or refreshes the agent token with `ownerUserId` set to that Better Auth user
+3. preserves any existing `serverUrl`
+4. returns the agent token for the local server to use when opening the relay SSE transport
 
-If the agent was already paired to a different client, the relay clears the old client target by issuing that old client a new unpaired token with a new pairing code.
-
-## 6. Pairing Lifecycle Diagram
+## 6. Owner-Binding Lifecycle Diagram
 
 ```mermaid
 sequenceDiagram
@@ -122,21 +122,19 @@ sequenceDiagram
     participant S as Token Store
     participant A as Agent Server
 
-    C->>R: POST /api/relay/auth/client\n{clientId, clientKey}
+    C->>R: POST /api/relay/auth/client\n{clientId, clientKey, ownerGrant}
     R->>S: findLatestByPrincipal(client)
-    alt first auth
-        R->>S: createPairingCode()
-        R->>S: issueToken(client, pairingCode)
-    else existing client
-        R->>S: reuse or refresh client token
+    R->>S: findLatestAgentByOwnerUserId()
+    alt owner has active agent
+        R->>S: issueToken(client, targetId=agentId, ownerUserId)
+    else no active agent yet
+        R->>S: issueToken(client, ownerUserId)
     end
-    R-->>C: client token + pairingCode
+    R-->>C: client token
 
-    A->>R: POST /api/relay/auth/agent\n{agentId, agentKey, pairingCode}
-    R->>S: findPendingClientByPairingCode()
-    R->>S: issueToken(client, targetId=agentId)
-    R->>S: issueToken(agent, targetId=clientId)
-    R-->>A: agent token bound to client
+    A->>R: POST /api/relay/auth/agent\n{agentId, agentKey, ownerGrant}
+    R->>S: issueToken(agent, ownerUserId)
+    R-->>A: agent token bound to owner
 ```
 
 ## 7. Connection Authorization Check

@@ -9,7 +9,7 @@ It is built directly on Node's `http.createServer()` and does not use Express, F
 At runtime it creates three important local objects:
 
 - `tokenStore`: persistent token store backed by a JSON file.
-- `browserClients`: in-memory map of active browser or mobile SSE connections keyed by `clientId`.
+- `browserClients`: in-memory map of active browser SSE connections keyed by `clientId`.
 - `agentConnections`: in-memory map of active Pi server SSE connections keyed by `agentId`.
 
 That means the relay owns only transport state, not application session state.
@@ -19,7 +19,7 @@ That means the relay owns only transport state, not application session state.
 The relay owns:
 
 - authentication and token verification
-- pairing state embedded into tokens
+- owner-bound browser-to-agent token targeting
 - live transport registration
 - forwarding browser events to the Pi server
 - forwarding Pi server messages back to the browser
@@ -39,7 +39,7 @@ So the relay is a message broker and authorization gate, not the business-logic 
 ```mermaid
 flowchart TB
     subgraph ClientSide[Client side]
-        Browser[Browser or Mobile App]
+        Browser[Browser]
     end
 
     subgraph RelaySide[Public relay]
@@ -106,7 +106,7 @@ The relay only forwards traffic when all of the following are true:
 1. the caller presents a valid relay token
 2. the token exists in the token store
 3. the token is scoped to the expected peer type
-4. the target pairing is consistent with the token
+4. the target binding is consistent with the token
 5. the destination live connection currently exists in memory
 
 #### If any one of those breaks, the relay returns an auth or availability error instead of queueing traffic.

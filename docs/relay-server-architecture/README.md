@@ -29,7 +29,7 @@ It does **not** run the real agent session logic. The real session runtime stays
 The relay does four things:
 
 1. Issues and validates relay JWTs for clients and agents.
-2. Pairs one client with one agent using a pairing code.
+2. Binds browser clients and laptop agents to the same owner account, then targets clients to the active agent for that owner.
 3. Holds live in-memory connections for browser streams and agent streams.
 4. Forwards client connect, disconnect, and message events between the browser side and the Pi server side.
 
@@ -37,7 +37,7 @@ The relay does four things:
 
 ```mermaid
 flowchart LR
-    Browser[Browser or Mobile Client]
+    Browser[Browser]
     Relay[Relay Server\nHTTP + SSE broker]
     Pi[Pi Server on laptop]
     Agent[Agent runtime / session layer]
