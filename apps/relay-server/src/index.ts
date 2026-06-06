@@ -1,7 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { config } from "dotenv";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { CLIENT_EVENT_STREAM_PATH, CLIENT_MESSAGE_PATH, RELAY_AGENT_AUTH_PATH, RELAY_AGENT_MESSAGE_PATH, RELAY_AGENT_STREAM_PATH, RELAY_CLIENT_AUTH_PATH, RELAY_CLIENT_HEARTBEAT_PATH, RELAY_CONNECTION_PATH, type RelayAgentCommand } from "@apreal/shared";
 import { AuthError, readBearerTokenFromRequest, readRelayToken } from "./auth.ts";
+import { ensureBetterAuthReady, isBetterAuthConfigured, getBetterAuthHandler, readBetterAuthUserId } from "./better-auth.ts";
 import { RelayTokenStore } from "./token-store.ts";
 import { DEFAULT_PORT, RELAY_SSE_HEARTBEAT_INTERVAL_MS, TOKEN_REFRESH_WINDOW_MS, ANSI_RESET, TIMESTAMP_COLOR, DATA_COLOR, LEVEL_COLORS, TAG_COLORS, parsePort, supportsColor, colorize, pickTagColor, log, isObjectRecord, readStringField, readUrlField, createCorsHeaders, buildHealthPayload, getErrorMessage, readOptionalBearerToken, readClientTokenFromProxyRequest, setHeaders, sendJson, sendText, readRequestBody, parseRelayConnectionRequest, parseClientAuthRequest, parseAgentAuthRequest, getDefaultTargetType, authorizeRelayConnection, mapRelayConnectionErrorStatus, resolveTargetFromPayload, shouldRefreshToken, resolveRequestOrigin, validateAgentServerUrl, resolveClientRelayTarget, mapRelayProxyErrorStatus, createSseChunk, createSseComment, parseRelayAgentMessage, buildClientAuthResponse, buildClientHeartbeatResponse, buildAgentAuthResponse, type RelayBrowserClientConnection, type RelayAgentConnection } from "./relay-utils.ts";
 
@@ -10,6 +12,19 @@ export function runRelayServer(options?: { port?: number }) {
 	const tokenStore = new RelayTokenStore();
 	const browserClients = new Map<string, RelayBrowserClientConnection>();
 	const agentConnections = new Map<string, RelayAgentConnection>();
+
+	async function readRequiredOwnerUserId(request: IncomingMessage): Promise<string | undefined> {
+		const ownerUserId = await readBetterAuthUserId(request);
+		if (!isBetterAuthConfigured()) {
+			return undefined;
+		}
+
+		if (!ownerUserId) {
+			throw new AuthError("signed-in user session is required");
+		}
+
+		return ownerUserId;
+	}
 
 	function listBrowserClientsForAgent(agentId: string): RelayBrowserClientConnection[] {
 		return Array.from(browserClients.values()).filter((client) => client.agentId === agentId && !client.closed);
@@ -287,7 +302,27 @@ export function runRelayServer(options?: { port?: number }) {
 	}
 	const server = createServer(async (request, response) => {
 		const pathname = new URL(request.url ?? "/", "http://relay.local").pathname;
-		const corsHeaders = createCorsHeaders();
+		const corsHeaders = createCorsHeaders(request);
+
+		if (pathname.startsWith("/api/auth/")) {
+			if (request.method === "OPTIONS") {
+				response.statusCode = 204;
+				setHeaders(response, corsHeaders);
+				response.end();
+				return;
+			}
+
+			setHeaders(response, corsHeaders);
+			try {
+				await ensureBetterAuthReady();
+				getBetterAuthHandler()(request, response);
+			} catch (error) {
+				const message = getErrorMessage(error);
+				log("warn", "better auth unavailable", { error: message });
+				sendJson(response, 503, { message }, corsHeaders);
+			}
+			return;
+		}
 
 		if (pathname === "/" || pathname === "/health") {
 			sendJson(response, 200, buildHealthPayload(corsHeaders, tokenStore), corsHeaders);
@@ -314,12 +349,16 @@ export function runRelayServer(options?: { port?: number }) {
 			}
 
 			try {
+				const ownerUserId = await readRequiredOwnerUserId(request);
 				let issuedToken = tokenStore.findLatestByPrincipal(
 					"client",
 					clientAuthRequest.clientId,
 					clientAuthRequest.clientKey,
 					{ allowExpired: true },
 				);
+				if (ownerUserId && issuedToken?.payload.ownerUserId !== ownerUserId) {
+					issuedToken = null;
+				}
 				if (issuedToken && shouldRefreshToken(issuedToken)) {
 					issuedToken = tokenStore.issueToken({
 						type: "client",
@@ -328,6 +367,7 @@ export function runRelayServer(options?: { port?: number }) {
 						pairingCode: issuedToken.payload.targetId ? undefined : issuedToken.payload.pairingCode,
 						targetId: issuedToken.payload.targetId,
 						targetType: issuedToken.payload.targetType,
+						ownerUserId: issuedToken.payload.ownerUserId,
 					});
 				}
 
@@ -337,6 +377,7 @@ export function runRelayServer(options?: { port?: number }) {
 						id: clientAuthRequest.clientId,
 						key: clientAuthRequest.clientKey,
 						pairingCode: tokenStore.createPairingCode(),
+						ownerUserId,
 					});
 				}
 
@@ -348,7 +389,7 @@ export function runRelayServer(options?: { port?: number }) {
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "client auth failed";
 				log("warn", "client auth failed", { error: message });
-				sendJson(response, 500, { message }, corsHeaders);
+				sendJson(response, error instanceof AuthError ? 401 : 500, { message }, corsHeaders);
 			}
 			return;
 		}
@@ -373,18 +414,23 @@ export function runRelayServer(options?: { port?: number }) {
 			}
 
 			try {
+				const ownerUserId = await readRequiredOwnerUserId(request);
 				let issuedToken = tokenStore.findLatestByPrincipal(
 					"client",
 					clientHeartbeatRequest.clientId,
 					clientHeartbeatRequest.clientKey,
 					{ allowExpired: true },
 				);
+				if (ownerUserId && issuedToken?.payload.ownerUserId !== ownerUserId) {
+					issuedToken = null;
+				}
 				if (!issuedToken) {
 					issuedToken = tokenStore.issueToken({
 						type: "client",
 						id: clientHeartbeatRequest.clientId,
 						key: clientHeartbeatRequest.clientKey,
 						pairingCode: tokenStore.createPairingCode(),
+						ownerUserId,
 					});
 				} else if (shouldRefreshToken(issuedToken)) {
 					issuedToken = tokenStore.issueToken({
@@ -394,6 +440,7 @@ export function runRelayServer(options?: { port?: number }) {
 						pairingCode: issuedToken.payload.targetId ? undefined : issuedToken.payload.pairingCode,
 						targetId: issuedToken.payload.targetId,
 						targetType: issuedToken.payload.targetType,
+						ownerUserId: issuedToken.payload.ownerUserId,
 					});
 				}
 
@@ -401,7 +448,7 @@ export function runRelayServer(options?: { port?: number }) {
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "relay heartbeat failed";
 				log("warn", "relay heartbeat failed", { error: message });
-				sendJson(response, 500, { message }, corsHeaders);
+				sendJson(response, error instanceof AuthError ? 401 : 500, { message }, corsHeaders);
 			}
 			return;
 		}
@@ -453,6 +500,7 @@ export function runRelayServer(options?: { port?: number }) {
 						targetId: agentAuthRequest.agentId,
 						targetType: "agent",
 						pairingCode: pairedClient.payload.pairingCode,
+						ownerUserId: pairedClient.payload.ownerUserId,
 					});
 
 					issuedToken = tokenStore.issueToken({
@@ -462,6 +510,7 @@ export function runRelayServer(options?: { port?: number }) {
 						targetId: pairedClient.payload.id,
 						targetType: "client",
 						pairingCode: pairedClient.payload.pairingCode,
+						ownerUserId: pairedClient.payload.ownerUserId,
 					});
 				}
 				if (issuedToken && !agentAuthRequest.pairingCode && shouldRefreshToken(issuedToken)) {
@@ -472,6 +521,7 @@ export function runRelayServer(options?: { port?: number }) {
 						pairingCode: issuedToken.payload.pairingCode,
 						targetId: issuedToken.payload.targetId,
 						targetType: issuedToken.payload.targetType,
+						ownerUserId: issuedToken.payload.ownerUserId,
 					});
 				}
 
@@ -494,6 +544,7 @@ export function runRelayServer(options?: { port?: number }) {
 						targetId: agentAuthRequest.agentId,
 						targetType: "agent",
 						pairingCode: pairedClient.payload.pairingCode,
+						ownerUserId: pairedClient.payload.ownerUserId,
 					});
 
 					issuedToken = tokenStore.issueToken({
@@ -503,6 +554,7 @@ export function runRelayServer(options?: { port?: number }) {
 						targetId: pairedClient.payload.id,
 						targetType: "client",
 						pairingCode: pairedClient.payload.pairingCode,
+						ownerUserId: pairedClient.payload.ownerUserId,
 					});
 				}
 
@@ -677,4 +729,10 @@ export function runRelayServer(options?: { port?: number }) {
 	return server;
 }
 
-runRelayServer();
+const isDirectEntrypoint = process.argv[1]
+	? fileURLToPath(import.meta.url) === resolve(process.argv[1])
+	: false;
+
+if (isDirectEntrypoint) {
+	runRelayServer();
+}

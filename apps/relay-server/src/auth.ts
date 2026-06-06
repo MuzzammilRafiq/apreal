@@ -26,6 +26,7 @@ export type AuthTokenPayload = {
 	targetId?: string;
 	targetType?: UserType;
 	serverUrl?: string;
+	ownerUserId?: string;
 	iat: number;
 	exp: number;
 };
@@ -38,6 +39,7 @@ type GenerateTokenInput = {
 	targetId?: string;
 	targetType?: UserType;
 	serverUrl?: string;
+	ownerUserId?: string;
 };
 
 // Relay auth failures are treated as controlled protocol failures, not as
@@ -145,6 +147,7 @@ function validateTokenPayload(payload: string | JwtPayload): AuthTokenPayload {
 						throw new AuthError("invalid token field: targetType");
 					})(),
 		serverUrl: payload.serverUrl === undefined ? undefined : ensureServerUrl(payload.serverUrl, "serverUrl"),
+		ownerUserId: payload.ownerUserId === undefined ? undefined : ensureString(payload.ownerUserId, "ownerUserId"),
 		iat: ensureNumber(payload.iat, "iat"),
 		exp: ensureNumber(payload.exp, "exp"),
 	};
@@ -196,7 +199,7 @@ export function authenticateHttpRequest(request: IncomingMessage): AuthTokenPayl
 
 // Helper used for provisioning and local testing. Keeping the helper here
 // ensures token creation and token validation share one contract.
-export function generateToken({ type, id, key, pairingCode, targetId, targetType, serverUrl }: GenerateTokenInput): string {
+export function generateToken({ type, id, key, pairingCode, targetId, targetType, serverUrl, ownerUserId }: GenerateTokenInput): string {
 	if (!isUserType(type)) {
 		throw new AuthError("invalid token role");
 	}
@@ -215,8 +218,11 @@ export function generateToken({ type, id, key, pairingCode, targetId, targetType
 	if (serverUrl !== undefined) {
 		ensureServerUrl(serverUrl, "serverUrl");
 	}
+	if (ownerUserId !== undefined) {
+		ensureString(ownerUserId, "ownerUserId");
+	}
 
-	return jwt.sign({ type, id, key, pairingCode, targetId, targetType, serverUrl }, getJwtSecret(), {
+	return jwt.sign({ type, id, key, pairingCode, targetId, targetType, serverUrl, ownerUserId }, getJwtSecret(), {
 		algorithm: "HS256",
 		expiresIn: RELAY_JWT_EXPIRES_IN,
 	});
