@@ -1,6 +1,5 @@
 import type { IncomingMessage } from "node:http";
 import {
-	assertRelayPairingCode,
 	assertRelayPrincipalId,
 	type RelayPrincipalType,
 } from "@apreal/shared";
@@ -12,6 +11,7 @@ import jwt, { type JwtPayload } from "jsonwebtoken";
 export const USER_TYPES = ["agent", "client"] as const;
 export const RELAY_JWT_EXPIRES_IN = "180d" as const;
 export const RELAY_JWT_TTL_MS = 180 * 24 * 60 * 60 * 1000;
+export const OWNER_AGENT_GRANT_EXPIRES_IN_SECONDS = 5 * 60;
 
 export type UserType = RelayPrincipalType;
 
@@ -22,7 +22,6 @@ export type AuthTokenPayload = {
 	type: UserType;
 	id: string;
 	key: string;
-	pairingCode?: string;
 	targetId?: string;
 	targetType?: UserType;
 	serverUrl?: string;
@@ -31,11 +30,17 @@ export type AuthTokenPayload = {
 	exp: number;
 };
 
+export type OwnerAgentGrantPayload = {
+	purpose: "agent_owner_grant";
+	ownerUserId: string;
+	iat: number;
+	exp: number;
+};
+
 type GenerateTokenInput = {
 	type: UserType;
 	id: string;
 	key: string;
-	pairingCode?: string;
 	targetId?: string;
 	targetType?: UserType;
 	serverUrl?: string;
@@ -91,14 +96,6 @@ function ensureNumber(value: unknown, field: string): number {
 	return value;
 }
 
-function ensurePairingCode(value: unknown, field: string): string {
-	try {
-		return assertRelayPairingCode(value, field);
-	} catch {
-		throw new AuthError(`invalid token field: ${field}`);
-	}
-}
-
 function ensureServerUrl(value: unknown, field: string): string {
 	if (typeof value !== "string" || value.trim().length === 0) {
 		throw new AuthError(`invalid token field: ${field}`);
@@ -136,7 +133,6 @@ function validateTokenPayload(payload: string | JwtPayload): AuthTokenPayload {
 		type: payload.type,
 		id: ensureString(payload.id, "id"),
 		key: ensureString(payload.key, "key"),
-		pairingCode: payload.pairingCode === undefined ? undefined : ensurePairingCode(payload.pairingCode, "pairingCode"),
 		targetId: payload.targetId === undefined ? undefined : ensureString(payload.targetId, "targetId"),
 		targetType:
 			payload.targetType === undefined
@@ -199,16 +195,13 @@ export function authenticateHttpRequest(request: IncomingMessage): AuthTokenPayl
 
 // Helper used for provisioning and local testing. Keeping the helper here
 // ensures token creation and token validation share one contract.
-export function generateToken({ type, id, key, pairingCode, targetId, targetType, serverUrl, ownerUserId }: GenerateTokenInput): string {
+export function generateToken({ type, id, key, targetId, targetType, serverUrl, ownerUserId }: GenerateTokenInput): string {
 	if (!isUserType(type)) {
 		throw new AuthError("invalid token role");
 	}
 
 	ensureString(id, "id");
 	ensureString(key, "key");
-	if (pairingCode !== undefined) {
-		ensurePairingCode(pairingCode, "pairingCode");
-	}
 	if (targetId !== undefined) {
 		ensureString(targetId, "targetId");
 	}
@@ -222,8 +215,62 @@ export function generateToken({ type, id, key, pairingCode, targetId, targetType
 		ensureString(ownerUserId, "ownerUserId");
 	}
 
-	return jwt.sign({ type, id, key, pairingCode, targetId, targetType, serverUrl, ownerUserId }, getJwtSecret(), {
+	return jwt.sign({ type, id, key, targetId, targetType, serverUrl, ownerUserId }, getJwtSecret(), {
 		algorithm: "HS256",
 		expiresIn: RELAY_JWT_EXPIRES_IN,
 	});
+}
+
+function validateOwnerAgentGrantPayload(payload: string | JwtPayload): OwnerAgentGrantPayload {
+	if (typeof payload === "string") {
+		throw new AuthError("invalid owner grant payload");
+	}
+
+	if (payload.purpose !== "agent_owner_grant") {
+		throw new AuthError("invalid owner grant purpose");
+	}
+
+	return {
+		purpose: "agent_owner_grant",
+		ownerUserId: ensureString(payload.ownerUserId, "ownerUserId"),
+		iat: ensureNumber(payload.iat, "iat"),
+		exp: ensureNumber(payload.exp, "exp"),
+	};
+}
+
+export function generateOwnerAgentGrant(ownerUserId: string): { ownerGrant: string; expiresAt: number } {
+	const normalizedOwnerUserId = ensureString(ownerUserId, "ownerUserId");
+	const ownerGrant = jwt.sign(
+		{
+			purpose: "agent_owner_grant",
+			ownerUserId: normalizedOwnerUserId,
+		},
+		getJwtSecret(),
+		{
+			algorithm: "HS256",
+			expiresIn: OWNER_AGENT_GRANT_EXPIRES_IN_SECONDS,
+		},
+	);
+	const grant = readOwnerAgentGrant(ownerGrant);
+	return {
+		ownerGrant,
+		expiresAt: grant.exp * 1000,
+	};
+}
+
+export function readOwnerAgentGrant(ownerGrant: string): OwnerAgentGrantPayload {
+	let decoded: string | JwtPayload;
+	try {
+		decoded = jwt.verify(ownerGrant, getJwtSecret(), {
+			algorithms: ["HS256"],
+		});
+	} catch (error) {
+		if (error instanceof AuthError) {
+			throw error;
+		}
+
+		throw new AuthError(error instanceof Error ? error.message : "invalid owner grant");
+	}
+
+	return validateOwnerAgentGrantPayload(decoded);
 }

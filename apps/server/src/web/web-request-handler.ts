@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { extname } from "node:path";
-import { ADMIN_APPEND_SYSTEM_PROMPT_PATH, ADMIN_MCP_PATH, ADMIN_MCP_REFRESH_PATH, ADMIN_PROVIDER_API_KEY_PATH, ADMIN_PROVIDER_LOGIN_PATH, ADMIN_PROVIDERS_PATH, ADMIN_RELAY_REAUTHENTICATE_PATH, ADMIN_STATUS_PATH, CLIENT_EVENT_STREAM_PATH, CLIENT_MESSAGE_PATH, normalizeRelayPairingCode } from "@apreal/shared";
+import { ADMIN_APPEND_SYSTEM_PROMPT_PATH, ADMIN_MCP_PATH, ADMIN_MCP_REFRESH_PATH, ADMIN_PROVIDER_API_KEY_PATH, ADMIN_PROVIDER_LOGIN_PATH, ADMIN_PROVIDERS_PATH, ADMIN_RELAY_AUTHENTICATE_PATH, ADMIN_STATUS_PATH, CLIENT_EVENT_STREAM_PATH, CLIENT_MESSAGE_PATH, type RelayAuthenticateRequest, type RelayAuthenticateResponse } from "@apreal/shared";
 import { setDefaultProviderModel, getErrorMessage } from "../session.ts";
 import { createCorsHeaders, json } from "./utils.ts";
 export function createWebRequestHandler(context: any) {
@@ -561,7 +561,7 @@ export function createWebRequestHandler(context: any) {
 			headers: createCorsHeaders(),
 		});
 	}
-	if (url.pathname === ADMIN_RELAY_REAUTHENTICATE_PATH) {
+	if (url.pathname === ADMIN_RELAY_AUTHENTICATE_PATH) {
 		const localOnlyResponse = assertLocalAdminRequest(request);
 		if (localOnlyResponse) {
 			return localOnlyResponse;
@@ -587,20 +587,18 @@ export function createWebRequestHandler(context: any) {
 				{ status: 400, headers: createCorsHeaders() },
 			);
 		}
-		const pairingCode = normalizeRelayPairingCode(
-			typeof (payload as RelayReauthenticateRequest | null)?.pairingCode === "string"
-				? (payload as RelayReauthenticateRequest).pairingCode
-				: null,
-		);
-		if (!pairingCode) {
+		const ownerGrant = typeof (payload as RelayAuthenticateRequest | null)?.ownerGrant === "string"
+			? (payload as RelayAuthenticateRequest).ownerGrant.trim()
+			: "";
+		if (!ownerGrant) {
 			return json(
-				{ message: "A valid pairing code is required." },
+				{ message: "A signed-in account grant is required." },
 				{ status: 400, headers: createCorsHeaders() },
 			);
 		}
 		try {
-			await relay.reauthenticateWithPairingCode(pairingCode);
-			const response: RelayReauthenticateResponse = {
+			await relay.authenticateWithOwnerGrant(ownerGrant);
+			const response: RelayAuthenticateResponse = {
 				status: await buildStatusPayload(),
 			};
 			return json(response, {

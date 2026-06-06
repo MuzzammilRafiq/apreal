@@ -1,10 +1,10 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CLIENT_EVENT_STREAM_PATH, CLIENT_MESSAGE_PATH, RELAY_AGENT_AUTH_PATH, RELAY_AGENT_MESSAGE_PATH, RELAY_AGENT_STREAM_PATH, RELAY_CLIENT_AUTH_PATH, RELAY_CLIENT_HEARTBEAT_PATH, RELAY_CONNECTION_PATH, type RelayAgentCommand } from "@apreal/shared";
-import { AuthError, readBearerTokenFromRequest, readRelayToken } from "./auth.ts";
+import { CLIENT_EVENT_STREAM_PATH, CLIENT_MESSAGE_PATH, RELAY_AGENT_AUTH_PATH, RELAY_AGENT_MESSAGE_PATH, RELAY_AGENT_OWNER_GRANT_PATH, RELAY_AGENT_STREAM_PATH, RELAY_CLIENT_AUTH_PATH, RELAY_CLIENT_HEARTBEAT_PATH, RELAY_CONNECTION_PATH, type RelayAgentCommand } from "@apreal/shared";
+import { AuthError, generateOwnerAgentGrant, readBearerTokenFromRequest, readOwnerAgentGrant, readRelayToken } from "./auth.ts";
 import { ensureBetterAuthReady, isBetterAuthConfigured, getBetterAuthHandler, readBetterAuthUserId } from "./better-auth.ts";
-import { RelayTokenStore } from "./token-store.ts";
+import { RelayTokenStore, type StoredRelayToken } from "./token-store.ts";
 import { DEFAULT_PORT, RELAY_SSE_HEARTBEAT_INTERVAL_MS, TOKEN_REFRESH_WINDOW_MS, ANSI_RESET, TIMESTAMP_COLOR, DATA_COLOR, LEVEL_COLORS, TAG_COLORS, parsePort, supportsColor, colorize, pickTagColor, log, isObjectRecord, readStringField, readUrlField, createCorsHeaders, buildHealthPayload, getErrorMessage, readOptionalBearerToken, readClientTokenFromProxyRequest, setHeaders, sendJson, sendText, readRequestBody, parseRelayConnectionRequest, parseClientAuthRequest, parseAgentAuthRequest, getDefaultTargetType, authorizeRelayConnection, mapRelayConnectionErrorStatus, resolveTargetFromPayload, shouldRefreshToken, resolveRequestOrigin, validateAgentServerUrl, resolveClientRelayTarget, mapRelayProxyErrorStatus, createSseChunk, createSseComment, parseRelayAgentMessage, buildClientAuthResponse, buildClientHeartbeatResponse, buildAgentAuthResponse, type RelayBrowserClientConnection, type RelayAgentConnection } from "./relay-utils.ts";
 
 export function runRelayServer(options?: { port?: number }) {
@@ -55,6 +55,26 @@ export function runRelayServer(options?: { port?: number }) {
 		}
 
 		existing.close(reason);
+	}
+
+	function pairClientToOwnerAgentIfAvailable(entry: StoredRelayToken, ownerUserId: string | undefined): StoredRelayToken {
+		if (!entry || !ownerUserId || entry.payload.targetId) {
+			return entry;
+		}
+
+		const ownerAgent = tokenStore.findLatestAgentByOwnerUserId(ownerUserId, { allowExpired: false });
+		if (!ownerAgent) {
+			return entry;
+		}
+
+		return tokenStore.issueToken({
+			type: "client",
+			id: entry.payload.id,
+			key: entry.payload.key,
+			targetId: ownerAgent.payload.id,
+			targetType: "agent",
+			ownerUserId,
+		});
 	}
 
 	function notifyAgentOfConnectedClients(agentId: string) {
@@ -349,7 +369,10 @@ export function runRelayServer(options?: { port?: number }) {
 			}
 
 			try {
-				const ownerUserId = await readRequiredOwnerUserId(request);
+				const ownerGrantUserId = clientAuthRequest.ownerGrant
+					? readOwnerAgentGrant(clientAuthRequest.ownerGrant).ownerUserId
+					: undefined;
+				const ownerUserId = ownerGrantUserId ?? await readRequiredOwnerUserId(request);
 				let issuedToken = tokenStore.findLatestByPrincipal(
 					"client",
 					clientAuthRequest.clientId,
@@ -364,7 +387,6 @@ export function runRelayServer(options?: { port?: number }) {
 						type: "client",
 						id: issuedToken.payload.id,
 						key: issuedToken.payload.key,
-						pairingCode: issuedToken.payload.targetId ? undefined : issuedToken.payload.pairingCode,
 						targetId: issuedToken.payload.targetId,
 						targetType: issuedToken.payload.targetType,
 						ownerUserId: issuedToken.payload.ownerUserId,
@@ -376,10 +398,10 @@ export function runRelayServer(options?: { port?: number }) {
 						type: "client",
 						id: clientAuthRequest.clientId,
 						key: clientAuthRequest.clientKey,
-						pairingCode: tokenStore.createPairingCode(),
 						ownerUserId,
 					});
 				}
+				issuedToken = pairClientToOwnerAgentIfAvailable(issuedToken, ownerUserId);
 
 				log("info", "issued client auth token", {
 					clientId: issuedToken.payload.id,
@@ -414,7 +436,10 @@ export function runRelayServer(options?: { port?: number }) {
 			}
 
 			try {
-				const ownerUserId = await readRequiredOwnerUserId(request);
+				const ownerGrantUserId = clientHeartbeatRequest.ownerGrant
+					? readOwnerAgentGrant(clientHeartbeatRequest.ownerGrant).ownerUserId
+					: undefined;
+				const ownerUserId = ownerGrantUserId ?? await readRequiredOwnerUserId(request);
 				let issuedToken = tokenStore.findLatestByPrincipal(
 					"client",
 					clientHeartbeatRequest.clientId,
@@ -429,7 +454,6 @@ export function runRelayServer(options?: { port?: number }) {
 						type: "client",
 						id: clientHeartbeatRequest.clientId,
 						key: clientHeartbeatRequest.clientKey,
-						pairingCode: tokenStore.createPairingCode(),
 						ownerUserId,
 					});
 				} else if (shouldRefreshToken(issuedToken)) {
@@ -437,17 +461,45 @@ export function runRelayServer(options?: { port?: number }) {
 						type: "client",
 						id: issuedToken.payload.id,
 						key: issuedToken.payload.key,
-						pairingCode: issuedToken.payload.targetId ? undefined : issuedToken.payload.pairingCode,
 						targetId: issuedToken.payload.targetId,
 						targetType: issuedToken.payload.targetType,
 						ownerUserId: issuedToken.payload.ownerUserId,
 					});
 				}
+				issuedToken = pairClientToOwnerAgentIfAvailable(issuedToken, ownerUserId);
 
 				sendJson(response, 200, buildClientHeartbeatResponse(issuedToken, tokenStore, agentConnections), corsHeaders);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "relay heartbeat failed";
 				log("warn", "relay heartbeat failed", { error: message });
+				sendJson(response, error instanceof AuthError ? 401 : 500, { message }, corsHeaders);
+			}
+			return;
+		}
+
+		if (pathname === RELAY_AGENT_OWNER_GRANT_PATH) {
+			if (request.method === "OPTIONS") {
+				response.statusCode = 204;
+				setHeaders(response, corsHeaders);
+				response.end();
+				return;
+			}
+
+			if (request.method !== "POST") {
+				sendText(response, 405, "Method Not Allowed", corsHeaders);
+				return;
+			}
+
+			try {
+				const ownerUserId = await readRequiredOwnerUserId(request);
+				if (!ownerUserId) {
+					throw new AuthError("signed-in user session is required");
+				}
+
+				sendJson(response, 200, generateOwnerAgentGrant(ownerUserId), corsHeaders);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : "agent owner grant failed";
+				log("warn", "agent owner grant failed", { error: message });
 				sendJson(response, error instanceof AuthError ? 401 : 500, { message }, corsHeaders);
 			}
 			return;
@@ -473,52 +525,31 @@ export function runRelayServer(options?: { port?: number }) {
 			}
 
 			try {
+				const ownerGrantUserId = agentAuthRequest.ownerGrant
+					? readOwnerAgentGrant(agentAuthRequest.ownerGrant).ownerUserId
+					: undefined;
 				let issuedToken = tokenStore.findLatestByPrincipal(
 					"agent",
 					agentAuthRequest.agentId,
 					agentAuthRequest.agentKey,
 					{ allowExpired: true },
 				);
-				if (agentAuthRequest.pairingCode) {
-					const pairedClient = tokenStore.findPendingClientByPairingCode(agentAuthRequest.pairingCode);
-					if (!pairedClient) {
-						sendJson(response, 404, { message: "Pairing code was not found." }, corsHeaders);
-						return;
-					}
-
-					const previousClient = tokenStore.findLatestClientByTargetId(agentAuthRequest.agentId, {
-						allowExpired: true,
-					});
-					if (previousClient && previousClient.payload.id !== pairedClient.payload.id) {
-						tokenStore.clearClientTarget(previousClient);
-					}
-
-					tokenStore.issueToken({
-						type: "client",
-						id: pairedClient.payload.id,
-						key: pairedClient.payload.key,
-						targetId: agentAuthRequest.agentId,
-						targetType: "agent",
-						pairingCode: pairedClient.payload.pairingCode,
-						ownerUserId: pairedClient.payload.ownerUserId,
-					});
-
+				if (ownerGrantUserId && issuedToken?.payload.ownerUserId !== ownerGrantUserId) {
+					issuedToken = null;
+				}
+				if (ownerGrantUserId) {
 					issuedToken = tokenStore.issueToken({
 						type: "agent",
 						id: agentAuthRequest.agentId,
 						key: agentAuthRequest.agentKey,
-						targetId: pairedClient.payload.id,
-						targetType: "client",
-						pairingCode: pairedClient.payload.pairingCode,
-						ownerUserId: pairedClient.payload.ownerUserId,
+						ownerUserId: ownerGrantUserId,
 					});
 				}
-				if (issuedToken && !agentAuthRequest.pairingCode && shouldRefreshToken(issuedToken)) {
+				if (issuedToken && !ownerGrantUserId && shouldRefreshToken(issuedToken)) {
 					issuedToken = tokenStore.issueToken({
 						type: "agent",
 						id: issuedToken.payload.id,
 						key: issuedToken.payload.key,
-						pairingCode: issuedToken.payload.pairingCode,
 						targetId: issuedToken.payload.targetId,
 						targetType: issuedToken.payload.targetType,
 						ownerUserId: issuedToken.payload.ownerUserId,
@@ -526,36 +557,8 @@ export function runRelayServer(options?: { port?: number }) {
 				}
 
 				if (!issuedToken) {
-					if (!agentAuthRequest.pairingCode) {
-						sendJson(response, 400, { message: "Pairing code is required for first-time agent auth." }, corsHeaders);
-						return;
-					}
-
-					const pairedClient = tokenStore.findPendingClientByPairingCode(agentAuthRequest.pairingCode);
-					if (!pairedClient) {
-						sendJson(response, 404, { message: "Pairing code was not found." }, corsHeaders);
-						return;
-					}
-
-					tokenStore.issueToken({
-						type: "client",
-						id: pairedClient.payload.id,
-						key: pairedClient.payload.key,
-						targetId: agentAuthRequest.agentId,
-						targetType: "agent",
-						pairingCode: pairedClient.payload.pairingCode,
-						ownerUserId: pairedClient.payload.ownerUserId,
-					});
-
-					issuedToken = tokenStore.issueToken({
-						type: "agent",
-						id: agentAuthRequest.agentId,
-						key: agentAuthRequest.agentKey,
-						targetId: pairedClient.payload.id,
-						targetType: "client",
-						pairingCode: pairedClient.payload.pairingCode,
-						ownerUserId: pairedClient.payload.ownerUserId,
-					});
+					sendJson(response, 400, { message: "Sign in locally to authenticate the relay agent." }, corsHeaders);
+					return;
 				}
 
 				log("info", "issued agent auth token", {

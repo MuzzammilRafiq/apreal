@@ -323,7 +323,10 @@ export async function parseClientAuthRequest(request: IncomingMessage): Promise<
 		return null;
 	}
 
-	return { clientId, clientKey };
+	const ownerGrant =
+		value.ownerGrant === undefined || value.ownerGrant === null ? null : readStringField(value.ownerGrant, "ownerGrant");
+
+	return { clientId, clientKey, ownerGrant };
 }
 
 export async function parseAgentAuthRequest(request: IncomingMessage): Promise<RelayAgentAuthRequest | null> {
@@ -346,14 +349,14 @@ export async function parseAgentAuthRequest(request: IncomingMessage): Promise<R
 		return null;
 	}
 
-	const pairingCode =
-		value.pairingCode === undefined || value.pairingCode === null ? null : readStringField(value.pairingCode, "pairingCode");
+	const ownerGrant =
+		value.ownerGrant === undefined || value.ownerGrant === null ? null : readStringField(value.ownerGrant, "ownerGrant");
 
 	return {
 		agentId,
 		agentKey,
 		...(serverUrl ? { serverUrl } : {}),
-		pairingCode,
+		ownerGrant,
 	};
 }
 
@@ -521,7 +524,6 @@ export function buildClientAuthResponse(entry: StoredRelayToken): RelayClientAut
 		clientKey: entry.payload.key,
 		token: entry.token,
 		expiresAt: entry.payload.exp * 1000,
-		pairingCode: entry.payload.targetId ? null : entry.payload.pairingCode ?? null,
 		target: entry.payload.targetId
 			? {
 				id: entry.payload.targetId,
@@ -556,10 +558,12 @@ export function buildAgentAuthResponse(entry: StoredRelayToken): RelayAgentAuthR
 		agentKey: entry.payload.key,
 		token: entry.token,
 		expiresAt: entry.payload.exp * 1000,
-		target: {
-			id: entry.payload.targetId ?? "",
-			type: entry.payload.targetType ?? resolveTargetFromPayload(entry.payload),
-		},
-		paired: true,
+		target: entry.payload.targetId
+			? {
+				id: entry.payload.targetId,
+				type: entry.payload.targetType ?? resolveTargetFromPayload(entry.payload),
+			}
+			: null,
+		paired: Boolean(entry.payload.targetId || entry.payload.ownerUserId),
 	};
 }

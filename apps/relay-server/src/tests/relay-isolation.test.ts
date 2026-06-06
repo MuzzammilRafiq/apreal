@@ -19,6 +19,7 @@ import {
 } from "@apreal/shared";
 
 type RelayServerModule = typeof import("../index.ts");
+type RelayAuthModule = typeof import("../auth.ts");
 
 process.env.BETTER_AUTH_SECRET = "";
 process.env.BETTER_AUTH_GOOGLE_CLIENT_ID = "";
@@ -28,6 +29,10 @@ const relayEntryPoint = fileURLToPath(import.meta.url).includes(`${sep}dist${sep
 	? "../index.js"
 	: "../index.ts";
 const { runRelayServer } = (await import(relayEntryPoint)) as RelayServerModule;
+const authEntryPoint = fileURLToPath(import.meta.url).includes(`${sep}dist${sep}`)
+	? "../auth.js"
+	: "../auth.ts";
+const { generateOwnerAgentGrant } = (await import(authEntryPoint)) as RelayAuthModule;
 
 type JsonResult<T> = {
 	status: number;
@@ -246,30 +251,32 @@ async function startRelayTestServer(t: TestContext) {
 	};
 }
 
-async function issueClientAuth(baseUrl: string, clientId: string, clientKey: string) {
+async function issueClientAuth(baseUrl: string, clientId: string, clientKey: string, ownerGrant: string) {
 	const response = await postJson<RelayClientAuthResponse>(baseUrl, RELAY_CLIENT_AUTH_PATH, {
 		clientId,
 		clientKey,
+		ownerGrant,
 	});
 	assert.equal(response.status, 200, `Expected client auth for ${clientId} to succeed.`);
-	assert.ok(response.body.pairingCode, `Expected client ${clientId} to receive a pairing code.`);
+	assert.equal(response.body.paired, false, `Expected client ${clientId} to start unpaired.`);
 	return response.body;
 }
 
-async function issueAgentAuth(baseUrl: string, agentId: string, agentKey: string, pairingCode: string) {
+async function issueAgentAuth(baseUrl: string, agentId: string, agentKey: string, ownerGrant: string) {
 	const response = await postJson<RelayAgentAuthResponse>(baseUrl, RELAY_AGENT_AUTH_PATH, {
 		agentId,
 		agentKey,
-		pairingCode,
+		ownerGrant,
 	});
 	assert.equal(response.status, 200, `Expected agent auth for ${agentId} to succeed.`);
 	return response.body;
 }
 
-async function refreshClientAuth(baseUrl: string, client: RelayClientAuthResponse) {
+async function refreshClientAuth(baseUrl: string, client: RelayClientAuthResponse, ownerGrant: string) {
 	const response = await postJson<RelayClientAuthResponse>(baseUrl, RELAY_CLIENT_AUTH_PATH, {
 		clientId: client.clientId,
 		clientKey: client.clientKey,
+		ownerGrant,
 	});
 	assert.equal(response.status, 200, `Expected client auth refresh for ${client.clientId} to succeed.`);
 	assert.equal(response.body.paired, true, `Expected client ${client.clientId} to be paired after agent auth.`);
@@ -278,9 +285,10 @@ async function refreshClientAuth(baseUrl: string, client: RelayClientAuthRespons
 }
 
 async function createPair(t: TestContext, baseUrl: string, suffix: string): Promise<PairContext> {
-	const initialClient = await issueClientAuth(baseUrl, `client-${suffix}`, `client-key-${suffix}`);
-	const agent = await issueAgentAuth(baseUrl, `agent-${suffix}`, `agent-key-${suffix}`, initialClient.pairingCode ?? "");
-	const client = await refreshClientAuth(baseUrl, initialClient);
+	const ownerGrant = generateOwnerAgentGrant(`owner-${suffix}`).ownerGrant;
+	const initialClient = await issueClientAuth(baseUrl, `client-${suffix}`, `client-key-${suffix}`, ownerGrant);
+	const agent = await issueAgentAuth(baseUrl, `agent-${suffix}`, `agent-key-${suffix}`, ownerGrant);
+	const client = await refreshClientAuth(baseUrl, initialClient, ownerGrant);
 	const agentStream = await openSseStream(`${baseUrl}${RELAY_AGENT_STREAM_PATH}`, {
 		headers: {
 			authorization: `Bearer ${agent.token}`,

@@ -1,7 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import {
-	normalizeRelayPairingCode,
 	RELAY_AGENT_AUTH_PATH,
 	RELAY_CONNECTION_PATH,
 	type RelayAgentAuthRequest,
@@ -118,7 +117,7 @@ async function requestAgentAuth(relayUrl: string, request: RelayAgentAuthRequest
 		throw new Error(message);
 	}
 
-	if (!isObjectRecord(payload) || !isObjectRecord(payload.target)) {
+	if (!isObjectRecord(payload) || (payload.target !== null && !isObjectRecord(payload.target))) {
 		throw new Error("relay agent auth returned an invalid response");
 	}
 
@@ -128,8 +127,11 @@ async function requestAgentAuth(relayUrl: string, request: RelayAgentAuthRequest
 		typeof payload.agentKey !== "string" ||
 		typeof payload.token !== "string" ||
 		typeof payload.expiresAt !== "number" ||
-		typeof target.id !== "string" ||
-		(target.type !== "agent" && target.type !== "client")
+		typeof payload.paired !== "boolean" ||
+		(target !== null && (
+			typeof target.id !== "string" ||
+			(target.type !== "agent" && target.type !== "client")
+		))
 	) {
 		throw new Error("relay agent auth returned an invalid response");
 	}
@@ -158,8 +160,8 @@ export async function ensureRelayAgentAuth(
 				...storedAuth,
 				token: refreshed.token,
 				expiresAt: refreshed.expiresAt,
-				targetId: refreshed.target.id,
-				targetType: refreshed.target.type,
+				targetId: refreshed.target?.id ?? null,
+				targetType: refreshed.target?.type ?? null,
 				serverUrl: null,
 				updatedAt: Date.now(),
 			};
@@ -177,65 +179,37 @@ export async function ensureRelayAgentAuth(
 		}
 	}
 
-	const pairingCode = normalizeRelayPairingCode(process.env.PI_RELAY_PAIRING_CODE);
-	if (!pairingCode) {
-		throw new Error("Relay pairing is not configured. Use the local settings page or set PI_RELAY_PAIRING_CODE.");
-	}
-
-	const issued = await requestAgentAuth(relayUrl, {
-		agentId: storedAuth.agentId,
-		agentKey: storedAuth.agentKey,
-		pairingCode,
-	});
-
-	const nextAuth: StoredRelayAgentAuth = {
-		...storedAuth,
-		token: issued.token,
-		expiresAt: issued.expiresAt,
-		targetId: issued.target.id,
-		targetType: issued.target.type,
-		serverUrl: null,
-		updatedAt: Date.now(),
-	};
-	writeStoredRelayAgentAuth(nextAuth);
-	logger.info("stored relay agent auth", {
-		agentId: nextAuth.agentId,
-		targetId: nextAuth.targetId,
-		path: APREAL_AGENT_RELAY_AUTH_PATH,
-	});
-	return nextAuth;
+	throw new Error("Relay agent is not authenticated. Sign in locally to link this server to your Google account.");
 }
 
-export async function reauthenticateRelayAgent(
+export async function authenticateRelayAgentWithOwnerGrant(
 	logger: LoggerLike,
-	pairingCode: string,
+	ownerGrant: string,
 	relayUrl = getRelayServerUrl(),
 ): Promise<StoredRelayAgentAuth> {
 	const storedAuth = createAgentIdentity(readStoredRelayAgentAuth(), relayUrl);
-	const normalizedPairingCode = normalizeRelayPairingCode(pairingCode);
-	if (!normalizedPairingCode) {
-		throw new Error("Authentication code is required.");
+	if (!ownerGrant.trim()) {
+		throw new Error("Owner grant is required.");
 	}
 
 	const issued = await requestAgentAuth(relayUrl, {
 		agentId: storedAuth.agentId,
 		agentKey: storedAuth.agentKey,
-		pairingCode: normalizedPairingCode,
+		ownerGrant,
 	});
 
 	const nextAuth: StoredRelayAgentAuth = {
 		...storedAuth,
 		token: issued.token,
 		expiresAt: issued.expiresAt,
-		targetId: issued.target.id,
-		targetType: issued.target.type,
+		targetId: issued.target?.id ?? null,
+		targetType: issued.target?.type ?? null,
 		serverUrl: null,
 		updatedAt: Date.now(),
 	};
 	writeStoredRelayAgentAuth(nextAuth);
-	logger.info("re-authenticated relay agent", {
+	logger.info("authenticated relay agent with owner grant", {
 		agentId: nextAuth.agentId,
-		targetId: nextAuth.targetId,
 		path: APREAL_AGENT_RELAY_AUTH_PATH,
 	});
 	return nextAuth;

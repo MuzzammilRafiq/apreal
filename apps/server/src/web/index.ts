@@ -1,4 +1,3 @@
-import { createInterface } from "node:readline";
 import { access, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import type { Server as HttpServer } from "node:http";
@@ -10,13 +9,11 @@ import {
 	ADMIN_PROVIDER_API_KEY_PATH,
 	ADMIN_PROVIDER_LOGIN_PATH,
 	ADMIN_PROVIDERS_PATH,
-	ADMIN_RELAY_REAUTHENTICATE_PATH,
 	ADMIN_STATUS_PATH,
 	CLIENT_EVENT_STREAM_PATH,
 	CLIENT_MESSAGE_PATH,
 	LOCAL_CLIENT_ID_HEADER,
 	LOCAL_CLIENT_ID_QUERY_PARAM,
-	normalizeRelayPairingCode,
 	normalizeRelayPrincipalId,
 	type CreateMcpServerRequest,
 	type LocalWebAdminStatus,
@@ -26,8 +23,6 @@ import {
 	type ProviderLoginRequest,
 	type ProviderLoginResponse,
 	type ProviderLoginState,
-	type RelayReauthenticateRequest,
-	type RelayReauthenticateResponse,
 	type SetDefaultModelRequest,
 	type UpdateAppendSystemPromptRequest,
 	type UpdateAppendSystemPromptResponse,
@@ -235,8 +230,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		transportConnected: false,
 		transportGeneration: 0,
 		transportAbortController: null,
-		reauthPending: false,
-		reauthRunning: false,
+		authenticating: false,
 	};
 
 	try {
@@ -346,35 +340,6 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		return inventorySnapshotPromise;
 	};
 
-	const commandInput = createInterface({
-		input: process.stdin,
-		output: process.stdout,
-		terminal: true,
-	});
-
-	commandInput.on("line", (line) => {
-		const trimmed = line.trim();
-		if (!trimmed) {
-			return;
-		}
-
-		if (relayState.reauthPending) {
-			void relay.handleReauthenticationInput(trimmed);
-			return;
-		}
-
-		const directReauthMatch = /^reauthenticate\s+(.+)$/i.exec(trimmed);
-		if (directReauthMatch?.[1]) {
-			void relay.handleReauthenticationInput(directReauthMatch[1]);
-			return;
-		}
-
-		if (/^reauthenticate$/i.test(trimmed)) {
-			relayState.reauthPending = true;
-			console.log("Enter the browser authentication code:");
-		}
-	});
-
 	if (relayState.auth?.token) {
 		relay.restartRelayTransport();
 	}
@@ -402,8 +367,6 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 			relayTransportConnected: relayState.transportConnected,
 			relayStartupError: relayState.startupError,
 			agentId: relayState.auth?.agentId ?? null,
-			reauthPending: relayState.reauthPending,
-			reauthRunning: relayState.reauthRunning,
 			webUiReady,
 			webUiPath: WEB_DIST_DIR,
 			appendSystemPrompt: await readAppendSystemPrompt(),
@@ -615,7 +578,6 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 
 		shuttingDown = true;
 		scheduler.stop();
-		commandInput.close();
 		relayState.transportGeneration += 1;
 		relayState.transportAbortController?.abort();
 		server.close((error) => {

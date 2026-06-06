@@ -6,9 +6,9 @@ import {
 } from "@apreal/shared";
 import {
 	ensureRelayAgentAuth,
+	authenticateRelayAgentWithOwnerGrant,
 	getRelayServerUrl,
 	readClientTokenFromRequest,
-	reauthenticateRelayAgent,
 	verifyRelayClientAccess,
 } from "../relay-auth.ts";
 import { parseClientAppMessage, type ClientAppMessage } from "../protocol.ts";
@@ -27,8 +27,7 @@ export interface RelayMutableState {
 	transportConnected: boolean;
 	transportGeneration: number;
 	transportAbortController: AbortController | null;
-	reauthPending: boolean;
-	reauthRunning: boolean;
+	authenticating: boolean;
 }
 
 export interface RelayState {
@@ -42,8 +41,7 @@ export interface RelayActions {
 	getClientAuthErrorStatus(error: unknown): number;
 	authenticateClientRequest(request: Request): Promise<{ clientId: string }>;
 	restartRelayTransport(): void;
-	reauthenticateWithPairingCode(pairingCode: string): Promise<Awaited<ReturnType<typeof ensureRelayAgentAuth>>>;
-	handleReauthenticationInput(rawValue: string): Promise<void>;
+	authenticateWithOwnerGrant(ownerGrant: string): Promise<Awaited<ReturnType<typeof ensureRelayAgentAuth>>>;
 }
 
 export function createRelay(
@@ -298,36 +296,23 @@ export function createRelay(
 		void runRelayTransportLoop(relayState.transportGeneration);
 	}
 
-	async function reauthenticateWithPairingCode(pairingCode: string) {
-		if (relayState.reauthRunning) {
-			throw new Error("Relay reauthentication already in progress.");
+	async function authenticateWithOwnerGrant(ownerGrant: string) {
+		if (relayState.authenticating) {
+			throw new Error("Relay authentication already in progress.");
 		}
 
-		relayState.reauthRunning = true;
+		relayState.authenticating = true;
 		try {
-			relayState.auth = await reauthenticateRelayAgent(logger, pairingCode, relayUrl);
+			relayState.auth = await authenticateRelayAgentWithOwnerGrant(logger, ownerGrant, relayUrl);
 			relayState.startupError = null;
-			resetClientConnections("relay_reauthenticated");
+			resetClientConnections("relay_owner_authenticated");
 			restartRelayTransport();
-			logger.info("relay reauthentication completed", {
+			logger.info("relay owner authentication completed", {
 				agentId: relayState.auth.agentId,
-				targetId: relayState.auth.targetId,
 			});
 			return relayState.auth;
 		} finally {
-			relayState.reauthPending = false;
-			relayState.reauthRunning = false;
-		}
-	}
-
-	async function handleReauthenticationInput(rawValue: string) {
-		try {
-			await reauthenticateWithPairingCode(rawValue);
-			console.log("Relay reauthentication completed.");
-		} catch (error) {
-			const message = getErrorMessage(error);
-			logger.warn("relay reauthentication failed", { error: message });
-			console.error(`Relay reauthentication failed: ${message}`);
+			relayState.authenticating = false;
 		}
 	}
 
@@ -335,7 +320,6 @@ export function createRelay(
 		getClientAuthErrorStatus,
 		authenticateClientRequest,
 		restartRelayTransport,
-		reauthenticateWithPairingCode,
-		handleReauthenticationInput,
+		authenticateWithOwnerGrant,
 	};
 }

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
-import { normalizeRelayPairingCode, type RelayPrincipalType } from "@apreal/shared";
+import type { RelayPrincipalType } from "@apreal/shared";
 
 import { generateToken, readRelayToken, type AuthTokenPayload, type UserType } from "./auth.ts";
 
@@ -18,7 +18,6 @@ type IssueTokenInput = {
 	type: UserType;
 	id: string;
 	key: string;
-	pairingCode?: string;
 	targetId?: string;
 	targetType?: RelayPrincipalType;
 	serverUrl?: string;
@@ -95,38 +94,13 @@ export class RelayTokenStore {
 		return null;
 	}
 
-	findPendingClientByPairingCode(pairingCode: string): StoredRelayToken | null {
-		const normalizedPairingCode = normalizeRelayPairingCode(pairingCode);
-		if (!normalizedPairingCode) {
-			return null;
-		}
-
-		for (const entry of this.listTokens({ allowExpired: true })) {
-			if (entry.payload.type !== "client") {
-				continue;
-			}
-
-			if (entry.payload.targetId) {
-				continue;
-			}
-
-			if (entry.payload.pairingCode !== normalizedPairingCode) {
-				continue;
-			}
-
-			return entry;
-		}
-
-		return null;
-	}
-
-	findLatestClientByTargetId(targetId: string, options?: { allowExpired?: boolean }): StoredRelayToken | null {
+	findLatestAgentByOwnerUserId(ownerUserId: string, options?: { allowExpired?: boolean }): StoredRelayToken | null {
 		for (const entry of this.listTokens({ allowExpired: options?.allowExpired ?? false })) {
-			if (entry.payload.type !== "client") {
+			if (entry.payload.type !== "agent") {
 				continue;
 			}
 
-			if (entry.payload.targetId !== targetId) {
+			if (entry.payload.ownerUserId !== ownerUserId) {
 				continue;
 			}
 
@@ -146,16 +120,6 @@ export class RelayTokenStore {
 		}
 
 		return null;
-	}
-
-	clearClientTarget(entry: StoredRelayToken, pairingCode = this.createPairingCode()): StoredRelayToken {
-		return this.issueToken({
-			type: "client",
-			id: entry.payload.id,
-			key: entry.payload.key,
-			pairingCode,
-			ownerUserId: entry.payload.ownerUserId,
-		});
 	}
 
 	issueToken(input: IssueTokenInput): StoredRelayToken {
@@ -183,18 +147,6 @@ export class RelayTokenStore {
 		}
 
 		return storedToken;
-	}
-
-	createPairingCode(): string {
-		for (let attempts = 0; attempts < 32; attempts += 1) {
-			const candidate = crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
-
-			if (!this.findPendingClientByPairingCode(candidate)) {
-				return candidate;
-			}
-		}
-
-		throw new Error("failed to generate a unique pairing code");
 	}
 
 	private listTokens(options?: { allowExpired?: boolean }): StoredRelayToken[] {
