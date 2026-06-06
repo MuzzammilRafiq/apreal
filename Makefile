@@ -18,6 +18,3 @@ server:
 
 run:
 	pnpm run dev
-
-mobile:
-	pnpm run start:mobile

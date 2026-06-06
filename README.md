@@ -9,7 +9,6 @@ This repo is now structured as a small monorepo so the desktop surface can grow 
 - `apps/relay-server`: Node.js relay server for authenticated browser-to-agent traffic.
 - `apps/shared`: shared TypeScript package consumed by the server and web apps.
 - `docs`: markdown documentation and notes.
-- `apps/mobile`: mobile app workspace, currently out of scope for the desktop flow.
 
 ## Install
 
@@ -66,7 +65,7 @@ The server listens on `http://localhost:3000` by default and exposes:
 
 In development, the browser UI should be opened from the Vite app at `http://localhost:5173` so HMR works. The Node server still serves built frontend assets from `apps/web/dist` when that bundle exists, but that path does not hot reload.
 
-The web app has two build targets. The local server UI remains the default and builds to `apps/web/dist`; the remote/mobile-browser UI builds separately to `apps/web/dist-remote`.
+The web app has two build targets. The local server UI remains the default and builds to `apps/web/dist`; the hosted remote web UI builds separately to `apps/web/dist-remote`.
 
 ## Build And Checks
 
