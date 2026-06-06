@@ -320,6 +320,43 @@ async function createPair(t: TestContext, baseUrl: string, suffix: string): Prom
 	};
 }
 
+test("allows only configured relay browser origins", async (t) => {
+	const previousAllowedOrigins = process.env.RELAY_CORS_ALLOW_ORIGINS;
+	process.env.RELAY_CORS_ALLOW_ORIGINS = "https://app.example.com";
+	t.after(() => {
+		if (previousAllowedOrigins === undefined) {
+			delete process.env.RELAY_CORS_ALLOW_ORIGINS;
+			return;
+		}
+
+		process.env.RELAY_CORS_ALLOW_ORIGINS = previousAllowedOrigins;
+	});
+
+	const { baseUrl } = await startRelayTestServer(t);
+
+	const allowedResponse = await fetch(`${baseUrl}${RELAY_CLIENT_AUTH_PATH}`, {
+		method: "OPTIONS",
+		headers: {
+			origin: "https://app.example.com",
+			"access-control-request-method": "POST",
+		},
+	});
+	assert.equal(allowedResponse.status, 204);
+	assert.equal(allowedResponse.headers.get("access-control-allow-origin"), "https://app.example.com");
+	assert.equal(allowedResponse.headers.get("access-control-allow-credentials"), "true");
+
+	const blockedResponse = await fetch(`${baseUrl}${RELAY_CLIENT_AUTH_PATH}`, {
+		method: "OPTIONS",
+		headers: {
+			origin: "https://evil.example.com",
+			"access-control-request-method": "POST",
+		},
+	});
+	assert.equal(blockedResponse.status, 204);
+	assert.equal(blockedResponse.headers.get("access-control-allow-origin"), null);
+	assert.equal(blockedResponse.headers.get("access-control-allow-credentials"), null);
+});
+
 test("routes client traffic only to the paired agent", async (t) => {
 	const { baseUrl } = await startRelayTestServer(t);
 	const pairA = await createPair(t, baseUrl, "a");

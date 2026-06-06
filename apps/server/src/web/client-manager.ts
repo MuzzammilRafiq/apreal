@@ -290,7 +290,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 
 		return new Response(stream.readable, {
 			headers: {
-				...createCorsHeaders(),
+				...createCorsHeaders(request),
 				"cache-control": "no-store",
 				connection: "keep-alive",
 				"content-type": "text/event-stream; charset=utf-8",
@@ -306,14 +306,14 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 			if (request.method === "OPTIONS") {
 				return new Response(null, {
 					status: 204,
-					headers: createCorsHeaders(),
+					headers: createCorsHeaders(request),
 				});
 			}
 
 			if (request.method !== "POST") {
 				return new Response("Method Not Allowed", {
 					status: 405,
-					headers: createCorsHeaders(),
+					headers: createCorsHeaders(request),
 				});
 			}
 
@@ -321,7 +321,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 			if (!client || client.closed) {
 				return json(
 					{ message: "Client event stream is not connected." },
-					{ status: 409, headers: createCorsHeaders() },
+					{ status: 409, headers: createCorsHeaders(request) },
 				);
 			}
 
@@ -331,7 +331,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 			} catch {
 				return json(
 					{ message: "Invalid client message payload." },
-					{ status: 400, headers: createCorsHeaders() },
+					{ status: 400, headers: createCorsHeaders(request) },
 				);
 			}
 
@@ -339,12 +339,12 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 			if (!message) {
 				return json(
 					{ message: "Invalid client message payload." },
-					{ status: 400, headers: createCorsHeaders() },
+					{ status: 400, headers: createCorsHeaders(request) },
 				);
 			}
 
 			await handleClientMessage(clientId, message);
-			return json({ ok: true }, { status: 202, headers: createCorsHeaders() });
+			return json({ ok: true }, { status: 202, headers: createCorsHeaders(request) });
 		};
 	}
 

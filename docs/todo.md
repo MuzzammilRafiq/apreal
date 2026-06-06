@@ -44,9 +44,6 @@
 - Put the local-only authorization gate on every MCP admin route.
   `/api/admin/mcp`, `/api/admin/mcp/refresh`, and per-server PATCH/DELETE routes currently bypass `assertLocalAdminRequest`. Because MCP config can add arbitrary stdio commands and outbound URLs, this is an unauthenticated config-tampering, SSRF, and potential local RCE path if the port is reachable.
 
-- Stop using query-string or caller-supplied IDs as the only credential for local browser chat transport.
-  Replace `clientId` query/header auth on the local SSE/message endpoints with a server-minted nonce or signed token bound to the browser session, and avoid putting bearer-style credentials in URLs.
-
 - Fix relay CORS for credentialed browser requests.
   The relay currently reflects arbitrary request origins when `RELAY_CORS_ALLOW_ORIGIN` is unset while also sending `Access-Control-Allow-Credentials: true`. Change this to an explicit allowlist for `/api/auth/*`, `/api/relay/auth/*`, and `/api/relay/connection` so third-party sites cannot use a signed-in browser session to read owner grants or mint paired client tokens.
 

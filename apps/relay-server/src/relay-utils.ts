@@ -163,15 +163,49 @@ export function readUrlField(value: unknown): string | null {
 	}
 }
 
+function normalizeUrlOrigin(value: string | null | undefined): string | null {
+	const trimmed = value?.trim();
+	if (!trimmed) {
+		return null;
+	}
+
+	try {
+		const url = new URL(trimmed);
+		if (url.protocol !== "http:" && url.protocol !== "https:") {
+			return null;
+		}
+
+		return url.origin;
+	} catch {
+		return null;
+	}
+}
+
 export function createCorsHeaders(request?: IncomingMessage): Record<string, string> {
-	const configuredOrigin = process.env.RELAY_CORS_ALLOW_ORIGIN?.trim();
-	const requestOrigin = typeof request?.headers.origin === "string" ? request.headers.origin.trim() : "";
+	const requestOrigin = normalizeUrlOrigin(typeof request?.headers.origin === "string" ? request.headers.origin : null);
+	const configuredOrigins = [
+		process.env.RELAY_CORS_ALLOW_ORIGINS,
+		process.env.RELAY_CORS_ALLOW_ORIGIN,
+		process.env.BETTER_AUTH_URL,
+		process.env.APREAL_AUTH_URL,
+		process.env.BETTER_AUTH_TRUSTED_ORIGINS,
+	]
+		.flatMap((value) => (value ?? "").split(","))
+		.map((value) => normalizeUrlOrigin(value))
+		.filter((value): value is string => value !== null);
+	const requestServerOrigin = request ? normalizeUrlOrigin(resolveRequestOrigin(request)) : null;
+	const allowedOrigins = new Set<string>(configuredOrigins);
+	if (requestServerOrigin) {
+		allowedOrigins.add(requestServerOrigin);
+	}
+	const allowOrigin = requestOrigin && allowedOrigins.has(requestOrigin) ? requestOrigin : null;
 
 	return {
-		"access-control-allow-origin": configuredOrigin || requestOrigin || "*",
-		"access-control-allow-credentials": "true",
+		...(allowOrigin ? { "access-control-allow-origin": allowOrigin } : {}),
+		...(allowOrigin ? { "access-control-allow-credentials": "true" } : {}),
 		"access-control-allow-methods": "GET, POST, OPTIONS",
 		"access-control-allow-headers": "authorization, content-type",
+		vary: "origin",
 	};
 }
 

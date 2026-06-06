@@ -2,7 +2,7 @@
 import { extname } from "node:path";
 import { ADMIN_APPEND_SYSTEM_PROMPT_PATH, ADMIN_MCP_PATH, ADMIN_MCP_REFRESH_PATH, ADMIN_PROVIDER_API_KEY_PATH, ADMIN_PROVIDER_LOGIN_PATH, ADMIN_PROVIDERS_PATH, ADMIN_RELAY_AUTHENTICATE_PATH, ADMIN_STATUS_PATH, CLIENT_EVENT_STREAM_PATH, CLIENT_MESSAGE_PATH, LOCAL_AUTH_SESSION_PATH, type LocalAuthSessionResponse, type RelayAuthenticateRequest, type RelayAuthenticateResponse } from "@apreal/shared";
 import { setDefaultProviderModel, getErrorMessage } from "../session.ts";
-import { createCorsHeaders, json } from "./utils.ts";
+import { createCorsHeaders, getCorsOriginErrorMessage, json } from "./utils.ts";
 import {
 	createClearedLocalBrowserAuthSessionCookieHeader,
 	createLocalBrowserAuthSessionCookieHeader,
@@ -12,21 +12,28 @@ export function createWebRequestHandler(context: any) {
 	const { logger, authenticateBrowserRequest, clientManager, handleHttpClientMessage, assertLocalAdminRequest, buildStatusPayload, writeAppendSystemPrompt, recycleIdleSessionControllers, saveProviderApiKey, startProviderLogin, buildProvidersPayloadWithLoginState, cwd, readProviderLoginState, refreshMcpServers, readMcpServers, createMcpServer, rebuildCustomTools, updateMcpServer, deleteMcpServer, ADMIN_JOBS_PATH, parseAdminMcpRoute, parseAdminJobRoute, listScheduledJobRuns, jobStore, sessions, scheduler, relay, createStaticResponse, createMissingWebUiResponse, webUiReady, getListeningPort } = context;
 	return async (request: Request) => {
 	const url = new URL(request.url);
+	const corsHeaders = createCorsHeaders(request);
 	logger.debug("incoming request", {
 		method: request.method,
 		path: url.pathname,
 	});
+	if (url.pathname.startsWith("/api/")) {
+		const corsOriginError = getCorsOriginErrorMessage(request);
+		if (corsOriginError) {
+			return json({ message: corsOriginError }, { status: 403, headers: corsHeaders });
+		}
+	}
 	if (url.pathname === CLIENT_EVENT_STREAM_PATH) {
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		if (request.method !== "GET") {
 			return new Response("Method Not Allowed", {
 				status: 405,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		try {
@@ -35,7 +42,7 @@ export function createWebRequestHandler(context: any) {
 		} catch (error) {
 			return json(
 				{ message: getErrorMessage(error) },
-				{ status: relay.getClientAuthErrorStatus(error), headers: createCorsHeaders() },
+				{ status: relay.getClientAuthErrorStatus(error), headers: corsHeaders },
 			);
 		}
 	}
@@ -46,7 +53,7 @@ export function createWebRequestHandler(context: any) {
 		} catch (error) {
 			return json(
 				{ message: getErrorMessage(error) },
-				{ status: relay.getClientAuthErrorStatus(error), headers: createCorsHeaders() },
+				{ status: relay.getClientAuthErrorStatus(error), headers: corsHeaders },
 			);
 		}
 	}
@@ -58,7 +65,7 @@ export function createWebRequestHandler(context: any) {
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		if (request.method === "GET") {
@@ -66,7 +73,7 @@ export function createWebRequestHandler(context: any) {
 				authenticated: hasLocalBrowserAuthSession(request),
 			};
 			return json(response, {
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		if (request.method === "DELETE") {
@@ -74,7 +81,7 @@ export function createWebRequestHandler(context: any) {
 				{ ok: true },
 				{
 					headers: {
-						...createCorsHeaders(),
+						...corsHeaders,
 						"set-cookie": createClearedLocalBrowserAuthSessionCookieHeader(),
 					},
 				},
@@ -82,7 +89,7 @@ export function createWebRequestHandler(context: any) {
 		}
 		return new Response("Method Not Allowed", {
 			status: 405,
-			headers: createCorsHeaders(),
+			headers: corsHeaders,
 		});
 	}
 	if (url.pathname === ADMIN_STATUS_PATH) {
@@ -93,17 +100,17 @@ export function createWebRequestHandler(context: any) {
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		if (request.method !== "GET") {
 			return new Response("Method Not Allowed", {
 				status: 405,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		return json(await buildStatusPayload(), {
-			headers: createCorsHeaders(),
+			headers: corsHeaders,
 		});
 	}
 	if (url.pathname === ADMIN_APPEND_SYSTEM_PROMPT_PATH) {
@@ -114,13 +121,13 @@ export function createWebRequestHandler(context: any) {
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		if (request.method !== "POST") {
 			return new Response("Method Not Allowed", {
 				status: 405,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		let payload: unknown;
@@ -129,7 +136,7 @@ export function createWebRequestHandler(context: any) {
 		} catch {
 			return json(
 				{ message: "Request body must be valid JSON." },
-				{ status: 400, headers: createCorsHeaders() },
+				{ status: 400, headers: corsHeaders },
 			);
 		}
 		const appendSystemPrompt = typeof (payload as UpdateAppendSystemPromptRequest | null)?.appendSystemPrompt === "string"
@@ -138,7 +145,7 @@ export function createWebRequestHandler(context: any) {
 		if (appendSystemPrompt === null) {
 			return json(
 				{ message: "appendSystemPrompt must be a string." },
-				{ status: 400, headers: createCorsHeaders() },
+				{ status: 400, headers: corsHeaders },
 			);
 		}
 		try {
@@ -148,12 +155,12 @@ export function createWebRequestHandler(context: any) {
 				status: await buildStatusPayload(),
 			};
 			return json(response, {
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		} catch (error) {
 			return json(
 				{ message: getErrorMessage(error) },
-				{ status: 500, headers: createCorsHeaders() },
+				{ status: 500, headers: corsHeaders },
 			);
 		}
 	}
@@ -165,13 +172,13 @@ export function createWebRequestHandler(context: any) {
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		if (request.method !== "POST") {
 			return new Response("Method Not Allowed", {
 				status: 405,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		let payload: unknown;
@@ -180,7 +187,7 @@ export function createWebRequestHandler(context: any) {
 		} catch {
 			return json(
 				{ message: "Request body must be valid JSON." },
-				{ status: 400, headers: createCorsHeaders() },
+				{ status: 400, headers: corsHeaders },
 			);
 		}
 		const provider = typeof (payload as Partial<ProviderApiKeyRequest>)?.provider === "string"
@@ -192,21 +199,21 @@ export function createWebRequestHandler(context: any) {
 		if (!provider.trim()) {
 			return json(
 				{ message: "provider must be a non-empty string." },
-				{ status: 400, headers: createCorsHeaders() },
+				{ status: 400, headers: corsHeaders },
 			);
 		}
 		if (!apiKey.trim()) {
 			return json(
 				{ message: "apiKey must be a non-empty string." },
-				{ status: 400, headers: createCorsHeaders() },
+				{ status: 400, headers: corsHeaders },
 			);
 		}
 		try {
-			return json(await saveProviderApiKey(provider, apiKey), { headers: createCorsHeaders() });
+			return json(await saveProviderApiKey(provider, apiKey), { headers: corsHeaders });
 		} catch (error) {
 			return json(
 				{ message: getErrorMessage(error) },
-				{ status: 400, headers: createCorsHeaders() },
+				{ status: 400, headers: corsHeaders },
 			);
 		}
 	}
@@ -218,13 +225,13 @@ export function createWebRequestHandler(context: any) {
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		if (request.method !== "POST") {
 			return new Response("Method Not Allowed", {
 				status: 405,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		let payload: unknown;
@@ -233,7 +240,7 @@ export function createWebRequestHandler(context: any) {
 		} catch {
 			return json(
 				{ message: "Request body must be valid JSON." },
-				{ status: 400, headers: createCorsHeaders() },
+				{ status: 400, headers: corsHeaders },
 			);
 		}
 		const provider = typeof (payload as Partial<ProviderLoginRequest>)?.provider === "string"
@@ -242,15 +249,15 @@ export function createWebRequestHandler(context: any) {
 		if (!provider.trim()) {
 			return json(
 				{ message: "provider must be a non-empty string." },
-				{ status: 400, headers: createCorsHeaders() },
+				{ status: 400, headers: corsHeaders },
 			);
 		}
 		try {
-			return json(await startProviderLogin(provider), { headers: createCorsHeaders() });
+			return json(await startProviderLogin(provider), { headers: corsHeaders });
 		} catch (error) {
 			return json(
 				{ message: getErrorMessage(error) },
-				{ status: 400, headers: createCorsHeaders() },
+				{ status: 400, headers: corsHeaders },
 			);
 		}
 	}
@@ -262,16 +269,16 @@ export function createWebRequestHandler(context: any) {
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		if (request.method === "GET") {
 			try {
-				return json(buildProvidersPayloadWithLoginState(), { headers: createCorsHeaders() });
+				return json(buildProvidersPayloadWithLoginState(), { headers: corsHeaders });
 			} catch (error) {
 				return json(
 					{ message: getErrorMessage(error) },
-					{ status: 500, headers: createCorsHeaders() },
+					{ status: 500, headers: corsHeaders },
 				);
 			}
 		}
@@ -282,76 +289,76 @@ export function createWebRequestHandler(context: any) {
 			} catch {
 				return json(
 					{ message: "Request body must be valid JSON." },
-					{ status: 400, headers: createCorsHeaders() },
+					{ status: 400, headers: corsHeaders },
 				);
 			}
 			if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
 				return json(
 					{ message: "Request body must be a JSON object." },
-					{ status: 400, headers: createCorsHeaders() },
+					{ status: 400, headers: corsHeaders },
 				);
 			}
 			const { provider, modelId } = payload as Partial<SetDefaultModelRequest>;
 			if (typeof provider !== "string" || provider.trim().length === 0) {
 				return json(
 					{ message: "provider must be a non-empty string." },
-					{ status: 400, headers: createCorsHeaders() },
+					{ status: 400, headers: corsHeaders },
 				);
 			}
 			if (typeof modelId !== "string" || modelId.trim().length === 0) {
 				return json(
 					{ message: "modelId must be a non-empty string." },
-					{ status: 400, headers: createCorsHeaders() },
+					{ status: 400, headers: corsHeaders },
 				);
 			}
 			try {
 				return json(
 					await setDefaultProviderModel(cwd, provider.trim(), modelId.trim(), readProviderLoginState),
-					{ headers: createCorsHeaders() },
+					{ headers: corsHeaders },
 				);
 			} catch (error) {
 				return json(
 					{ message: getErrorMessage(error) },
-					{ status: 400, headers: createCorsHeaders() },
+					{ status: 400, headers: corsHeaders },
 				);
 			}
 		}
 		return new Response("Method Not Allowed", {
 			status: 405,
-			headers: createCorsHeaders(),
+			headers: corsHeaders,
 		});
 	}
 	if (url.pathname === ADMIN_MCP_REFRESH_PATH) {
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		if (request.method === "POST") {
 			try {
-				return json(await refreshMcpServers(), { headers: createCorsHeaders() });
+				return json(await refreshMcpServers(), { headers: corsHeaders });
 			} catch (error) {
 				return json(
 					{ message: getErrorMessage(error) },
-					{ status: 400, headers: createCorsHeaders() },
+					{ status: 400, headers: corsHeaders },
 				);
 			}
 		}
 		return json(
 			{ message: `Method ${request.method} not allowed for MCP refresh.` },
-			{ status: 405, headers: createCorsHeaders() },
+			{ status: 405, headers: corsHeaders },
 		);
 	}
 	if (url.pathname === ADMIN_MCP_PATH) {
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		if (request.method === "GET") {
-			return json(await readMcpServers(), { headers: createCorsHeaders() });
+			return json(await readMcpServers(), { headers: corsHeaders });
 		}
 		if (request.method === "POST") {
 			let payload: unknown;
@@ -360,29 +367,29 @@ export function createWebRequestHandler(context: any) {
 			} catch {
 				return json(
 					{ message: "The MCP server request body must be valid JSON." },
-					{ status: 400, headers: createCorsHeaders() },
+					{ status: 400, headers: corsHeaders },
 				);
 			}
 			if (!payload || typeof payload !== "object") {
 				return json(
 					{ message: "The MCP server request body must be an object." },
-					{ status: 400, headers: createCorsHeaders() },
+					{ status: 400, headers: corsHeaders },
 				);
 			}
 			try {
 				await createMcpServer(payload as CreateMcpServerRequest);
 				await rebuildCustomTools();
-				return json(await readMcpServers(), { headers: createCorsHeaders() });
+				return json(await readMcpServers(), { headers: corsHeaders });
 			} catch (error) {
 				return json(
 					{ message: getErrorMessage(error) },
-					{ status: 400, headers: createCorsHeaders() },
+					{ status: 400, headers: corsHeaders },
 				);
 			}
 		}
 		return json(
 			{ message: `Method ${request.method} not allowed for MCP servers.` },
-			{ status: 405, headers: createCorsHeaders() },
+			{ status: 405, headers: corsHeaders },
 		);
 	}
 	const adminMcpRoute = parseAdminMcpRoute(url.pathname);
@@ -390,7 +397,7 @@ export function createWebRequestHandler(context: any) {
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		if (request.method === "PATCH") {
@@ -400,23 +407,23 @@ export function createWebRequestHandler(context: any) {
 			} catch {
 				return json(
 					{ message: "The MCP server update body must be valid JSON." },
-					{ status: 400, headers: createCorsHeaders() },
+					{ status: 400, headers: corsHeaders },
 				);
 			}
 			if (!payload || typeof payload !== "object") {
 				return json(
 					{ message: "The MCP server update body must be an object." },
-					{ status: 400, headers: createCorsHeaders() },
+					{ status: 400, headers: corsHeaders },
 				);
 			}
 			try {
 				await updateMcpServer(adminMcpRoute.serverId, payload as UpdateMcpServerRequest);
 				await rebuildCustomTools();
-				return json(await readMcpServers(), { headers: createCorsHeaders() });
+				return json(await readMcpServers(), { headers: corsHeaders });
 			} catch (error) {
 				return json(
 					{ message: getErrorMessage(error) },
-					{ status: /not found/i.test(getErrorMessage(error)) ? 404 : 400, headers: createCorsHeaders() },
+					{ status: /not found/i.test(getErrorMessage(error)) ? 404 : 400, headers: corsHeaders },
 				);
 			}
 		}
@@ -424,17 +431,17 @@ export function createWebRequestHandler(context: any) {
 			try {
 				await deleteMcpServer(adminMcpRoute.serverId);
 				await rebuildCustomTools();
-				return json(await readMcpServers(), { headers: createCorsHeaders() });
+				return json(await readMcpServers(), { headers: corsHeaders });
 			} catch (error) {
 				return json(
 					{ message: getErrorMessage(error) },
-					{ status: /not found/i.test(getErrorMessage(error)) ? 404 : 400, headers: createCorsHeaders() },
+					{ status: /not found/i.test(getErrorMessage(error)) ? 404 : 400, headers: corsHeaders },
 				);
 			}
 		}
 		return json(
 			{ message: `Method ${request.method} not allowed for this MCP server.` },
-			{ status: 405, headers: createCorsHeaders() },
+			{ status: 405, headers: corsHeaders },
 		);
 	}
 	if (url.pathname === ADMIN_JOBS_PATH) {
@@ -445,13 +452,13 @@ export function createWebRequestHandler(context: any) {
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		if (request.method !== "GET") {
 			return new Response("Method Not Allowed", {
 				status: 405,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		return json(
@@ -459,7 +466,7 @@ export function createWebRequestHandler(context: any) {
 				jobs: jobStore.listAllJobs(),
 			},
 			{
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			},
 		);
 	}
@@ -472,21 +479,21 @@ export function createWebRequestHandler(context: any) {
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		const job = jobStore.getJob(adminJobRoute.jobId);
 		if (!job) {
 			return json(
 				{ message: "Scheduled job not found." },
-				{ status: 404, headers: createCorsHeaders() },
+				{ status: 404, headers: corsHeaders },
 			);
 		}
 		if (adminJobRoute.subpath === "runs") {
 			if (request.method !== "GET") {
 				return new Response("Method Not Allowed", {
 					status: 405,
-					headers: createCorsHeaders(),
+					headers: corsHeaders,
 				});
 			}
 			const runs = listScheduledJobRuns(job.name, sessions);
@@ -498,7 +505,7 @@ export function createWebRequestHandler(context: any) {
 					runs,
 				},
 				{
-					headers: createCorsHeaders(),
+					headers: corsHeaders,
 				},
 			);
 		}
@@ -509,13 +516,13 @@ export function createWebRequestHandler(context: any) {
 			} catch {
 				return json(
 					{ message: "Request body must be valid JSON." },
-					{ status: 400, headers: createCorsHeaders() },
+					{ status: 400, headers: corsHeaders },
 				);
 			}
 			if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
 				return json(
 					{ message: "Request body must be a JSON object." },
-					{ status: 400, headers: createCorsHeaders() },
+					{ status: 400, headers: corsHeaders },
 				);
 			}
 			const hasIntervalMinutes = "intervalMinutes" in payload;
@@ -527,7 +534,7 @@ export function createWebRequestHandler(context: any) {
 			if (!hasIntervalMinutes && !hasEnabled) {
 				return json(
 					{ message: "At least one job setting must be provided." },
-					{ status: 400, headers: createCorsHeaders() },
+					{ status: 400, headers: corsHeaders },
 				);
 			}
 			if (
@@ -536,13 +543,13 @@ export function createWebRequestHandler(context: any) {
 			) {
 				return json(
 					{ message: "intervalMinutes must be a number greater than or equal to 5." },
-					{ status: 400, headers: createCorsHeaders() },
+					{ status: 400, headers: corsHeaders },
 				);
 			}
 			if (hasEnabled && typeof nextEnabled !== "boolean") {
 				return json(
 					{ message: "enabled must be a boolean value." },
-					{ status: 400, headers: createCorsHeaders() },
+					{ status: 400, headers: corsHeaders },
 				);
 			}
 			let updatedJob = job;
@@ -551,7 +558,7 @@ export function createWebRequestHandler(context: any) {
 				if (!nextJob) {
 					return json(
 						{ message: "Scheduled job not found." },
-						{ status: 404, headers: createCorsHeaders() },
+						{ status: 404, headers: corsHeaders },
 					);
 				}
 				updatedJob = nextJob;
@@ -561,7 +568,7 @@ export function createWebRequestHandler(context: any) {
 				if (!nextJob) {
 					return json(
 						{ message: "Scheduled job not found." },
-						{ status: 404, headers: createCorsHeaders() },
+						{ status: 404, headers: corsHeaders },
 					);
 				}
 				updatedJob = nextJob;
@@ -574,7 +581,7 @@ export function createWebRequestHandler(context: any) {
 			return json(
 				{ job: updatedJob },
 				{
-					headers: createCorsHeaders(),
+					headers: corsHeaders,
 				},
 			);
 		}
@@ -584,7 +591,7 @@ export function createWebRequestHandler(context: any) {
 			return json(
 				{ ok: true, jobId: job.id },
 				{
-					headers: createCorsHeaders(),
+					headers: corsHeaders,
 				},
 			);
 		}
@@ -592,13 +599,13 @@ export function createWebRequestHandler(context: any) {
 			return json(
 				{ job },
 				{
-					headers: createCorsHeaders(),
+					headers: corsHeaders,
 				},
 			);
 		}
 		return new Response("Method Not Allowed", {
 			status: 405,
-			headers: createCorsHeaders(),
+			headers: corsHeaders,
 		});
 	}
 	if (url.pathname === ADMIN_RELAY_AUTHENTICATE_PATH) {
@@ -609,13 +616,13 @@ export function createWebRequestHandler(context: any) {
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		if (request.method !== "POST") {
 			return new Response("Method Not Allowed", {
 				status: 405,
-				headers: createCorsHeaders(),
+				headers: corsHeaders,
 			});
 		}
 		let payload: unknown;
@@ -624,7 +631,7 @@ export function createWebRequestHandler(context: any) {
 		} catch {
 			return json(
 				{ message: "Request body must be valid JSON." },
-				{ status: 400, headers: createCorsHeaders() },
+				{ status: 400, headers: corsHeaders },
 			);
 		}
 		const ownerGrant = typeof (payload as RelayAuthenticateRequest | null)?.ownerGrant === "string"
@@ -633,7 +640,7 @@ export function createWebRequestHandler(context: any) {
 		if (!ownerGrant) {
 			return json(
 				{ message: "A signed-in account grant is required." },
-				{ status: 400, headers: createCorsHeaders() },
+				{ status: 400, headers: corsHeaders },
 			);
 		}
 		try {
@@ -643,14 +650,14 @@ export function createWebRequestHandler(context: any) {
 			};
 			return json(response, {
 				headers: {
-					...createCorsHeaders(),
+					...corsHeaders,
 					"set-cookie": createLocalBrowserAuthSessionCookieHeader(),
 				},
 			});
 		} catch (error) {
 			return json(
 				{ message: getErrorMessage(error) },
-				{ status: 400, headers: createCorsHeaders() },
+				{ status: 400, headers: corsHeaders },
 			);
 		}
 	}

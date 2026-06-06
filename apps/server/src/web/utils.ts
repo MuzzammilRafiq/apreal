@@ -136,11 +136,74 @@ export function isObjectRecord(value: unknown): value is Record<string, unknown>
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function createCorsHeaders(): Record<string, string> {
+function normalizeOrigin(value: string | null | undefined): string | null {
+	const trimmed = value?.trim();
+	if (!trimmed) {
+		return null;
+	}
+
+	try {
+		const url = new URL(trimmed);
+		if (url.protocol !== "http:" && url.protocol !== "https:") {
+			return null;
+		}
+
+		return url.origin;
+	} catch {
+		return null;
+	}
+}
+
+function readConfiguredCorsOrigins(): string[] {
+	return [process.env.APREAL_CORS_ALLOW_ORIGINS, process.env.APREAL_CORS_ALLOW_ORIGIN]
+		.flatMap((value) => (value ?? "").split(","))
+		.map((value) => normalizeOrigin(value))
+		.filter((value): value is string => value !== null);
+}
+
+function buildAllowedCorsOrigins(request?: Request): Set<string> {
+	const origins = new Set<string>([
+		"http://localhost:5173",
+		"http://127.0.0.1:5173",
+		"http://localhost:4173",
+		"http://127.0.0.1:4173",
+		...readConfiguredCorsOrigins(),
+	]);
+	const requestOrigin = request ? normalizeOrigin(new URL(request.url).origin) : null;
+	if (requestOrigin) {
+		origins.add(requestOrigin);
+	}
+
+	return origins;
+}
+
+function resolveAllowedCorsOrigin(request?: Request): string | null {
+	const requestOrigin = normalizeOrigin(request?.headers.get("origin"));
+	if (!requestOrigin) {
+		return null;
+	}
+
+	return buildAllowedCorsOrigins(request).has(requestOrigin) ? requestOrigin : null;
+}
+
+export function getCorsOriginErrorMessage(request?: Request): string | null {
+	const requestOrigin = normalizeOrigin(request?.headers.get("origin"));
+	if (!requestOrigin) {
+		return null;
+	}
+
+	return resolveAllowedCorsOrigin(request)
+		? null
+		: `Browser origin ${requestOrigin} is not allowed to access this API.`;
+}
+
+export function createCorsHeaders(request?: Request): Record<string, string> {
+	const allowOrigin = resolveAllowedCorsOrigin(request);
 	return {
-		"access-control-allow-origin": "*",
+		...(allowOrigin ? { "access-control-allow-origin": allowOrigin } : {}),
 		"access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
 		"access-control-allow-headers": "authorization, content-type, x-pi-local-client-id",
+		vary: "origin",
 	};
 }
 

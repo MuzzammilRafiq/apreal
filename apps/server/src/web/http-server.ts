@@ -81,9 +81,9 @@ export async function startHttpServer(
 	handler: (request: Request) => Promise<Response>,
 ): Promise<{ server: HttpServer; port: number }> {
 	const server = createServer((request, response) => {
+		const webRequest = createNodeRequest(request, response);
 		void (async () => {
 			try {
-				const webRequest = createNodeRequest(request, response);
 				const webResponse = await handler(webRequest);
 				await sendNodeResponse(response, webResponse);
 			} catch (error) {
@@ -93,7 +93,7 @@ export async function startHttpServer(
 				}
 
 				response.writeHead(500, {
-					...createCorsHeaders(),
+					...createCorsHeaders(webRequest),
 					"cache-control": "no-store",
 					"content-type": "application/json; charset=utf-8",
 				});

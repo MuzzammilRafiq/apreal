@@ -419,7 +419,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 					? "The local admin API is only available from this machine or the private network."
 					: "The local admin API is only available from this machine. Set APREAL_ALLOW_PRIVATE_NETWORK_ADMIN=true to allow same-Wi-Fi access.",
 			},
-			{ status: 403, headers: createCorsHeaders() },
+			{ status: 403, headers: createCorsHeaders(request) },
 		);
 	};
 
