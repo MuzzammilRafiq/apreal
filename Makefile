@@ -10,7 +10,7 @@ deploy-relay:
 		nohup npm run start > /root/relay/relay.log 2>&1 < /dev/null &"
 
 web:
-	pnpm run dev:web
+	pnpm run dev:web:local
 
 server:
 	pnpm run build:web
