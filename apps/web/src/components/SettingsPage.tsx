@@ -450,16 +450,16 @@ export function SettingsPage({
 								onClick={() => setMobileMenuOpen(false)}
 								aria-label="Close settings menu"
 							/>
-							<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden bg-[#101010] text-white shadow-2xl">
-								<div className="border-b border-white/8 px-4 py-4">
+							<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden bg-white text-ink shadow-2xl">
+								<div className="border-b border-line px-4 py-4">
 									<div className="flex items-center justify-between gap-3">
 										<div>
-											<p className="font-mono text-[0.66rem] font-semibold uppercase tracking-[0.14em] text-white/50">Navigation</p>
-											<h2 className="mt-1 text-lg font-semibold tracking-tight text-white">Settings</h2>
+											<p className="font-mono text-[0.66rem] font-semibold uppercase tracking-[0.14em] text-slate-500">Navigation</p>
+											<h2 className="mt-1 text-lg font-semibold tracking-tight text-slate-900">Settings</h2>
 										</div>
 										<button
 											type="button"
-											className="flex h-10 w-10 items-center justify-center rounded-md border border-white/10 bg-white/4 text-white/70 transition-colors duration-150 hover:border-white/16 hover:bg-white/8 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+											className="flex h-10 w-10 items-center justify-center rounded-md border border-black/10 bg-white text-slate-500 transition-colors duration-150 hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
 											onClick={() => setMobileMenuOpen(false)}
 											aria-label="Close settings menu"
 										>
@@ -469,7 +469,7 @@ export function SettingsPage({
 										</button>
 									</div>
 								</div>
-								<div className="flex flex-1 flex-col py-2">
+								<div className="flex flex-1 flex-col px-2 py-2">
 									{visibleSectionItems.map((section) => (
 										<button
 											key={section.id}
@@ -478,27 +478,27 @@ export function SettingsPage({
 												setActiveSection(section.id);
 												setMobileMenuOpen(false);
 											}}
-											className={`flex items-center gap-3 border-l-2 px-5 py-3 text-left transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white cursor-pointer ${
+											className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[0.9375rem] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring cursor-pointer ${
 												activeSection === section.id
-													? "border-white bg-white text-black"
-													: "border-transparent text-white/78 hover:bg-white/6 hover:text-white"
+													? "bg-ink-soft text-ink"
+													: "text-muted hover:bg-ink-soft hover:text-ink"
 											}`}
 										>
-											<span className={`mt-0.5 shrink-0 ${activeSection === section.id ? "text-black" : "text-white/40"}`}>
+											<span className={`mt-0.5 shrink-0 ${activeSection === section.id ? "text-ink" : "text-faint"}`}>
 												<SectionIcon section={section.id} />
 											</span>
-											<span className={`text-[0.92rem] font-semibold leading-tight ${activeSection === section.id ? "text-black" : "text-white"}`}>
+											<span className={`leading-tight ${activeSection === section.id ? "text-ink" : "text-muted"}`}>
 												{section.label}
 											</span>
 										</button>
 									))}
-									<div className="mt-auto border-t border-white/8 px-5 py-4">
+									<div className="mt-auto border-t border-line px-2 pt-3 pb-2">
 										<button
 											type="button"
-											className="inline-flex w-full items-center justify-center gap-2 border border-white/12 bg-white/6 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white cursor-pointer"
+											className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[0.9375rem] font-medium text-ink transition-colors duration-150 hover:bg-ink-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring cursor-pointer"
 											onClick={onBack}
 										>
-											<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+											<svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
 												<path strokeLinecap="round" strokeLinejoin="round" d="M19 12H5M12 19l-7-7 7-7" />
 											</svg>
 											Back to chat
@@ -510,41 +510,41 @@ export function SettingsPage({
 					) : null}
 
 					{/* ======== SIDEBAR ======== */}
-					<nav className="hidden flex-col gap-3 border-b border-black/10 bg-[#101010] min-[961px]:sticky min-[961px]:top-0 min-[961px]:flex min-[961px]:min-h-svh min-[961px]:self-start min-[961px]:border-r min-[961px]:border-b-0">
+					<nav className="hidden flex-col border-b border-line bg-white min-[961px]:sticky min-[961px]:top-0 min-[961px]:flex min-[961px]:min-h-svh min-[961px]:self-start min-[961px]:border-r min-[961px]:border-b-0">
 						{/* Desktop: vertical sidebar */}
-						<div className="text-white min-[961px]:flex min-[961px]:min-h-svh min-[961px]:flex-col">
-							<div className="border-b border-white/8 px-5 py-4">
-								<h2 className="text-[1rem] font-semibold tracking-tight text-white">
+						<div className="text-ink min-[961px]:flex min-[961px]:min-h-svh min-[961px]:flex-col">
+							<div className="border-b border-line px-5 py-4">
+								<h2 className="text-[1rem] font-semibold tracking-tight text-slate-900">
 									Settings
 								</h2>
 							</div>
-							<div className="flex flex-1 flex-col py-2">
+							<div className="flex flex-1 flex-col px-2 py-2">
 								{visibleSectionItems.map((section) => (
 									<button
 										key={section.id}
 										type="button"
 										onClick={() => setActiveSection(section.id)}
-										className={`flex items-center gap-3 border-l-2 px-5 py-3 text-left transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white cursor-pointer ${
+										className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[0.9375rem] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring cursor-pointer ${
 											activeSection === section.id
-												? "border-white bg-white text-black"
-												: "border-transparent text-white/78 hover:bg-white/6 hover:text-white"
+												? "bg-ink-soft text-ink"
+												: "text-muted hover:bg-ink-soft hover:text-ink"
 										}`}
 									>
-										<span className={`mt-0.5 shrink-0 ${activeSection === section.id ? "text-black" : "text-white/40"}`}>
+										<span className={`mt-0.5 shrink-0 ${activeSection === section.id ? "text-ink" : "text-faint"}`}>
 											<SectionIcon section={section.id} />
 										</span>
-										<span className={`text-[0.92rem] font-semibold leading-tight ${activeSection === section.id ? "text-black" : "text-white"}`}>
+										<span className={`leading-tight ${activeSection === section.id ? "text-ink" : "text-muted"}`}>
 											{section.label}
 										</span>
 									</button>
 								))}
-								<div className="mt-auto border-t border-white/8 px-5 py-4">
+								<div className="mt-auto border-t border-line px-2 pt-3 pb-2">
 									<button
 										type="button"
-										className="inline-flex w-full items-center justify-center gap-2 border border-white/12 bg-white/6 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white cursor-pointer"
+										className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[0.9375rem] font-medium text-ink transition-colors duration-150 hover:bg-ink-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring cursor-pointer"
 										onClick={onBack}
 									>
-										<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+										<svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
 											<path strokeLinecap="round" strokeLinejoin="round" d="M19 12H5M12 19l-7-7 7-7" />
 										</svg>
 										Back to chat
