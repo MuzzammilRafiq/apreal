@@ -1,6 +1,8 @@
 import { memo, useEffect, useState } from "react";
 import type { SessionSummary } from "../chatTypes";
 import { formatRelativeTime, getSessionCardClassName } from "../chatView";
+import gearIcon from "./svgs/gear.svg";
+import newChatIcon from "./svgs/new-chat.svg";
 
 type SidebarProps = {
 	pendingDraft: boolean;
@@ -31,9 +33,9 @@ function SidebarContent({
 }: SidebarProps & { onClose?: () => void }) {
 	return (
 		<>
-			<div className="shrink-0 px-2 pt-3 pb-2">
-				{onClose ? (
-					<div className="mb-1 flex justify-end px-1">
+		<div className="shrink-0 px-2 pt-2 pb-1.5">
+			{onClose ? (
+				<div className="mb-0.5 flex justify-end px-1">
 						<button
 							type="button"
 							className="flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors duration-150 hover:bg-ink-soft hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
@@ -47,7 +49,7 @@ function SidebarContent({
 					</div>
 				) : null}
 
-				<nav className="flex flex-col gap-0.5" aria-label="Sidebar actions">
+				<nav className="flex flex-col gap-px" aria-label="Sidebar actions">
 					<button
 						type="button"
 						id="new-chat-button"
@@ -57,10 +59,7 @@ function SidebarContent({
 							onClose?.();
 						}}
 					>
-						<svg viewBox="0 0 20 20" className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.75">
-							<rect x="3.5" y="3.5" width="13" height="13" rx="2" />
-							<path d="M7.5 12.5l6-6 2 2-6 6H7.5v-2z" strokeLinecap="round" strokeLinejoin="round" />
-						</svg>
+						<img src={newChatIcon} alt="" className="h-5 w-5 shrink-0" aria-hidden="true" />
 						<span className="truncate">New chat</span>
 					</button>
 					{onOpenSettings ? (
@@ -72,21 +71,15 @@ function SidebarContent({
 								onClose?.();
 							}}
 						>
-							<svg viewBox="0 0 20 20" className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.75">
-								<circle cx="10" cy="10" r="2.25" />
-								<path
-									d="M10 2.75v1.5M10 15.75v1.5M2.75 10h1.5M15.75 10h1.5M4.8 4.8l1.06 1.06M14.14 14.14l1.06 1.06M4.8 15.2l1.06-1.06M14.14 5.86l1.06-1.06"
-									strokeLinecap="round"
-								/>
-							</svg>
+							<img src={gearIcon} alt="" className="h-5 w-5 shrink-0" aria-hidden="true" />
 							<span className="truncate">Settings</span>
 						</button>
 					) : null}
 				</nav>
 			</div>
 
-			<div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 scrollbar-thin">
-				<div id="session-list" className="flex flex-col gap-0.5" aria-label="Chat sessions">
+			<div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 scrollbar-thin">
+				<div id="session-list" className="flex flex-col gap-px" aria-label="Chat sessions">
 					{sessions.length === 0 ? (
 						<div className="mx-1 w-full rounded-lg bg-surface-muted px-4 py-5 text-center">
 							<p className="text-[0.9375rem] leading-[1.6] text-muted">
@@ -126,8 +119,8 @@ function SidebarContent({
 					{canLoadMoreSessions ? (
 						<button
 							type="button"
-							className="mt-1 flex w-full items-center justify-center rounded-lg px-3 py-2.5 text-[0.875rem] font-medium text-muted transition-colors duration-150 hover:bg-ink-soft hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50"
-							onClick={onLoadMoreSessions}
+							className="mt-0.5 flex w-full items-center justify-center rounded-lg px-3 py-2.5 text-[0.875rem] font-medium text-muted transition-colors duration-150 hover:bg-ink-soft hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50"
+								onClick={onLoadMoreSessions}
 							disabled={loadingMoreSessions}
 						>
 							{loadingMoreSessions ? "Loading sessions..." : "Load 50 more sessions"}
@@ -192,9 +185,7 @@ export const Sidebar = memo(function Sidebar({
 					onClick={onStartNewChat}
 					aria-label="Start new chat"
 				>
-					<svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2">
-						<path d="M10 4.5v11M4.5 10h11" strokeLinecap="round" strokeLinejoin="round" />
-					</svg>
+					<img src={newChatIcon} alt="" className="h-4 w-4" aria-hidden="true" />
 				</button>
 			</div>
 

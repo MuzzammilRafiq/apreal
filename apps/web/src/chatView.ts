@@ -30,7 +30,7 @@ export function formatSessionState(session: SessionSummary | null, pendingDraft:
 
 export function getSessionCardClassName(isActive: boolean): string {
 	return [
-		"group flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring",
+		"group flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring",
 		isActive
 			? "bg-ink-soft text-ink"
 			: "text-muted hover:bg-ink-soft hover:text-ink",
