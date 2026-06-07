@@ -24,6 +24,7 @@ import {
 	navigateToRoute,
 	parseServerMessage,
 	readCurrentRoute,
+	readSelectedJobIdFromRoute,
 	readStoredSessionId,
 	storeActiveSessionId,
 	upsertSessionInList,
@@ -691,11 +692,17 @@ export function App({ runtime }: AppProps) {
 			}
 			: null;
 	const canLoadMoreSessions = visibleSessionLimit < Math.max(totalSessionCount ?? 0, sessions.length);
+	const selectedJobId = route === "jobs" ? readSelectedJobIdFromRoute() : null;
 
 	const handleRouteChange = useCallback((nextRoute: AppRoute) => {
 		const supportedRoute = coerceRouteForCapabilities(nextRoute, effectiveCapabilities);
 		navigateToRoute(supportedRoute);
 		setRoute(supportedRoute);
+	}, [effectiveCapabilities]);
+
+	const handleOpenJob = useCallback((jobId: string) => {
+		navigateToRoute("jobs", { jobId });
+		setRoute(coerceRouteForCapabilities("jobs", effectiveCapabilities));
 	}, [effectiveCapabilities]);
 
 
@@ -716,19 +723,15 @@ export function App({ runtime }: AppProps) {
 			connectionError={connectionError} pendingDraft={pendingDraft} visibleSessions={visibleSessions}
 			loadingMoreSessions={loadingMoreSessions} canLoadMoreSessions={canLoadMoreSessions}
 			activeSessionId={activeSessionId} activeSession={activeSession} activeTranscript={activeTranscript}
-			emptyState={emptyState} connected={connected} serverReady={serverReady} streamRequested={streamRequested}
+			emptyState={emptyState} connected={connected} serverReady={serverReady} streamRequested={streamRequested} target={runtime.target}
 			composerBlockedReason={composerBlockedReason}
 			capabilities={effectiveCapabilities}
 			connectionLabel={runtime.transport.label}
+			selectedJobId={selectedJobId}
 			promptInputRef={promptInputRef}
 			transcriptRef={transcriptRef}
 			onRouteChange={handleRouteChange}
-			onRefreshAdminStatus={() => {
-				void refreshAdminStatus().catch((error) => {
-					setAdminStatus(null);
-					setAdminStatusError(getErrorMessage(error));
-				});
-			}}
+			onOpenJob={handleOpenJob}
 			onRefreshJobs={handleRefreshJobs} onRefreshJobRuns={handleRefreshJobRuns}
 			onUpdateJobInterval={updateScheduledJob} onToggleJobEnabled={toggleScheduledJobEnabled}
 			onDeleteJob={deleteScheduledJob} onEnsureSessionLoaded={ensureSessionLoaded}

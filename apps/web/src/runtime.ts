@@ -57,7 +57,7 @@ const localCapabilities: WebCapabilities = {
 	mcpServers: true,
 	systemPrompt: true,
 	inventory: true,
-	settingsSections: ["account", "connection", "models", "skills", "mcp", "tools", "jobs"],
+	settingsSections: ["account", "models", "skills", "mcp", "tools", "jobs"],
 };
 
 const remoteCapabilities: WebCapabilities = {
@@ -67,7 +67,7 @@ const remoteCapabilities: WebCapabilities = {
 	mcpServers: true,
 	systemPrompt: true,
 	inventory: true,
-	settingsSections: ["account", "connection", "models", "skills", "mcp", "tools", "jobs"],
+	settingsSections: ["account", "models", "skills", "mcp", "tools", "jobs"],
 };
 
 function resolveSameOriginBaseUrl(): URL {

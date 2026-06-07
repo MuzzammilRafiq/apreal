@@ -92,7 +92,6 @@ export type SettingsSection = SettingsSectionId;
 
 export const SECTIONS: { id: SettingsSection; label: string }[] = [
 	{ id: "account", label: "Account" },
-	{ id: "connection", label: "Connection" },
 	{ id: "models", label: "Model control" },
 	{ id: "skills", label: "Skills" },
 	{ id: "mcp", label: "MCP" },
@@ -102,7 +101,7 @@ export const SECTIONS: { id: SettingsSection; label: string }[] = [
 
 export const SECTION_TITLES: Record<SettingsSection, string> = {
 	account: "Account",
-	connection: "Connection",
+	connection: "Account",
 	models: "Model configuration",
 	skills: "Available skills",
 	mcp: "MCP servers",

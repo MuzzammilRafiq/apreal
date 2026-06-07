@@ -42,13 +42,15 @@ type AppRouteViewProps = {
 	connected: boolean;
 	serverReady: boolean;
 	streamRequested: boolean;
+	target: "local" | "remote";
 	composerBlockedReason: string | null;
 	capabilities: WebCapabilities;
 	connectionLabel: string;
+	selectedJobId: string | null;
 	promptInputRef: RefObject<HTMLTextAreaElement | null>;
 	transcriptRef: RefObject<HTMLDivElement | null>;
 	onRouteChange: (route: AppRoute) => void;
-	onRefreshAdminStatus: () => void;
+	onOpenJob: (jobId: string) => void;
 	onRefreshJobs: () => void;
 	onRefreshJobRuns: (jobId: string) => void;
 	onUpdateJobInterval: (jobId: string, intervalMinutes: number) => Promise<void>;
@@ -75,9 +77,9 @@ export function AppRouteView({
 	savingAppendPrompt, appendPromptMessage, appendPromptError,
 	scheduledJobs, scheduledJobRuns, sessionCache, scheduledJobsError, scheduledJobRunsError, loadingScheduledJobs, loadingScheduledJobRuns,
 	connectionError, pendingDraft, visibleSessions, loadingMoreSessions, canLoadMoreSessions, activeSessionId, activeSession, activeTranscript,
-	emptyState, connected, serverReady, streamRequested, capabilities, connectionLabel, promptInputRef, transcriptRef, onRouteChange, onRefreshAdminStatus,
+	emptyState, connected, serverReady, streamRequested, target, capabilities, connectionLabel, selectedJobId, promptInputRef, transcriptRef, onRouteChange,
 	composerBlockedReason,
-	onRefreshJobs, onRefreshJobRuns, onUpdateJobInterval, onToggleJobEnabled, onDeleteJob, onEnsureSessionLoaded, onSetDefaultModel,
+	onOpenJob, onRefreshJobs, onRefreshJobRuns, onUpdateJobInterval, onToggleJobEnabled, onDeleteJob, onEnsureSessionLoaded, onSetDefaultModel,
 	onStartProviderLogin, onSaveProviderApiKey, onCreateMcpServer, onUpdateMcpServer, onDeleteMcpServer, onRefreshMcpServers,
 	onSaveAppendSystemPrompt, onStartNewChat, onActivateSession, onLoadMoreSessions, onSendPrompt, onAbort,
 }: AppRouteViewProps) {
@@ -95,23 +97,15 @@ export function AppRouteView({
 				appendPromptSubmissionMessage={appendPromptMessage}
 				appendPromptSubmissionError={appendPromptError}
 				jobs={scheduledJobs}
-				jobRuns={scheduledJobRuns}
-				sessionCache={sessionCache}
 				jobsError={scheduledJobsError}
-				jobRunsError={scheduledJobRunsError}
 				isLoadingJobs={loadingScheduledJobs}
-				isLoadingJobRuns={loadingScheduledJobRuns}
 				connectionError={connectionError}
 				onBack={() => onRouteChange("chat")}
-				onRefresh={() => {
-					void onRefreshAdminStatus();
-				}}
+				connected={connected}
+				serverReady={serverReady}
+				target={target}
 				onRefreshJobs={onRefreshJobs}
-				onRefreshJobRuns={onRefreshJobRuns}
-				onUpdateJobInterval={onUpdateJobInterval}
-				onToggleJobEnabled={onToggleJobEnabled}
-				onDeleteJob={onDeleteJob}
-				onEnsureRunLoaded={onEnsureSessionLoaded}
+				onOpenJob={onOpenJob}
 				onSetDefaultModel={onSetDefaultModel}
 				onStartProviderLogin={onStartProviderLogin}
 				onSaveProviderApiKey={onSaveProviderApiKey}
@@ -130,7 +124,6 @@ export function AppRouteView({
 	if (route === "jobs" && capabilities.jobs) {
 		return (
 			<ScheduledJobsPage
-				adminStatus={adminStatus}
 				jobs={scheduledJobs}
 				jobRuns={scheduledJobRuns}
 				sessionCache={sessionCache}
@@ -146,6 +139,7 @@ export function AppRouteView({
 				onToggleJobEnabled={onToggleJobEnabled}
 				onDeleteJob={onDeleteJob}
 				onEnsureRunLoaded={onEnsureSessionLoaded}
+				selectedJobId={selectedJobId}
 			/>
 		);
 	}
@@ -162,6 +156,9 @@ export function AppRouteView({
 				onOpenSettings={capabilities.settings ? () => onRouteChange("settings") : null}
 				onActivateSession={(sessionId) => onActivateSession(sessionId)}
 				onLoadMoreSessions={onLoadMoreSessions}
+				target={target}
+				clientConnected={connected}
+				hostConnected={serverReady}
 			/>
 
 			<section className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden">

@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from "react";
 import type { SessionSummary } from "../chatTypes";
 import { formatRelativeTime, getSessionCardClassName } from "../chatView";
+import { ConnectionSidebarFooter } from "./ConnectionSidebarFooter";
 import gearIcon from "./svgs/gear.svg";
 import newChatIcon from "./svgs/new-chat.svg";
 
@@ -14,6 +15,9 @@ type SidebarProps = {
 	onOpenSettings: (() => void) | null;
 	onActivateSession: (sessionId: string) => void;
 	onLoadMoreSessions: () => void;
+	target: "local" | "remote";
+	clientConnected: boolean;
+	hostConnected: boolean;
 };
 
 const sidebarNavItemClassName =
@@ -29,6 +33,9 @@ function SidebarContent({
 	onOpenSettings,
 	onActivateSession,
 	onLoadMoreSessions,
+	target,
+	clientConnected,
+	hostConnected,
 	onClose,
 }: SidebarProps & { onClose?: () => void }) {
 	return (
@@ -128,6 +135,11 @@ function SidebarContent({
 					) : null}
 				</div>
 			</div>
+			<ConnectionSidebarFooter
+				target={target}
+				clientConnected={clientConnected}
+				hostConnected={hostConnected}
+			/>
 		</>
 	);
 }
@@ -142,6 +154,9 @@ export const Sidebar = memo(function Sidebar({
 	onOpenSettings,
 	onActivateSession,
 	onLoadMoreSessions,
+	target,
+	clientConnected,
+	hostConnected,
 }: SidebarProps) {
 	const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -208,6 +223,9 @@ export const Sidebar = memo(function Sidebar({
 							onOpenSettings={onOpenSettings}
 							onActivateSession={onActivateSession}
 							onLoadMoreSessions={onLoadMoreSessions}
+							target={target}
+							clientConnected={clientConnected}
+							hostConnected={hostConnected}
 							onClose={() => setMobileMenuOpen(false)}
 						/>
 					</aside>
@@ -225,6 +243,9 @@ export const Sidebar = memo(function Sidebar({
 					onOpenSettings={onOpenSettings}
 					onActivateSession={onActivateSession}
 					onLoadMoreSessions={onLoadMoreSessions}
+					target={target}
+					clientConnected={clientConnected}
+					hostConnected={hostConnected}
 				/>
 			</aside>
 		</>

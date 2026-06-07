@@ -1,14 +1,15 @@
+import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import type { AvailableSkill, AvailableTool, CreateMcpServerRequest, LocalWebAdminStatus, McpServerConfig, McpServerTransport, ProvidersResponse, UpdateMcpServerRequest } from "@apreal/shared";
-import type { ScheduledJobDetails, SessionCacheEntry, SessionSummary } from "../chatTypes";
-import { JobsPanel } from "./JobsPanel";
-import { SettingsConnectionSection } from "./SettingsConnectionSection";
+import type { ScheduledJobDetails } from "../chatTypes";
+import { ConnectionSidebarFooter } from "./ConnectionSidebarFooter";
+import { ScheduledJobList } from "./ScheduledJobList";
 import { SettingsModelsSection } from "./SettingsModelsSection";
 import { SettingsInventorySections } from "./SettingsInventorySections";
 import { SettingsMcpSection } from "./SettingsMcpSection";
 import { SettingsAccountSection } from "./SettingsAccountSection";
 
-import { DEFAULT_VISIBLE_PROVIDER_COUNT, MCP_TRANSPORT_OPTIONS, SECTIONS, SECTION_TITLES, SectionIcon, formatProviderId, getMcpRuntimeLabel, getMcpRuntimeTone, getSkillToneClassName, getToolKindLabel, getToolToneClassName, normalizeSearchValue, parseKeyValueText, parseLineSeparatedList, renderStatusPill, stringifyKeyValueRecord, type SearchableModel, type SearchableProvider, type SettingsSection } from "./settings-helpers";
+import { DEFAULT_VISIBLE_PROVIDER_COUNT, MCP_TRANSPORT_OPTIONS, SECTIONS, SECTION_TITLES, SectionIcon, formatProviderId, getMcpRuntimeLabel, getMcpRuntimeTone, getSkillToneClassName, getToolKindLabel, getToolToneClassName, normalizeSearchValue, parseKeyValueText, parseLineSeparatedList, stringifyKeyValueRecord, type SearchableModel, type SearchableProvider, type SettingsSection } from "./settings-helpers";
 
 type SettingsPageProps = {
 	adminStatus: LocalWebAdminStatus | null;
@@ -22,21 +23,15 @@ type SettingsPageProps = {
 	appendPromptSubmissionMessage: string | null;
 	appendPromptSubmissionError: string | null;
 	jobs: ScheduledJobDetails[];
-	jobRuns: SessionSummary[];
-	sessionCache: Map<string, SessionCacheEntry>;
 	jobsError: string | null;
-	jobRunsError: string | null;
 	isLoadingJobs: boolean;
-	isLoadingJobRuns: boolean;
 	connectionError: string | null;
+	connected: boolean;
+	serverReady: boolean;
+	target: "local" | "remote";
 	onBack: () => void;
-	onRefresh: () => void;
 	onRefreshJobs: () => void;
-	onRefreshJobRuns: (jobId: string) => void;
-	onUpdateJobInterval: (jobId: string, intervalMinutes: number) => Promise<void>;
-	onToggleJobEnabled: (jobId: string, enabled: boolean) => Promise<void>;
-	onDeleteJob: (jobId: string) => Promise<void>;
-	onEnsureRunLoaded: (runId: string) => void;
+	onOpenJob: (jobId: string) => void;
 	onSetDefaultModel: (provider: string, modelId: string) => Promise<void>;
 	onStartProviderLogin: (provider: string) => Promise<void>;
 	onSaveProviderApiKey: (provider: string, apiKey: string) => Promise<void>;
@@ -60,21 +55,15 @@ export function SettingsPage({
 	appendPromptSubmissionMessage,
 	appendPromptSubmissionError,
 	jobs,
-	jobRuns,
-	sessionCache,
 	jobsError,
-	jobRunsError,
 	isLoadingJobs,
-	isLoadingJobRuns,
 	connectionError,
+	connected,
+	serverReady,
+	target,
 	onBack,
-	onRefresh,
 	onRefreshJobs,
-	onRefreshJobRuns,
-	onUpdateJobInterval,
-	onToggleJobEnabled,
-	onDeleteJob,
-	onEnsureRunLoaded,
+	onOpenJob,
 	onSetDefaultModel,
 	onStartProviderLogin,
 	onSaveProviderApiKey,
@@ -143,7 +132,7 @@ export function SettingsPage({
 		setMcpHeaders("");
 	};
 
-	const handleAppendSystemPromptSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+	const handleAppendSystemPromptSubmit = (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
 		onSaveAppendSystemPrompt(appendSystemPromptDraft);
 	};
@@ -323,7 +312,7 @@ export function SettingsPage({
 		setMcpFormMessage(null);
 	};
 
-	const handleSubmitMcpServer = async (event: React.FormEvent<HTMLFormElement>) => {
+	const handleSubmitMcpServer = async (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
 		setMcpFormError(null);
 		setMcpFormMessage(null);
@@ -388,8 +377,6 @@ export function SettingsPage({
 		}
 	};
 
-	const isOnline = Boolean(adminStatus);
-	const relayReady = Boolean(adminStatus?.relayReady);
 	const activeSectionTitle = SECTION_TITLES[activeSection];
 	const availableSkills = adminStatus?.availableSkills ?? [];
 	const availableTools = adminStatus?.availableTools ?? [];
@@ -430,16 +417,6 @@ export function SettingsPage({
 							<p className="font-mono text-[0.64rem] font-semibold uppercase tracking-[0.14em] text-slate-500">Settings</p>
 							<p className="truncate text-[0.9rem] font-semibold tracking-tight text-slate-900">{activeSectionTitle}</p>
 						</div>
-						<button
-							type="button"
-							className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-black bg-black text-white transition-colors duration-150 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
-							onClick={onBack}
-							aria-label="Back to chat"
-						>
-							<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-								<path strokeLinecap="round" strokeLinejoin="round" d="M19 12H5M12 19l-7-7 7-7" />
-							</svg>
-						</button>
 					</div>
 
 					{mobileMenuOpen ? (
@@ -492,18 +469,12 @@ export function SettingsPage({
 											</span>
 										</button>
 									))}
-									<div className="mt-auto border-t border-line px-2 pt-3 pb-2">
-										<button
-											type="button"
-											className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[0.9375rem] font-medium text-ink transition-colors duration-150 hover:bg-ink-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring cursor-pointer"
-											onClick={onBack}
-										>
-											<svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-												<path strokeLinecap="round" strokeLinejoin="round" d="M19 12H5M12 19l-7-7 7-7" />
-											</svg>
-											Back to chat
-										</button>
-									</div>
+									<ConnectionSidebarFooter
+										target={target}
+										clientConnected={connected}
+										hostConnected={serverReady}
+										onBackToChat={onBack}
+									/>
 								</div>
 							</aside>
 						</div>
@@ -538,18 +509,12 @@ export function SettingsPage({
 										</span>
 									</button>
 								))}
-								<div className="mt-auto border-t border-line px-2 pt-3 pb-2">
-									<button
-										type="button"
-										className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[0.9375rem] font-medium text-ink transition-colors duration-150 hover:bg-ink-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring cursor-pointer"
-										onClick={onBack}
-									>
-										<svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-											<path strokeLinecap="round" strokeLinejoin="round" d="M19 12H5M12 19l-7-7 7-7" />
-										</svg>
-										Back to chat
-									</button>
-								</div>
+								<ConnectionSidebarFooter
+									target={target}
+									clientConnected={connected}
+									hostConnected={serverReady}
+									onBackToChat={onBack}
+								/>
 							</div>
 						</div>
 					</nav>
@@ -563,26 +528,6 @@ export function SettingsPage({
 								</h1>
 							</div>
 							<div className="flex w-full shrink-0 flex-wrap items-center gap-2.5 min-[961px]:w-auto">
-								<div className="inline-flex w-full items-center gap-2 border border-black/8 bg-slate-50 px-3 py-2 text-[0.72rem] font-medium text-slate-600 min-[1100px]:hidden">
-									<span className={`inline-block h-2 w-2 rounded-full ${isOnline ? "bg-slate-900" : "bg-slate-400"}`} />
-									<span className="font-mono uppercase tracking-[0.1em]">
-										{isOnline ? `Server :${adminStatus?.port ?? ""}` : "Server offline"}
-									</span>
-									<span className="text-slate-300">/</span>
-									<span className="font-mono uppercase tracking-[0.1em]">
-										{relayReady ? "Linked" : "Sign in to link"}
-									</span>
-								</div>
-								<div className="hidden items-center gap-2 border border-black/8 bg-white px-3 py-2 text-[0.74rem] font-medium text-slate-500 min-[1100px]:inline-flex">
-									<span className={`inline-block h-2 w-2 rounded-full ${isOnline ? "bg-slate-900" : "bg-slate-400"}`} />
-									<span className="font-mono uppercase tracking-[0.1em]">
-										{isOnline ? `Server :${adminStatus?.port ?? ""}` : "Server offline"}
-									</span>
-									<span className="text-slate-300">/</span>
-									<span className="font-mono uppercase tracking-[0.1em]">
-										{relayReady ? "Linked" : "Sign in to link"}
-									</span>
-								</div>
 								{activeSection === "jobs" ? (
 									<button
 										type="button"
@@ -607,41 +552,17 @@ export function SettingsPage({
 										</svg>
 										{isLoadingMcpServers ? "Syncing..." : "Sync MCP"}
 									</button>
-								) : (
-									<button
-										type="button"
-										className="inline-flex w-full items-center justify-center gap-2 border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-[#171717] transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[961px]:w-auto"
-										onClick={onRefresh}
-									>
-										<svg className="h-4 w-4 text-[#525252]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-											<path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8h-4.21" />
-										</svg>
-										Refresh status
-									</button>
-								)}
-								<button
-									type="button"
-									className="hidden"
-									onClick={onBack}
-								>
-									<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-										<path strokeLinecap="round" strokeLinejoin="round" d="M19 12H5M12 19l-7-7 7-7" />
-									</svg>
-									Back to chat
-								</button>
+								) : null}
 							</div>
 						</header>
 
 						<div className="mt-4 space-y-4">
-						<SettingsAccountSection active={activeSection === "account"} />
-
-						<SettingsConnectionSection
-							activeSection={activeSection}
+						<SettingsAccountSection
+							active={activeSection === "account" || activeSection === "connection"}
 							adminStatus={adminStatus}
 							statusError={statusError}
 							connectionError={connectionError}
-							relayReady={relayReady}
-							isOnline={isOnline}
+							connected={connected}
 							handleAppendSystemPromptSubmit={handleAppendSystemPromptSubmit}
 							appendSystemPromptDraft={appendSystemPromptDraft}
 							setAppendSystemPromptDraft={setAppendSystemPromptDraft}
@@ -726,23 +647,21 @@ export function SettingsPage({
 
 						{/* ---------- JOBS SECTION ---------- */}
 						{activeSection === "jobs" && (
-							<JobsPanel
-								adminStatus={adminStatus}
-								jobs={jobs}
-								jobRuns={jobRuns}
-								sessionCache={sessionCache}
-								jobsError={jobsError}
-								jobRunsError={jobRunsError}
-								isLoadingJobs={isLoadingJobs}
-								isLoadingJobRuns={isLoadingJobRuns}
-								connectionError={connectionError}
-								onRefreshJobs={onRefreshJobs}
-								onRefreshJobRuns={onRefreshJobRuns}
-								onUpdateJobInterval={onUpdateJobInterval}
-								onToggleJobEnabled={onToggleJobEnabled}
-								onDeleteJob={onDeleteJob}
-								onEnsureRunLoaded={onEnsureRunLoaded}
-							/>
+							<div className="space-y-4">
+								<div className="rounded-lg border border-line bg-white px-4 py-4">
+									<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Jobs</p>
+									<h2 className="mt-2 text-[1.05rem] font-bold text-slate-950">Recurring job list</h2>
+									<p className="mt-1 max-w-2xl text-sm font-medium leading-[1.6] text-slate-500">
+										Browse active recurring schedules here. Open any job to inspect its full configuration, run history, and transcript on the dedicated jobs page.
+									</p>
+								</div>
+								<ScheduledJobList
+									jobs={jobs}
+									jobsError={jobsError}
+									isLoadingJobs={isLoadingJobs}
+									onSelectJob={onOpenJob}
+								/>
+							</div>
 						)}
 					</div>
 						</div>
