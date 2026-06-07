@@ -153,9 +153,16 @@ export type RelayConnectionResponse = {
 
 export type RelayClientHeartbeatRequest = RelayClientAuthRequest;
 
+export type RemoteSettingsSection = "account" | "connection" | "models" | "skills" | "mcp" | "tools" | "jobs";
+
+export type RemoteSettingsAuthorization = {
+	sections: RemoteSettingsSection[];
+};
+
 export type RelayClientHeartbeatResponse = RelayClientAuthResponse & {
 	serverReady: boolean;
 	transportReady: boolean;
+	settingsAuthorization: RemoteSettingsAuthorization;
 };
 
 export type LocalWebAdminStatus = {

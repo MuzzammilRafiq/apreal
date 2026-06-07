@@ -6,9 +6,21 @@ declare const __APREAL_WEB_TARGET__: "local" | "remote";
 
 type AccountAuthButtonProps = {
 	onAfterAction?: () => void;
+	showSignedInDetails?: boolean;
+	showAuthBaseUrl?: boolean;
+	tone?: "dark" | "light";
+	wrapperClassName?: string;
+	buttonClassName?: string;
 };
 
-export function AccountAuthButton({ onAfterAction }: AccountAuthButtonProps) {
+export function AccountAuthButton({
+	onAfterAction,
+	showSignedInDetails = true,
+	showAuthBaseUrl = true,
+	tone = "dark",
+	wrapperClassName,
+	buttonClassName,
+}: AccountAuthButtonProps) {
 	const { data: session, isPending } = authClient.useSession();
 	const [relayLinkError, setRelayLinkError] = useState<string | null>(null);
 	const [relayLinking, setRelayLinking] = useState(false);
@@ -75,7 +87,9 @@ export function AccountAuthButton({ onAfterAction }: AccountAuthButtonProps) {
 
 	if (isPending) {
 		return (
-			<div className="rounded-md border border-white/8 bg-white/3 px-3 py-2.5 text-[0.78rem] font-medium text-[#9ca3af]">
+			<div className={wrapperClassName ?? (tone === "light"
+				? "rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 text-[0.78rem] font-medium text-slate-600"
+				: "rounded-md border border-white/8 bg-white/3 px-3 py-2.5 text-[0.78rem] font-medium text-[#9ca3af]")}>
 				Checking account...
 			</div>
 		);
@@ -83,38 +97,46 @@ export function AccountAuthButton({ onAfterAction }: AccountAuthButtonProps) {
 
 	if (!user) {
 		return (
-			<div className="rounded-md border border-white/8 bg-white/3 p-2.5">
+			<div className={wrapperClassName ?? (tone === "light" ? "rounded-md border border-slate-200 bg-white p-2.5" : "rounded-md border border-white/8 bg-white/3 p-2.5")}>
 				<button
 					type="button"
-					className="flex w-full items-center justify-center rounded-md bg-white px-3 py-2 text-[0.8rem] font-semibold text-black transition-colors duration-150 hover:bg-neutral-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+					className={buttonClassName ?? (tone === "light"
+						? "flex w-full items-center justify-center rounded-md bg-black px-3 py-2 text-[0.8rem] font-semibold text-white transition-colors duration-150 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+						: "flex w-full items-center justify-center rounded-md bg-white px-3 py-2 text-[0.8rem] font-semibold text-black transition-colors duration-150 hover:bg-neutral-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white")}
 					onClick={() => {
 						void handleSignIn();
 					}}
 				>
 					Sign in with Google
 				</button>
-				<p className="mt-2 truncate font-mono text-[0.62rem] text-[#737373]" title={authBaseUrl}>
+				{showAuthBaseUrl ? <p className={tone === "light"
+					? "mt-2 truncate font-mono text-[0.62rem] text-slate-500"
+					: "mt-2 truncate font-mono text-[0.62rem] text-[#737373]"} title={authBaseUrl}>
 					Auth: {authBaseUrl}
-				</p>
+				</p> : null}
 			</div>
 		);
 	}
 
 	return (
-		<div className="rounded-md border border-white/8 bg-white/3 p-2.5">
-			<div className="min-w-0">
-				<p className="truncate text-[0.82rem] font-semibold text-white">{user.name || user.email || "Signed in"}</p>
-				{user.email ? <p className="truncate text-[0.7rem] font-medium text-[#9ca3af]">{user.email}</p> : null}
-				{__APREAL_WEB_TARGET__ === "local" && relayLinking ? (
-					<p className="mt-1 truncate text-[0.68rem] font-medium text-[#9ca3af]">Linking local relay...</p>
-				) : null}
-				{__APREAL_WEB_TARGET__ === "local" && relayLinkError ? (
-					<p className="mt-1 text-[0.68rem] font-medium leading-4 text-[#fca5a5]">{relayLinkError}</p>
-				) : null}
-			</div>
+		<div className={wrapperClassName ?? (tone === "light" ? "rounded-md border border-slate-200 bg-white p-2.5" : "rounded-md border border-white/8 bg-white/3 p-2.5")}>
+			{showSignedInDetails ? (
+				<div className="min-w-0">
+					<p className={`truncate text-[0.82rem] font-semibold ${tone === "light" ? "text-slate-950" : "text-white"}`}>{user.name || user.email || "Signed in"}</p>
+					{user.email ? <p className={`truncate text-[0.7rem] font-medium ${tone === "light" ? "text-slate-600" : "text-[#9ca3af]"}`}>{user.email}</p> : null}
+					{__APREAL_WEB_TARGET__ === "local" && relayLinking ? (
+						<p className={`mt-1 truncate text-[0.68rem] font-medium ${tone === "light" ? "text-slate-500" : "text-[#9ca3af]"}`}>Linking local relay...</p>
+					) : null}
+					{__APREAL_WEB_TARGET__ === "local" && relayLinkError ? (
+						<p className={`mt-1 text-[0.68rem] font-medium leading-4 ${tone === "light" ? "text-red-700" : "text-[#fca5a5]"}`}>{relayLinkError}</p>
+					) : null}
+				</div>
+			) : null}
 			<button
 				type="button"
-				className="mt-2 flex w-full items-center justify-center rounded-md border border-white/10 bg-white/4 px-3 py-2 text-[0.75rem] font-semibold text-[#b5b5b5] transition-colors duration-150 hover:border-white/16 hover:bg-white/8 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+				className={`${showSignedInDetails ? "mt-2 " : ""}flex w-full items-center justify-center rounded-md border px-3 py-2 text-[0.75rem] font-semibold transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 ${tone === "light"
+					? "border-slate-300 bg-white text-slate-800 hover:bg-slate-100 focus-visible:outline-slate-500"
+					: "border-white/10 bg-white/4 text-[#b5b5b5] hover:border-white/16 hover:bg-white/8 hover:text-white focus-visible:outline-white"}`}
 				onClick={() => {
 					void handleSignOut();
 				}}

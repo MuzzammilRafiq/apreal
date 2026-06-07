@@ -329,6 +329,10 @@ export function createWebRequestHandler(context: any) {
 		});
 	}
 	if (url.pathname === ADMIN_MCP_REFRESH_PATH) {
+		const localOnlyResponse = assertLocalAdminRequest(request);
+		if (localOnlyResponse) {
+			return localOnlyResponse;
+		}
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
@@ -351,6 +355,10 @@ export function createWebRequestHandler(context: any) {
 		);
 	}
 	if (url.pathname === ADMIN_MCP_PATH) {
+		const localOnlyResponse = assertLocalAdminRequest(request);
+		if (localOnlyResponse) {
+			return localOnlyResponse;
+		}
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
@@ -394,6 +402,10 @@ export function createWebRequestHandler(context: any) {
 	}
 	const adminMcpRoute = parseAdminMcpRoute(url.pathname);
 	if (adminMcpRoute) {
+		const localOnlyResponse = assertLocalAdminRequest(request);
+		if (localOnlyResponse) {
+			return localOnlyResponse;
+		}
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,

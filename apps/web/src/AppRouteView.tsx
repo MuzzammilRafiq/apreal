@@ -122,6 +122,7 @@ export function AppRouteView({
 					void onRefreshMcpServers();
 				}}
 				onSaveAppendSystemPrompt={onSaveAppendSystemPrompt}
+				visibleSections={capabilities.settingsSections}
 			/>
 		);
 	}

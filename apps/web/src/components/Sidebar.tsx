@@ -1,7 +1,6 @@
 import { memo, useEffect, useState } from "react";
 import type { SessionSummary } from "../chatTypes";
 import { formatRelativeTime, getSessionCardClassName } from "../chatView";
-import { AccountAuthButton } from "./AccountAuthButton";
 
 type SidebarProps = {
 	pendingDraft: boolean;
@@ -81,9 +80,6 @@ function SidebarContent({
 						<span className="truncate">Dashboard & Settings</span>
 					</button>
 				) : null}
-				<div className="mt-2.5">
-					<AccountAuthButton onAfterAction={onClose} />
-				</div>
 			</div>
 
 			<div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 scrollbar-thin">

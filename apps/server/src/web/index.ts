@@ -1,7 +1,6 @@
 import { access, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import type { Server as HttpServer } from "node:http";
-import { AuthStorage } from "@earendil-works/pi-coding-agent";
 import {
 	ADMIN_APPEND_SYSTEM_PROMPT_PATH,
 	ADMIN_MCP_PATH,
@@ -19,10 +18,6 @@ import {
 	type LocalWebAdminStatus,
 	type McpServersResponse,
 	type ProviderApiKeyRequest,
-	type ProviderApiKeyResponse,
-	type ProviderLoginRequest,
-	type ProviderLoginResponse,
-	type ProviderLoginState,
 	type SetDefaultModelRequest,
 	type UpdateAppendSystemPromptRequest,
 	type UpdateAppendSystemPromptResponse,
@@ -34,30 +29,27 @@ import { getAprealAgentPath, getAprealServerDatabasePath } from "../agent-dir.ts
 import { createLogger } from "../logger.ts";
 import { McpToolRegistry } from "../mcp-tools.ts";
 import { McpStore } from "../mcp-store.ts";
-import {
-	ensureRelayAgentAuth,
-	getRelayServerUrl,
-} from "../relay-auth.ts";
+import { getRelayServerUrl } from "../relay-auth.ts";
 import { createCustomTools } from "../tools/index.ts";
 import { createJobExecutor, JobStore, Scheduler } from "../scheduled-jobs/index.ts";
-import { buildProvidersPayload, getAvailableSkills, getErrorMessage, prewarmAgentRuntime, setDefaultProviderModel } from "../session.ts";
+import { getAvailableSkills, getErrorMessage, prewarmAgentRuntime, setDefaultProviderModel } from "../session.ts";
+import { listScheduledJobRuns, parseAdminJobRoute, parseAdminMcpRoute } from "./admin-routes.ts";
 import { createClientManager, type Logger } from "./client-manager.ts";
 import { createHandlers } from "./handlers.ts";
 import { startHttpServer } from "./http-server.ts";
 import { hasLocalBrowserAuthSession } from "./local-browser-auth.ts";
+import { createProviderLoginManager } from "./provider-login.ts";
+import { initializeRelayState } from "./relay-state.ts";
 import { WEB_DIST_DIR, WEB_INDEX_PATH, createMissingWebUiResponse, createStaticResponse } from "./web-static.ts";
 import { createWebRequestHandler } from "./web-request-handler.ts";
-import { buildSessionSummary, type SharedSessionState } from "./session-state.ts";
+import type { SharedSessionState } from "./session-state.ts";
 
 const APREAL_AGENT_AUTH_PATH = getAprealAgentPath("auth.json");
 const APREAL_AGENT_MCP_PATH = getAprealAgentPath("mcp.json");
 const APREAL_AGENT_APPEND_SYSTEM_PROMPT_PATH = getAprealAgentPath("APPEND_SYSTEM.md");
 const ADMIN_JOBS_PATH = "/api/admin/jobs";
-const ADMIN_JOBS_PATH_PREFIX = `${ADMIN_JOBS_PATH}/`;
-const ADMIN_MCP_PATH_PREFIX = `${ADMIN_MCP_PATH}/`;
 import {
 	createRelay,
-	type RelayMutableState,
 } from "./relay.ts";
 import {
 	createCorsHeaders,
@@ -125,124 +117,17 @@ async function writeAppendSystemPrompt(value: string): Promise<void> {
 	await writeFile(APREAL_AGENT_APPEND_SYSTEM_PROMPT_PATH, normalizedValue, "utf8");
 }
 
-function parseAdminJobRoute(pathname: string): { jobId: string; subpath: "runs" | null } | null {
-	if (!pathname.startsWith(ADMIN_JOBS_PATH_PREFIX)) {
-		return null;
-	}
-
-	const remainder = pathname.slice(ADMIN_JOBS_PATH_PREFIX.length);
-	const [jobIdPart, subpath, ...rest] = remainder.split("/").filter(Boolean);
-	if (!jobIdPart || rest.length > 0) {
-		return null;
-	}
-
-	if (subpath && subpath !== "runs") {
-		return null;
-	}
-
-	try {
-		return {
-			jobId: decodeURIComponent(jobIdPart),
-			subpath: subpath === "runs" ? "runs" : null,
-		};
-	} catch {
-		return null;
-	}
-}
-
-function parseAdminMcpRoute(pathname: string): { serverId: string } | null {
-	if (!pathname.startsWith(ADMIN_MCP_PATH_PREFIX)) {
-		return null;
-	}
-
-	const remainder = pathname.slice(ADMIN_MCP_PATH_PREFIX.length);
-	const parts = remainder.split("/").filter(Boolean);
-	if (parts.length !== 1 || !parts[0]) {
-		return null;
-	}
-
-	try {
-		return { serverId: decodeURIComponent(parts[0]) };
-	} catch {
-		return null;
-	}
-}
-
-function listScheduledJobRuns(jobName: string, sessions: Map<string, SharedSessionState>) {
-	const prefix = `[Scheduled: ${jobName}]`;
-	return [...sessions.values()]
-		.filter((session) => session.title.startsWith(prefix))
-		.sort((left, right) => right.updatedAt - left.updatedAt || right.createdAt - left.createdAt)
-		.map((session) => buildSessionSummary(session));
-}
-
-function createIdleProviderLoginState(): ProviderLoginState {
-	return {
-		status: "idle",
-		authUrl: null,
-		error: null,
-		updatedAt: null,
-	};
-}
-
-type ProviderLoginAttempt = {
-	provider: string;
-	state: ProviderLoginState;
-	authUrlPromise: Promise<string>;
-	resolveAuthUrl: (authUrl: string) => void;
-	rejectAuthUrl: (error: unknown) => void;
-};
-
-function createProviderLoginAttempt(provider: string): ProviderLoginAttempt {
-	let resolveAuthUrl = (_authUrl: string) => {};
-	let rejectAuthUrl = (_error: unknown) => {};
-	const authUrlPromise = new Promise<string>((resolve, reject) => {
-		resolveAuthUrl = resolve;
-		rejectAuthUrl = reject;
-	});
-
-	return {
-		provider,
-		state: {
-			status: "pending",
-			authUrl: null,
-			error: null,
-			updatedAt: Date.now(),
-		},
-		authUrlPromise,
-		resolveAuthUrl,
-		rejectAuthUrl,
-	};
-}
-
 export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	const cwd = options?.cwd ?? process.env.PI_WORKSPACE_ROOT ?? DEFAULT_WORKSPACE_ROOT;
 	const port = options?.port ?? parsePort(process.env.PORT);
 	const logger = createLogger("web-server");
 	const relayUrl = getRelayServerUrl();
-	const providerLoginAttempts = new Map<string, ProviderLoginAttempt>();
-	const readProviderLoginState = (providerId: string): ProviderLoginState | null =>
-		providerLoginAttempts.get(providerId)?.state ?? null;
-	const buildProvidersPayloadWithLoginState = () => buildProvidersPayload(cwd, readProviderLoginState);
-
-	const relayState: RelayMutableState = {
-		auth: null,
-		startupError: null,
-		transportConnected: false,
-		transportGeneration: 0,
-		transportAbortController: null,
-		authenticating: false,
-	};
-
-	try {
-		relayState.auth = await ensureRelayAgentAuth(logger, relayUrl);
-	} catch (error) {
-		relayState.startupError = getErrorMessage(error);
-		logger.warn("relay registration unavailable during startup", {
-			relayUrl,
-			error: relayState.startupError,
-		});
-	}
+	const relayState = await initializeRelayState(logger, relayUrl);
+	const providerLogin = createProviderLoginManager({
+		authPath: APREAL_AGENT_AUTH_PATH,
+		cwd,
+		logger,
+	});
 
 	const clients = new Map<string, ClientConnection>();
 	const sessions = new Map<string, import("./session-state.ts").SharedSessionState>();
@@ -423,120 +308,6 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		);
 	};
 
-	const startProviderLogin = async (providerId: string): Promise<ProviderLoginResponse> => {
-		const normalizedProviderId = providerId.trim();
-		if (!normalizedProviderId) {
-			throw new Error("provider must be a non-empty string.");
-		}
-
-		const authStorage = AuthStorage.create(APREAL_AGENT_AUTH_PATH);
-		const oauthProvider = authStorage.getOAuthProviders().find((provider) => provider.id === normalizedProviderId);
-		if (!oauthProvider) {
-			throw new Error(`Provider ${normalizedProviderId} does not support Pi OAuth login.`);
-		}
-
-		const existingAttempt = providerLoginAttempts.get(normalizedProviderId);
-		if (existingAttempt?.state.status === "pending") {
-			return {
-				...buildProvidersPayloadWithLoginState(),
-				provider: normalizedProviderId,
-				loginState: existingAttempt.state,
-			};
-		}
-
-		const attempt = createProviderLoginAttempt(normalizedProviderId);
-		providerLoginAttempts.set(normalizedProviderId, attempt);
-
-		void authStorage.login(normalizedProviderId, {
-			onAuth: (info) => {
-				attempt.state = {
-					status: "pending",
-					authUrl: info.url,
-					error: null,
-					updatedAt: Date.now(),
-				};
-				attempt.resolveAuthUrl(info.url);
-			},
-			onPrompt: async (prompt) => {
-				throw new Error(
-					`Provider ${normalizedProviderId} requested extra input (${prompt.message}). Web login currently supports browser-based Pi OAuth only.`,
-				);
-			},
-			onSelect: async (prompt) => {
-				throw new Error(
-					`Provider ${normalizedProviderId} requires an interactive selection (${prompt.message}). Web login currently supports browser-based Pi OAuth only.`,
-				);
-			},
-			onProgress: (message) => {
-				logger.info("provider login progress", {
-					provider: normalizedProviderId,
-					message,
-				});
-			},
-		})
-			.then(() => {
-				attempt.state = {
-					status: "succeeded",
-					authUrl: null,
-					error: null,
-					updatedAt: Date.now(),
-				};
-			})
-			.catch((error) => {
-				const message = getErrorMessage(error);
-				attempt.state = {
-					status: "failed",
-					authUrl: null,
-					error: message,
-					updatedAt: Date.now(),
-				};
-				attempt.rejectAuthUrl(error);
-				logger.warn("provider login failed", {
-					provider: normalizedProviderId,
-					error: message,
-				});
-			});
-
-		try {
-			await attempt.authUrlPromise;
-		} catch (error) {
-			throw new Error(getErrorMessage(error));
-		}
-
-		return {
-			...buildProvidersPayloadWithLoginState(),
-			provider: normalizedProviderId,
-			loginState: attempt.state,
-		};
-	};
-
-	const saveProviderApiKey = async (providerId: string, apiKey: string): Promise<ProviderApiKeyResponse> => {
-		const normalizedProviderId = providerId.trim();
-		const normalizedApiKey = apiKey.trim();
-		if (!normalizedProviderId) {
-			throw new Error("provider must be a non-empty string.");
-		}
-		if (!normalizedApiKey) {
-			throw new Error("apiKey must be a non-empty string.");
-		}
-
-		const authStorage = AuthStorage.create(APREAL_AGENT_AUTH_PATH);
-		authStorage.set(normalizedProviderId, {
-			type: "api_key",
-			key: normalizedApiKey,
-		});
-
-		const loginAttempt = providerLoginAttempts.get(normalizedProviderId);
-		if (loginAttempt) {
-			loginAttempt.state = createIdleProviderLoginState();
-		}
-
-		return {
-			...buildProvidersPayloadWithLoginState(),
-			provider: normalizedProviderId,
-		};
-	};
-
 	const authenticateBrowserRequest = async (request: Request): Promise<{ clientId: string }> => {
 		const localClientId = readLocalClientId(request);
 		if (localClientId && isLoopbackClientRequest(request)) {
@@ -558,8 +329,9 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	try {
 	const handleWebRequest = createWebRequestHandler({
 		logger, authenticateBrowserRequest, clientManager, handleHttpClientMessage, assertLocalAdminRequest, buildStatusPayload,
-		writeAppendSystemPrompt, recycleIdleSessionControllers, saveProviderApiKey, startProviderLogin, buildProvidersPayloadWithLoginState,
-		cwd, readProviderLoginState, refreshMcpServers, readMcpServers, createMcpServer, rebuildCustomTools, updateMcpServer, deleteMcpServer,
+		writeAppendSystemPrompt, recycleIdleSessionControllers, saveProviderApiKey: providerLogin.saveProviderApiKey,
+		startProviderLogin: providerLogin.startProviderLogin, buildProvidersPayloadWithLoginState: providerLogin.buildProvidersPayloadWithLoginState,
+		cwd, readProviderLoginState: providerLogin.readProviderLoginState, refreshMcpServers, readMcpServers, createMcpServer, rebuildCustomTools, updateMcpServer, deleteMcpServer,
 		ADMIN_JOBS_PATH, parseAdminMcpRoute, parseAdminJobRoute, listScheduledJobRuns,
 		jobStore, sessions, scheduler, relay, createStaticResponse, createMissingWebUiResponse, webUiReady, getListeningPort: () => listeningPort,
 	});
@@ -635,7 +407,6 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	}
 	console.log(`Relay transport: ${relayState.transportConnected ? "connected" : "connecting"}`);
 	console.log("Browser chat sessions are shared across tabs while the server is running.");
-	console.log("Type 'reauthenticate' to pair this server with a newly generated browser code.");
 
 	return server;
 }

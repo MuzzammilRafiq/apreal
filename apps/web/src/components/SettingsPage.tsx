@@ -6,6 +6,7 @@ import { SettingsConnectionSection } from "./SettingsConnectionSection";
 import { SettingsModelsSection } from "./SettingsModelsSection";
 import { SettingsInventorySections } from "./SettingsInventorySections";
 import { SettingsMcpSection } from "./SettingsMcpSection";
+import { SettingsAccountSection } from "./SettingsAccountSection";
 
 import { DEFAULT_VISIBLE_PROVIDER_COUNT, MCP_TRANSPORT_OPTIONS, SECTIONS, SECTION_TITLES, SectionIcon, formatProviderId, getMcpRuntimeLabel, getMcpRuntimeTone, getSkillToneClassName, getToolKindLabel, getToolToneClassName, normalizeSearchValue, parseKeyValueText, parseLineSeparatedList, renderStatusPill, stringifyKeyValueRecord, type SearchableModel, type SearchableProvider, type SettingsSection } from "./settings-helpers";
 
@@ -44,6 +45,7 @@ type SettingsPageProps = {
 	onDeleteMcpServer: (serverId: string) => Promise<void>;
 	onRefreshMcpServers: () => void;
 	onSaveAppendSystemPrompt: (appendSystemPrompt: string) => void;
+	visibleSections: SettingsSection[];
 };
 
 export function SettingsPage({
@@ -81,8 +83,9 @@ export function SettingsPage({
 	onDeleteMcpServer,
 	onRefreshMcpServers,
 	onSaveAppendSystemPrompt,
+	visibleSections,
 }: SettingsPageProps) {
-	const [activeSection, setActiveSection] = useState<SettingsSection>("connection");
+	const [activeSection, setActiveSection] = useState<SettingsSection>(visibleSections[0] ?? "account");
 	const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 	const [modelQuery, setModelQuery] = useState("");
 	const [providerQuery, setProviderQuery] = useState("");
@@ -121,6 +124,12 @@ export function SettingsPage({
 			setAppendSystemPromptDraft(adminStatus?.appendSystemPrompt ?? "");
 		}
 	}, [adminStatus?.appendSystemPrompt, appendPromptSubmissionMessage]);
+
+	useEffect(() => {
+		if (!visibleSections.includes(activeSection)) {
+			setActiveSection(visibleSections[0] ?? "account");
+		}
+	}, [activeSection, visibleSections]);
 
 	const resetMcpForm = () => {
 		setMcpEditingServerId(null);
@@ -387,6 +396,7 @@ export function SettingsPage({
 	const enabledMcpServerCount = mcpServers.filter((server) => server.enabled).length;
 	const readyMcpServerCount = mcpServers.filter((server) => server.runtime?.state === "ready").length;
 	const mcpToolCount = mcpServers.reduce((total, server) => total + (server.runtime?.toolCount ?? 0), 0);
+	const visibleSectionItems = SECTIONS.filter((section) => visibleSections.includes(section.id));
 
 	useEffect(() => {
 		if (!mobileMenuOpen) {
@@ -460,7 +470,7 @@ export function SettingsPage({
 									</div>
 								</div>
 								<div className="flex flex-1 flex-col py-2">
-									{SECTIONS.map((section) => (
+									{visibleSectionItems.map((section) => (
 										<button
 											key={section.id}
 											type="button"
@@ -509,7 +519,7 @@ export function SettingsPage({
 								</h2>
 							</div>
 							<div className="flex flex-1 flex-col py-2">
-								{SECTIONS.map((section) => (
+								{visibleSectionItems.map((section) => (
 									<button
 										key={section.id}
 										type="button"
@@ -623,6 +633,8 @@ export function SettingsPage({
 						</header>
 
 						<div className="mt-4 space-y-4">
+						<SettingsAccountSection active={activeSection === "account"} />
+
 						<SettingsConnectionSection
 							activeSection={activeSection}
 							adminStatus={adminStatus}

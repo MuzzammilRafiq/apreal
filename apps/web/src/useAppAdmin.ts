@@ -23,15 +23,17 @@ import {
 type UseAppAdminOptions = {
 	route: AppRoute;
 	runtime: WebRuntime;
+	enabled: boolean;
 	setConnected: Dispatch<SetStateAction<boolean>>;
 	setStreamRequested: Dispatch<SetStateAction<boolean>>;
 };
 
-export function useAppAdmin({ route, runtime, setConnected, setStreamRequested }: UseAppAdminOptions) {
+export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRequested }: UseAppAdminOptions) {
 	const [adminStatus, setAdminStatus] = useState<LocalWebAdminStatus | null>(null);
 	const [adminStatusError, setAdminStatusError] = useState<string | null>(null);
 	const [transportStatusMessage, setTransportStatusMessage] = useState<string | null>(null);
 	const [transportReady, setTransportReady] = useState(false);
+	const [authorizedSettingsSections, setAuthorizedSettingsSections] = useState(runtime.capabilities.settingsSections);
 	const [providers, setProviders] = useState<ProvidersResponse | null>(null);
 	const [providersError, setProvidersError] = useState<string | null>(null);
 	const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([]);
@@ -94,6 +96,7 @@ export function useAppAdmin({ route, runtime, setConnected, setStreamRequested }
 		setAdminStatusError(null);
 		setTransportStatusMessage(nextStatus.message);
 		setTransportReady(nextStatus.transportReady);
+		setAuthorizedSettingsSections(nextStatus.settingsSections);
 		if (runtime.capabilities.providers) {
 			void refreshProviders().catch(() => {
 				// Provider errors are already captured in UI state.
@@ -103,6 +106,17 @@ export function useAppAdmin({ route, runtime, setConnected, setStreamRequested }
 	}, [refreshProviders, runtime]);
 
 	useEffect(() => {
+		if (!enabled) {
+			setAdminStatus(null);
+			setAdminStatusError(null);
+			setTransportStatusMessage(null);
+			setTransportReady(false);
+			setAuthorizedSettingsSections(runtime.capabilities.settingsSections);
+			setConnected(false);
+			setStreamRequested(false);
+			return;
+		}
+
 		let cancelled = false;
 		let refreshTimer: number | null = null;
 
@@ -123,6 +137,7 @@ export function useAppAdmin({ route, runtime, setConnected, setStreamRequested }
 				setAdminStatusError(getErrorMessage(error));
 				setTransportStatusMessage(null);
 				setTransportReady(false);
+				setAuthorizedSettingsSections(runtime.capabilities.settingsSections);
 				setConnected(false);
 			} finally {
 				if (!cancelled) {
@@ -139,7 +154,7 @@ export function useAppAdmin({ route, runtime, setConnected, setStreamRequested }
 				window.clearTimeout(refreshTimer);
 			}
 		};
-	}, [refreshAdminStatus, setConnected, setStreamRequested]);
+	}, [enabled, refreshAdminStatus, setConnected, setStreamRequested]);
 
 	const refreshScheduledJobs = useCallback(async () => {
 		setLoadingScheduledJobs(true);
@@ -329,7 +344,7 @@ export function useAppAdmin({ route, runtime, setConnected, setStreamRequested }
 
 
 	return {
-		adminStatus, adminStatusError, transportStatusMessage, transportReady,
+		adminStatus, adminStatusError, transportStatusMessage, transportReady, authorizedSettingsSections,
 		providers, providersError, mcpServers, mcpServersError, loadingMcpServers,
 		scheduledJobs, scheduledJobsError, loadingScheduledJobs, scheduledJobRuns, scheduledJobRunsError, loadingScheduledJobRuns,
 		appendPromptMessage, appendPromptError, savingAppendPrompt,

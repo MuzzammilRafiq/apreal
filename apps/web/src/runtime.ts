@@ -5,6 +5,7 @@ import {
 	LOCAL_CLIENT_ID_HEADER,
 	LOCAL_CLIENT_ID_QUERY_PARAM,
 	type LocalWebAdminStatus,
+	type RemoteSettingsSection,
 } from "@apreal/shared";
 import { authBaseUrl } from "./auth/auth-client";
 import { ensureLocalBrowserAuthSession } from "./local-auth";
@@ -20,13 +21,17 @@ export type WebCapabilities = {
 	mcpServers: boolean;
 	systemPrompt: boolean;
 	inventory: boolean;
+	settingsSections: SettingsSectionId[];
 };
+
+export type SettingsSectionId = RemoteSettingsSection;
 
 export type WebTransportStatus = {
 	serverReady: boolean;
 	transportReady: boolean;
 	adminStatus: LocalWebAdminStatus | null;
 	message: string | null;
+	settingsSections: SettingsSectionId[];
 };
 
 export type WebClientTransport = {
@@ -52,15 +57,17 @@ const localCapabilities: WebCapabilities = {
 	mcpServers: true,
 	systemPrompt: true,
 	inventory: true,
+	settingsSections: ["account", "connection", "models", "skills", "mcp", "tools", "jobs"],
 };
 
 const remoteCapabilities: WebCapabilities = {
-	settings: false,
+	settings: true,
 	jobs: false,
 	providers: false,
 	mcpServers: false,
 	systemPrompt: false,
 	inventory: false,
+	settingsSections: ["account"],
 };
 
 function resolveSameOriginBaseUrl(): URL {
@@ -125,6 +132,7 @@ export function createLocalWebRuntime(): WebRuntime {
 					transportReady: true,
 					adminStatus,
 					message: null,
+					settingsSections: localCapabilities.settingsSections,
 				};
 			},
 			openEventStream: async () => {
@@ -176,6 +184,7 @@ export function createRemoteWebRuntime(): WebRuntime {
 					serverReady: heartbeat.serverReady,
 					transportReady: heartbeat.transportReady,
 					adminStatus: null,
+					settingsSections: heartbeat.settingsAuthorization.sections,
 					message: paired
 						? heartbeat.transportReady
 							? null

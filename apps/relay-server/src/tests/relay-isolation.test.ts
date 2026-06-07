@@ -12,10 +12,12 @@ import {
 	RELAY_AGENT_MESSAGE_PATH,
 	RELAY_AGENT_STREAM_PATH,
 	RELAY_CLIENT_AUTH_PATH,
+	RELAY_CLIENT_HEARTBEAT_PATH,
 	type RelayAgentAuthResponse,
 	type RelayAgentCommand,
 	type RelayAgentMessage,
 	type RelayClientAuthResponse,
+	type RelayClientHeartbeatResponse,
 } from "@apreal/shared";
 
 type RelayServerModule = typeof import("../index.ts");
@@ -284,11 +286,22 @@ async function refreshClientAuth(baseUrl: string, client: RelayClientAuthRespons
 	return response.body;
 }
 
+async function assertClientSettingsAuthorization(baseUrl: string, client: RelayClientAuthResponse, ownerGrant: string) {
+	const response = await postJson<RelayClientHeartbeatResponse>(baseUrl, RELAY_CLIENT_HEARTBEAT_PATH, {
+		clientId: client.clientId,
+		clientKey: client.clientKey,
+		ownerGrant,
+	});
+	assert.equal(response.status, 200, `Expected client heartbeat for ${client.clientId} to succeed.`);
+	assert.deepEqual(response.body.settingsAuthorization, { sections: ["account"] });
+}
+
 async function createPair(t: TestContext, baseUrl: string, suffix: string): Promise<PairContext> {
 	const ownerGrant = generateOwnerAgentGrant(`owner-${suffix}`).ownerGrant;
 	const initialClient = await issueClientAuth(baseUrl, `client-${suffix}`, `client-key-${suffix}`, ownerGrant);
 	const agent = await issueAgentAuth(baseUrl, `agent-${suffix}`, `agent-key-${suffix}`, ownerGrant);
 	const client = await refreshClientAuth(baseUrl, initialClient, ownerGrant);
+	await assertClientSettingsAuthorization(baseUrl, client, ownerGrant);
 	const agentStream = await openSseStream(`${baseUrl}${RELAY_AGENT_STREAM_PATH}`, {
 		headers: {
 			authorization: `Bearer ${agent.token}`,

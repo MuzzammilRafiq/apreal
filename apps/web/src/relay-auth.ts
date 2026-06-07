@@ -8,6 +8,8 @@ import {
 	type RelayClientAuthResponse,
 	type RelayClientHeartbeatRequest,
 	type RelayClientHeartbeatResponse,
+	type RemoteSettingsAuthorization,
+	type RemoteSettingsSection,
 } from "@apreal/shared";
 import { createBrowserUuid } from "./local-client";
 
@@ -27,6 +29,7 @@ export type RelayClientHeartbeatStatus = {
 	auth: StoredRelayClientAuth;
 	serverReady: boolean;
 	transportReady: boolean;
+	settingsAuthorization: RemoteSettingsAuthorization;
 };
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -139,6 +142,34 @@ function parseClientAuthResponse(payload: unknown): RelayClientAuthResponse {
 	};
 	}
 
+function parseRemoteSettingsSection(value: unknown): RemoteSettingsSection | null {
+	if (
+		value === "account" ||
+		value === "connection" ||
+		value === "models" ||
+		value === "skills" ||
+		value === "mcp" ||
+		value === "tools" ||
+		value === "jobs"
+	) {
+		return value;
+	}
+
+	return null;
+}
+
+function parseSettingsAuthorization(payload: unknown): RemoteSettingsAuthorization {
+	if (!isObjectRecord(payload) || !Array.isArray(payload.sections)) {
+		return { sections: [] };
+	}
+
+	return {
+		sections: payload.sections
+			.map(parseRemoteSettingsSection)
+			.filter((section): section is RemoteSettingsSection => section !== null),
+	};
+}
+
 function parseClientHeartbeatResponse(payload: unknown): RelayClientHeartbeatResponse {
 	if (!isObjectRecord(payload)) {
 		throw new Error("relay heartbeat returned an invalid response");
@@ -153,6 +184,7 @@ function parseClientHeartbeatResponse(payload: unknown): RelayClientHeartbeatRes
 		...authResponse,
 		serverReady: payload.serverReady,
 		transportReady: payload.transportReady,
+		settingsAuthorization: parseSettingsAuthorization(payload.settingsAuthorization),
 	};
 }
 
@@ -275,5 +307,6 @@ export async function readRelayClientHeartbeat(relayUrl: string): Promise<RelayC
 		auth: nextAuth,
 		serverReady: heartbeat.serverReady,
 		transportReady: heartbeat.transportReady,
+		settingsAuthorization: heartbeat.settingsAuthorization,
 	};
 }

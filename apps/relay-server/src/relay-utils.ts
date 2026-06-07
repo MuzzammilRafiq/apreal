@@ -583,6 +583,9 @@ export function buildClientHeartbeatResponse(
 		...buildClientAuthResponse(entry),
 		serverReady,
 		transportReady,
+		settingsAuthorization: {
+			sections: ["account"],
+		},
 	};
 }
 

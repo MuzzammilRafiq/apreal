@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppRouteView } from "./AppRouteView";
 import { authClient } from "./auth/auth-client";
+import { AuthGate } from "./components/AuthGate";
 import type { ScheduledJobDetails, SessionCacheEntry, SessionSummary, TranscriptMessage } from "./chatTypes";
 import {
 	clearCachedSessions,
@@ -51,14 +52,17 @@ export function App({ runtime }: AppProps) {
 	const [connectionError, setConnectionError] = useState<string | null>(null);
 	const [streamRequested, setStreamRequested] = useState(false);
 	const [streamGeneration, setStreamGeneration] = useState(0);
+	const signedIn = Boolean(authSession?.user);
+	const signInRequired = !authSessionPending && !signedIn;
 	const {
 		adminStatus, adminStatusError, transportStatusMessage, transportReady, providers, providersError, mcpServers, mcpServersError, loadingMcpServers,
+		authorizedSettingsSections,
 		scheduledJobs, scheduledJobsError, loadingScheduledJobs, scheduledJobRuns, scheduledJobRunsError, loadingScheduledJobRuns,
 		appendPromptMessage, appendPromptError, savingAppendPrompt,
 		setAdminStatus, setAdminStatusError, refreshAdminStatus, reloadMcpServers, handleRefreshJobs, handleRefreshJobRuns,
 		updateScheduledJob, toggleScheduledJobEnabled, deleteScheduledJob, handleSaveAppendSystemPrompt,
 		handleSetDefaultModel, handleStartProviderLogin, handleSaveProviderApiKey, handleCreateMcpServer, handleUpdateMcpServer, handleDeleteMcpServer,
-	} = useAppAdmin({ route, runtime, setConnected, setStreamRequested });
+	} = useAppAdmin({ route, runtime, enabled: signedIn, setConnected, setStreamRequested });
 	const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
 	const transcriptRef = useRef<HTMLDivElement | null>(null);
 	const sessionsRef = useRef(sessions);
@@ -97,13 +101,12 @@ export function App({ runtime }: AppProps) {
 	const activeTranscript = activeSessionCacheEntry?.transcriptLoaded ? activeSessionCacheEntry.transcript : [];
 	const activeTranscriptLoaded = activeSessionCacheEntry?.transcriptLoaded ?? false;
 	const serverReady = transportReady;
-	const localSignInPending = runtime.target === "local" && authSessionPending;
-	const localSignInRequired = runtime.target === "local" && !authSessionPending && !authSession?.user;
-	const composerBlockedReason = localSignInPending
-		? "Checking your local sign-in status..."
-		: localSignInRequired
-			? "Sign in with Google before sending messages from the local app."
-			: null;
+	const effectiveCapabilities = useMemo(() => ({
+		...runtime.capabilities,
+		settings: authorizedSettingsSections.length > 0,
+		settingsSections: authorizedSettingsSections,
+	}), [authorizedSettingsSections, runtime.capabilities]);
+	const composerBlockedReason = authSessionPending ? "Checking your sign-in status..." : null;
 	const chatTransportReady = serverReady && !composerBlockedReason;
 	const relayReady = Boolean(adminStatus?.relayReady);
 	const relayTransportConnected = Boolean(adminStatus?.relayTransportConnected);
@@ -124,22 +127,22 @@ export function App({ runtime }: AppProps) {
 
 	useEffect(() => {
 		const handlePopState = () => {
-			setRoute(coerceRouteForCapabilities(readCurrentRoute(), runtime.capabilities));
+			setRoute(coerceRouteForCapabilities(readCurrentRoute(), effectiveCapabilities));
 		};
 
 		window.addEventListener("popstate", handlePopState);
 		return () => {
 			window.removeEventListener("popstate", handlePopState);
 		};
-	}, [runtime.capabilities]);
+	}, [effectiveCapabilities]);
 
 	useEffect(() => {
-		const supportedRoute = coerceRouteForCapabilities(readCurrentRoute(), runtime.capabilities);
+		const supportedRoute = coerceRouteForCapabilities(readCurrentRoute(), effectiveCapabilities);
 		if (supportedRoute !== readCurrentRoute()) {
 			navigateToRoute(supportedRoute);
 		}
 		setRoute(supportedRoute);
-	}, [runtime.capabilities]);
+	}, [effectiveCapabilities]);
 
 	useEffect(() => {
 		resolvePendingConnectionsRef.current = resolvePendingConnections;
@@ -685,12 +688,16 @@ export function App({ runtime }: AppProps) {
 	const canLoadMoreSessions = visibleSessionLimit < Math.max(totalSessionCount ?? 0, sessions.length);
 
 	const handleRouteChange = useCallback((nextRoute: AppRoute) => {
-		const supportedRoute = coerceRouteForCapabilities(nextRoute, runtime.capabilities);
+		const supportedRoute = coerceRouteForCapabilities(nextRoute, effectiveCapabilities);
 		navigateToRoute(supportedRoute);
 		setRoute(supportedRoute);
-	}, [runtime.capabilities]);
+	}, [effectiveCapabilities]);
 
 
+
+	if (authSessionPending || signInRequired) {
+		return <AuthGate pending={authSessionPending} />;
+	}
 
 	return (
 		<AppRouteView
@@ -706,7 +713,7 @@ export function App({ runtime }: AppProps) {
 			activeSessionId={activeSessionId} activeSession={activeSession} activeTranscript={activeTranscript}
 			emptyState={emptyState} connected={connected} serverReady={serverReady} streamRequested={streamRequested}
 			composerBlockedReason={composerBlockedReason}
-			capabilities={runtime.capabilities}
+			capabilities={effectiveCapabilities}
 			connectionLabel={runtime.transport.label}
 			promptInputRef={promptInputRef}
 			transcriptRef={transcriptRef}

@@ -1,4 +1,5 @@
 import type { AvailableSkill, AvailableTool, McpServerConfig, McpServerTransport, ProvidersResponse } from "@apreal/shared";
+import type { SettingsSectionId } from "../runtime";
 
 export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
 	"anthropic": "Anthropic",
@@ -87,9 +88,10 @@ export function renderStatusPill(label: string, tone: "neutral" | "success" | "d
 	);
 }
 
-export type SettingsSection = "connection" | "models" | "skills" | "mcp" | "tools" | "jobs";
+export type SettingsSection = SettingsSectionId;
 
 export const SECTIONS: { id: SettingsSection; label: string }[] = [
+	{ id: "account", label: "Account" },
 	{ id: "connection", label: "Connection" },
 	{ id: "models", label: "Model control" },
 	{ id: "skills", label: "Skills" },
@@ -99,6 +101,7 @@ export const SECTIONS: { id: SettingsSection; label: string }[] = [
 ];
 
 export const SECTION_TITLES: Record<SettingsSection, string> = {
+	account: "Account",
 	connection: "Connection",
 	models: "Model configuration",
 	skills: "Available skills",
@@ -205,6 +208,14 @@ export function getSkillToneClassName(source: AvailableSkill["source"]): string 
 }
 
 export function SectionIcon({ section }: { section: SettingsSection }) {
+	if (section === "account") {
+		return (
+			<svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+				<circle cx="12" cy="8" r="4" />
+				<path d="M5 20a7 7 0 0 1 14 0" strokeLinecap="round" strokeLinejoin="round" />
+			</svg>
+		);
+	}
 	if (section === "connection") {
 		return (
 			<svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
