@@ -584,7 +584,7 @@ export function buildClientHeartbeatResponse(
 		serverReady,
 		transportReady,
 		settingsAuthorization: {
-			sections: ["account"],
+			sections: ["account", "connection", "models", "skills", "mcp", "tools", "jobs"],
 		},
 	};
 }

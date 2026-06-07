@@ -1,3 +1,13 @@
+import type {
+	ClientJobsCommand,
+	ClientMcpCommand,
+	ClientProvidersCommand,
+	ClientStatusCommand,
+	ServerJobsMessage,
+	ServerMcpMessage,
+	ServerProvidersMessage,
+	ServerStatusMessage,
+} from "@apreal/shared";
 import type { SessionCacheEntry, SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "./chatTypes";
 import { createBrowserUuid } from "./local-client";
 
@@ -14,7 +24,11 @@ export type ClientMessage =
 	| { type: "abort"; sessionId: string }
 	| { type: "load_session"; sessionId: string }
 	| { type: "load_sessions_page"; offset?: number; limit?: number }
-	| { type: "ping" };
+	| { type: "ping" }
+	| ClientJobsCommand
+	| ClientProvidersCommand
+	| ClientStatusCommand
+	| ClientMcpCommand;
 
 export type ServerMessage =
 	| { type: "connected"; clientId: string; message: string; tools?: string }
@@ -26,7 +40,11 @@ export type ServerMessage =
 	| { type: "assistant_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
 	| { type: "assistant_thinking_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
 	| { type: "error"; message: string; sessionId?: string }
-	| { type: "pong" };
+	| { type: "pong" }
+	| ServerJobsMessage
+	| ServerProvidersMessage
+	| ServerStatusMessage
+	| ServerMcpMessage;
 
 export type AssistantDeltaField = "body" | "thinking";
 

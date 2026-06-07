@@ -1,9 +1,15 @@
 import type {
+	ClientMcpCommand,
 	ClientJobsCommand,
 	ClientProvidersCommand,
+	ClientStatusCommand,
+	CreateMcpServerRequest,
 	ScheduledJobUpdateRequest,
 	ServerJobsMessage,
+	ServerMcpMessage,
 	ServerProvidersMessage,
+	ServerStatusMessage,
+	UpdateMcpServerRequest,
 } from "@apreal/shared";
 
 export type ClientAppMessage =
@@ -14,7 +20,9 @@ export type ClientAppMessage =
 	| { type: "load_sessions_page"; offset?: number; limit?: number }
 	| { type: "ping" }
 	| ClientJobsCommand
-	| ClientProvidersCommand;
+	| ClientProvidersCommand
+	| ClientStatusCommand
+	| ClientMcpCommand;
 
 export type ServerAppMessage<SessionSummary, TranscriptMessage> =
 	| { type: "connected"; clientId: string; message: string; tools?: string }
@@ -28,7 +36,9 @@ export type ServerAppMessage<SessionSummary, TranscriptMessage> =
 	| { type: "error"; message: string; sessionId?: string }
 	| { type: "pong" }
 	| ServerJobsMessage
-	| ServerProvidersMessage;
+	| ServerProvidersMessage
+	| ServerStatusMessage
+	| ServerMcpMessage;
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -125,6 +135,18 @@ export function parseClientAppMessage(rawMessage: string | Buffer | unknown): Cl
 		return { type: "load_providers" };
 	}
 
+	if (value.type === "load_status") {
+		return { type: "load_status" };
+	}
+
+	if (value.type === "load_mcp_servers") {
+		return { type: "load_mcp_servers" };
+	}
+
+	if (value.type === "refresh_mcp_servers") {
+		return { type: "refresh_mcp_servers" };
+	}
+
 	if (value.type === "load_job_runs" && typeof value.jobId === "string") {
 		return { type: "load_job_runs", jobId: value.jobId };
 	}
@@ -143,6 +165,36 @@ export function parseClientAppMessage(rawMessage: string | Buffer | unknown): Cl
 		};
 	}
 
+	if (value.type === "start_provider_login" && typeof value.provider === "string") {
+		const provider = value.provider.trim();
+		if (!provider) {
+			return null;
+		}
+
+		return {
+			type: "start_provider_login",
+			provider,
+		};
+	}
+
+	if (
+		value.type === "save_provider_api_key" &&
+		typeof value.provider === "string" &&
+		typeof value.apiKey === "string"
+	) {
+		const provider = value.provider.trim();
+		const apiKey = value.apiKey.trim();
+		if (!provider || !apiKey) {
+			return null;
+		}
+
+		return {
+			type: "save_provider_api_key",
+			provider,
+			apiKey,
+		};
+	}
+
 	if (value.type === "update_job" && typeof value.jobId === "string") {
 		const changes = parseJobChanges(value.changes);
 		if (!changes) {
@@ -158,6 +210,39 @@ export function parseClientAppMessage(rawMessage: string | Buffer | unknown): Cl
 
 	if (value.type === "delete_job" && typeof value.jobId === "string") {
 		return { type: "delete_job", jobId: value.jobId };
+	}
+
+	if (value.type === "save_append_system_prompt" && typeof value.appendSystemPrompt === "string") {
+		return {
+			type: "save_append_system_prompt",
+			appendSystemPrompt: value.appendSystemPrompt,
+		};
+	}
+
+	if (value.type === "create_mcp_server" && isObjectRecord(value.request)) {
+		return {
+			type: "create_mcp_server",
+			request: value.request as CreateMcpServerRequest,
+		};
+	}
+
+	if (
+		value.type === "update_mcp_server" &&
+		typeof value.serverId === "string" &&
+		isObjectRecord(value.request)
+	) {
+		return {
+			type: "update_mcp_server",
+			serverId: value.serverId,
+			request: value.request as UpdateMcpServerRequest,
+		};
+	}
+
+	if (value.type === "delete_mcp_server" && typeof value.serverId === "string") {
+		return {
+			type: "delete_mcp_server",
+			serverId: value.serverId,
+		};
 	}
 
 	return null;

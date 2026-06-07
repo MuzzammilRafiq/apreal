@@ -1,22 +1,22 @@
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import type { CreateMcpServerRequest, LocalWebAdminStatus, McpServerConfig, ProvidersResponse, UpdateMcpServerRequest } from "@apreal/shared";
 import type { ScheduledJobDetails, SessionSummary } from "./chatTypes";
-import { ADMIN_STATUS_REFRESH_INTERVAL_MS, getErrorMessage, type AppRoute } from "./app-state";
+import { ADMIN_STATUS_REFRESH_INTERVAL_MS, getErrorMessage, type AppRoute, type ClientMessage, type ServerMessage } from "./app-state";
 import type { WebRuntime } from "./runtime";
 import {
-	deleteScheduledJob as deleteScheduledJobRequest,
 	createMcpServer as createMcpServerRequest,
 	deleteMcpServer as deleteMcpServerRequest,
-	refreshMcpServers as refreshMcpServersRequest,
+	deleteScheduledJob as deleteScheduledJobRequest,
 	readMcpServers,
 	readProviders,
 	readScheduledJobRuns,
 	readScheduledJobs,
-	saveProviderApiKey as saveProviderApiKeyRequest,
+	refreshMcpServers as refreshMcpServersRequest,
 	saveAppendSystemPrompt as saveAppendSystemPromptRequest,
+	saveProviderApiKey as saveProviderApiKeyRequest,
 	startProviderLogin as startProviderLoginRequest,
-	updateMcpServer as updateMcpServerRequest,
 	updateDefaultModel as updateDefaultModelRequest,
+	updateMcpServer as updateMcpServerRequest,
 	updateScheduledJob as updateScheduledJobRequest,
 } from "./server-admin";
 
@@ -48,7 +48,30 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 	const [appendPromptMessage, setAppendPromptMessage] = useState<string | null>(null);
 	const [appendPromptError, setAppendPromptError] = useState<string | null>(null);
 	const [savingAppendPrompt, setSavingAppendPrompt] = useState(false);
+	const [providerLoginRedirect, setProviderLoginRedirect] = useState<string | null>(null);
+
+	const sendRemoteMessage = useCallback(async (message: ClientMessage) => {
+		setStreamRequested(true);
+		try {
+			await runtime.transport.sendMessage(message);
+		} catch (error) {
+			if (getErrorMessage(error) !== "browser client stream is not connected") {
+				throw error;
+			}
+
+			await new Promise((resolve) => {
+				window.setTimeout(resolve, 250);
+			});
+			await runtime.transport.sendMessage(message);
+		}
+	}, [runtime, setStreamRequested]);
+
 	const refreshProviders = useCallback(async () => {
+		if (runtime.target === "remote") {
+			await sendRemoteMessage({ type: "load_providers" });
+			return providers;
+		}
+
 		try {
 			const data = await readProviders();
 			setProviders(data);
@@ -58,11 +81,16 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 			setProvidersError(error instanceof Error ? error.message : "Failed to load providers.");
 			throw error;
 		}
-	}, []);
+	}, [providers, runtime.target, sendRemoteMessage]);
 
 	const refreshMcpServers = useCallback(async () => {
 		setLoadingMcpServers(true);
 		try {
+			if (runtime.target === "remote") {
+				await sendRemoteMessage({ type: "load_mcp_servers" });
+				return mcpServers;
+			}
+
 			const response = await readMcpServers();
 			setMcpServers(response.servers);
 			setMcpServersError(null);
@@ -73,11 +101,16 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		} finally {
 			setLoadingMcpServers(false);
 		}
-	}, []);
+	}, [mcpServers, runtime.target, sendRemoteMessage]);
 
 	const reloadMcpServers = useCallback(async () => {
 		setLoadingMcpServers(true);
 		try {
+			if (runtime.target === "remote") {
+				await sendRemoteMessage({ type: "refresh_mcp_servers" });
+				return mcpServers;
+			}
+
 			const response = await refreshMcpServersRequest();
 			setMcpServers(response.servers);
 			setMcpServersError(null);
@@ -88,7 +121,7 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		} finally {
 			setLoadingMcpServers(false);
 		}
-	}, []);
+	}, [mcpServers, runtime.target, sendRemoteMessage]);
 
 	const refreshAdminStatus = useCallback(async () => {
 		const nextStatus = await runtime.transport.readStatus();
@@ -97,13 +130,19 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		setTransportStatusMessage(nextStatus.message);
 		setTransportReady(nextStatus.transportReady);
 		setAuthorizedSettingsSections(nextStatus.settingsSections);
-		if (runtime.capabilities.providers) {
+		if (runtime.target === "remote") {
+			if (runtime.capabilities.settings) {
+				void sendRemoteMessage({ type: "load_status" }).catch(() => {
+					// The heartbeat state is already reflected above.
+				});
+			}
+		} else if (runtime.capabilities.providers) {
 			void refreshProviders().catch(() => {
 				// Provider errors are already captured in UI state.
 			});
 		}
 		return nextStatus;
-	}, [refreshProviders, runtime]);
+	}, [refreshProviders, runtime, sendRemoteMessage]);
 
 	useEffect(() => {
 		if (!enabled) {
@@ -122,7 +161,7 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 
 		const pollAdminStatus = async () => {
 			try {
-				const nextStatus = await refreshAdminStatus();
+				await refreshAdminStatus();
 				if (cancelled) {
 					return;
 				}
@@ -154,11 +193,16 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 				window.clearTimeout(refreshTimer);
 			}
 		};
-	}, [enabled, refreshAdminStatus, setConnected, setStreamRequested]);
+	}, [enabled, refreshAdminStatus, runtime.capabilities.settingsSections, setConnected, setStreamRequested]);
 
 	const refreshScheduledJobs = useCallback(async () => {
 		setLoadingScheduledJobs(true);
 		try {
+			if (runtime.target === "remote") {
+				await sendRemoteMessage({ type: "load_jobs" });
+				return scheduledJobs;
+			}
+
 			const jobs = await readScheduledJobs();
 			setScheduledJobs(jobs);
 			setScheduledJobsError(null);
@@ -173,13 +217,18 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		} finally {
 			setLoadingScheduledJobs(false);
 		}
-	}, []);
+	}, [runtime.target, scheduledJobs, sendRemoteMessage]);
 
 	const refreshScheduledJobRuns = useCallback(async (jobId: string) => {
 		setLoadingScheduledJobRuns(true);
 		setScheduledJobRuns([]);
 		setScheduledJobRunsError(null);
 		try {
+			if (runtime.target === "remote") {
+				await sendRemoteMessage({ type: "load_job_runs", jobId });
+				return scheduledJobRuns;
+			}
+
 			const runs = await readScheduledJobRuns(jobId);
 			setScheduledJobRuns(runs);
 			setScheduledJobRunsError(null);
@@ -190,25 +239,41 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		} finally {
 			setLoadingScheduledJobRuns(false);
 		}
-	}, []);
+	}, [runtime.target, scheduledJobRuns, sendRemoteMessage]);
 
 	const updateScheduledJob = useCallback(async (jobId: string, intervalMinutes: number) => {
+		if (runtime.target === "remote") {
+			await sendRemoteMessage({ type: "update_job", jobId, changes: { intervalMinutes } });
+			return;
+		}
+
 		await updateScheduledJobRequest(jobId, { intervalMinutes });
 		await refreshScheduledJobs();
-	}, [refreshScheduledJobs]);
+	}, [refreshScheduledJobs, runtime.target, sendRemoteMessage]);
 
-	const toggleScheduledJobEnabled = useCallback(async (jobId: string, enabled: boolean) => {
-		await updateScheduledJobRequest(jobId, { enabled });
+	const toggleScheduledJobEnabled = useCallback(async (jobId: string, enabledValue: boolean) => {
+		if (runtime.target === "remote") {
+			await sendRemoteMessage({ type: "update_job", jobId, changes: { enabled: enabledValue } });
+			return;
+		}
+
+		await updateScheduledJobRequest(jobId, { enabled: enabledValue });
 		await refreshScheduledJobs();
-	}, [refreshScheduledJobs]);
+	}, [refreshScheduledJobs, runtime.target, sendRemoteMessage]);
 
 	const deleteScheduledJob = useCallback(async (jobId: string) => {
+		if (runtime.target === "remote") {
+			await sendRemoteMessage({ type: "delete_job", jobId });
+			setScheduledJobRuns([]);
+			setScheduledJobRunsError(null);
+			return;
+		}
+
 		await deleteScheduledJobRequest(jobId);
 		setScheduledJobRuns([]);
 		setScheduledJobRunsError(null);
 		await refreshScheduledJobs();
-	}, [refreshScheduledJobs]);
-
+	}, [refreshScheduledJobs, runtime.target, sendRemoteMessage]);
 
 	const handleRefreshJobs = useCallback(() => {
 		void refreshScheduledJobs().catch(() => {
@@ -222,7 +287,6 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		});
 	}, [refreshScheduledJobRuns]);
 
-
 	const handleSaveAppendSystemPrompt = useCallback((appendSystemPrompt: string) => {
 		setSavingAppendPrompt(true);
 		setAppendPromptError(null);
@@ -230,6 +294,15 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		if (!runtime.capabilities.systemPrompt) {
 			setAppendPromptError("System prompt editing is not available in this web target.");
 			setSavingAppendPrompt(false);
+			return;
+		}
+
+		if (runtime.target === "remote") {
+			void sendRemoteMessage({ type: "save_append_system_prompt", appendSystemPrompt })
+				.catch((error) => {
+					setAppendPromptError(getErrorMessage(error));
+					setSavingAppendPrompt(false);
+				});
 			return;
 		}
 
@@ -249,15 +322,26 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 			.finally(() => {
 				setSavingAppendPrompt(false);
 			});
-	}, [runtime]);
+	}, [runtime, sendRemoteMessage]);
 
 	const handleSetDefaultModel = useCallback(async (provider: string, modelId: string) => {
+		if (runtime.target === "remote") {
+			await sendRemoteMessage({ type: "set_default_model", provider, modelId });
+			return;
+		}
+
 		const nextProviders = await updateDefaultModelRequest({ provider, modelId });
 		setProviders(nextProviders);
 		setProvidersError(null);
-	}, []);
+	}, [runtime.target, sendRemoteMessage]);
 
 	const handleStartProviderLogin = useCallback(async (provider: string) => {
+		if (runtime.target === "remote") {
+			setProviderLoginRedirect(provider);
+			await sendRemoteMessage({ type: "start_provider_login", provider });
+			return;
+		}
+
 		const response = await startProviderLoginRequest(provider);
 		setProviders(response);
 		setProvidersError(null);
@@ -265,32 +349,124 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		if (response.loginState.authUrl) {
 			window.location.assign(response.loginState.authUrl);
 		}
-	}, []);
+	}, [runtime.target, sendRemoteMessage]);
 
 	const handleSaveProviderApiKey = useCallback(async (provider: string, apiKey: string) => {
+		if (runtime.target === "remote") {
+			await sendRemoteMessage({ type: "save_provider_api_key", provider, apiKey });
+			return;
+		}
+
 		const response = await saveProviderApiKeyRequest(provider, apiKey);
 		setProviders(response);
 		setProvidersError(null);
-	}, []);
+	}, [runtime.target, sendRemoteMessage]);
 
 	const handleCreateMcpServer = useCallback(async (requestBody: CreateMcpServerRequest) => {
+		if (runtime.target === "remote") {
+			await sendRemoteMessage({ type: "create_mcp_server", request: requestBody });
+			return;
+		}
+
 		const response = await createMcpServerRequest(requestBody);
 		setMcpServers(response.servers);
 		setMcpServersError(null);
-	}, []);
+	}, [runtime.target, sendRemoteMessage]);
 
 	const handleUpdateMcpServer = useCallback(async (serverId: string, requestBody: UpdateMcpServerRequest) => {
+		if (runtime.target === "remote") {
+			await sendRemoteMessage({ type: "update_mcp_server", serverId, request: requestBody });
+			return;
+		}
+
 		const response = await updateMcpServerRequest(serverId, requestBody);
 		setMcpServers(response.servers);
 		setMcpServersError(null);
-	}, []);
+	}, [runtime.target, sendRemoteMessage]);
 
 	const handleDeleteMcpServer = useCallback(async (serverId: string) => {
+		if (runtime.target === "remote") {
+			await sendRemoteMessage({ type: "delete_mcp_server", serverId });
+			return;
+		}
+
 		const response = await deleteMcpServerRequest(serverId);
 		setMcpServers(response.servers);
 		setMcpServersError(null);
-	}, []);
+	}, [runtime.target, sendRemoteMessage]);
 
+	const handleServerMessage = useCallback((message: ServerMessage): boolean => {
+		switch (message.type) {
+			case "status_snapshot": {
+				setAdminStatus(message.status);
+				setAdminStatusError(null);
+				return true;
+			}
+			case "append_system_prompt_saved": {
+				setAdminStatus(message.status);
+				setAdminStatusError(null);
+				setAppendPromptMessage(
+					message.status.appendSystemPrompt.trim().length > 0
+						? "Appended system prompt saved. Idle sessions will reload it on the next prompt."
+						: "Appended system prompt cleared. Idle sessions will use the default prompt on the next prompt.",
+				);
+				setSavingAppendPrompt(false);
+				setAppendPromptError(null);
+				return true;
+			}
+			case "providers_snapshot": {
+				setProviders(message);
+				setProvidersError(null);
+				if (providerLoginRedirect) {
+					const activeProvider = message.providers.find((provider) => provider.id === providerLoginRedirect);
+					if (activeProvider?.loginState.authUrl) {
+						setProviderLoginRedirect(null);
+						window.location.assign(activeProvider.loginState.authUrl);
+					}
+				}
+				return true;
+			}
+			case "mcp_servers_snapshot": {
+				setMcpServers(message.servers);
+				setMcpServersError(null);
+				setLoadingMcpServers(false);
+				return true;
+			}
+			case "jobs_snapshot": {
+				setScheduledJobs(message.jobs);
+				setScheduledJobsError(null);
+				setLoadingScheduledJobs(false);
+				if (message.jobs.length === 0) {
+					setScheduledJobRuns([]);
+					setScheduledJobRunsError(null);
+				}
+				return true;
+			}
+			case "job_runs_snapshot": {
+				setScheduledJobRuns(message.runs);
+				setScheduledJobRunsError(null);
+				setLoadingScheduledJobRuns(false);
+				return true;
+			}
+			case "job_updated": {
+				setScheduledJobs((current) => {
+					const next = current.filter((job) => job.id !== message.job.id);
+					next.push(message.job);
+					next.sort((left, right) => left.name.localeCompare(right.name));
+					return next;
+				});
+				return true;
+			}
+			case "job_deleted": {
+				setScheduledJobs((current) => current.filter((job) => job.id !== message.jobId));
+				setScheduledJobRuns([]);
+				setScheduledJobRunsError(null);
+				return true;
+			}
+			default:
+				return false;
+		}
+	}, [providerLoginRedirect]);
 
 	useEffect(() => {
 		if (route !== "jobs" && route !== "settings") {
@@ -326,6 +502,19 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 			return;
 		}
 
+		void refreshProviders().catch(() => {
+			// Provider errors are already reflected in state.
+		});
+	}, [refreshProviders, route, runtime.capabilities.providers]);
+
+	useEffect(() => {
+		if (route !== "settings") {
+			return;
+		}
+		if (!runtime.capabilities.providers) {
+			return;
+		}
+
 		const hasPendingProviderLogin = providers?.providers.some((provider) => provider.loginState.status === "pending");
 		if (!hasPendingProviderLogin) {
 			return;
@@ -342,7 +531,6 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		};
 	}, [providers, refreshProviders, route, runtime.capabilities.providers]);
 
-
 	return {
 		adminStatus, adminStatusError, transportStatusMessage, transportReady, authorizedSettingsSections,
 		providers, providersError, mcpServers, mcpServersError, loadingMcpServers,
@@ -351,5 +539,6 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		setAdminStatus, setAdminStatusError, refreshAdminStatus, reloadMcpServers, handleRefreshJobs, handleRefreshJobRuns,
 		updateScheduledJob, toggleScheduledJobEnabled, deleteScheduledJob, handleSaveAppendSystemPrompt,
 		handleSetDefaultModel, handleStartProviderLogin, handleSaveProviderApiKey, handleCreateMcpServer, handleUpdateMcpServer, handleDeleteMcpServer,
+		handleServerMessage,
 	};
 }

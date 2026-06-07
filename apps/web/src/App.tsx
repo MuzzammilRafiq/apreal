@@ -62,6 +62,7 @@ export function App({ runtime }: AppProps) {
 		setAdminStatus, setAdminStatusError, refreshAdminStatus, reloadMcpServers, handleRefreshJobs, handleRefreshJobRuns,
 		updateScheduledJob, toggleScheduledJobEnabled, deleteScheduledJob, handleSaveAppendSystemPrompt,
 		handleSetDefaultModel, handleStartProviderLogin, handleSaveProviderApiKey, handleCreateMcpServer, handleUpdateMcpServer, handleDeleteMcpServer,
+		handleServerMessage,
 	} = useAppAdmin({ route, runtime, enabled: signedIn, setConnected, setStreamRequested });
 	const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
 	const transcriptRef = useRef<HTMLDivElement | null>(null);
@@ -398,6 +399,10 @@ export function App({ runtime }: AppProps) {
 				return;
 			}
 
+			if (handleServerMessage(message)) {
+				return;
+			}
+
 			switch (message.type) {
 				case "connected": {
 					setConnected(true);
@@ -610,7 +615,7 @@ export function App({ runtime }: AppProps) {
 			eventSource?.close();
 			setConnected(false);
 		};
-	}, [chatTransportReady, runtime, streamGeneration, streamRequested]);
+	}, [chatTransportReady, handleServerMessage, runtime, streamGeneration, streamRequested]);
 
 	const handleLoadMoreSessions = useCallback(() => {
 		const nextVisibleLimit = visibleSessionLimitRef.current + SESSION_PAGE_SIZE;

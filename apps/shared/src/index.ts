@@ -258,11 +258,38 @@ export type ClientProvidersCommand =
 	}
 	| ({
 		type: "set_default_model";
-	} & SetDefaultModelRequest);
+	} & SetDefaultModelRequest)
+	| {
+		type: "start_provider_login";
+		provider: string;
+	}
+	| {
+		type: "save_provider_api_key";
+		provider: string;
+		apiKey: string;
+	};
 
 export type ServerProvidersMessage = {
 	type: "providers_snapshot";
 } & ProvidersResponse;
+
+export type ClientStatusCommand =
+	| {
+		type: "load_status";
+	}
+	| ({
+		type: "save_append_system_prompt";
+	} & UpdateAppendSystemPromptRequest);
+
+export type ServerStatusMessage =
+	| {
+		type: "status_snapshot";
+		status: LocalWebAdminStatus;
+	}
+	| {
+		type: "append_system_prompt_saved";
+		status: LocalWebAdminStatus;
+	};
 
 export type RelayAuthenticateResponse = {
 	status: LocalWebAdminStatus;
@@ -349,6 +376,27 @@ export type ClientJobsCommand =
 		jobId: string;
 	};
 
+export type ClientMcpCommand =
+	| {
+		type: "load_mcp_servers";
+	}
+	| {
+		type: "create_mcp_server";
+		request: CreateMcpServerRequest;
+	}
+	| {
+		type: "update_mcp_server";
+		serverId: string;
+		request: UpdateMcpServerRequest;
+	}
+	| {
+		type: "delete_mcp_server";
+		serverId: string;
+	}
+	| {
+		type: "refresh_mcp_servers";
+	};
+
 export type ServerJobsMessage =
 	| {
 		type: "jobs_snapshot";
@@ -367,6 +415,10 @@ export type ServerJobsMessage =
 		jobId: string;
 		runs: ScheduledJobRunSummary[];
 	};
+
+export type ServerMcpMessage = {
+	type: "mcp_servers_snapshot";
+} & McpServersResponse;
 
 const PRINCIPAL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;
 export function isRelayPrincipalType(value: unknown): value is RelayPrincipalType {

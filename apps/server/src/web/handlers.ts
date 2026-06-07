@@ -1,5 +1,14 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { ScheduledJobUpdateRequest } from "@apreal/shared";
+import type {
+	CreateMcpServerRequest,
+	LocalWebAdminStatus,
+	McpServersResponse,
+	ProviderApiKeyResponse,
+	ProviderLoginResponse,
+	ScheduledJobUpdateRequest,
+	UpdateAppendSystemPromptResponse,
+	UpdateMcpServerRequest,
+} from "@apreal/shared";
 import type { ClientAppMessage } from "../protocol.ts";
 import {
 	buildProvidersPayload,
@@ -44,6 +53,16 @@ export interface HandlerState {
 	getCustomTools?: () => ToolDefinition[];
 	jobStore?: JobStore;
 	scheduler?: Scheduler;
+	buildStatusPayload?: () => Promise<LocalWebAdminStatus>;
+	writeAppendSystemPrompt?: (value: string) => Promise<void>;
+	recycleIdleSessionControllers?: () => void;
+	saveProviderApiKey?: (provider: string, apiKey: string) => Promise<ProviderApiKeyResponse>;
+	startProviderLogin?: (provider: string) => Promise<ProviderLoginResponse>;
+	readMcpServers?: () => Promise<McpServersResponse>;
+	createMcpServer?: (requestBody: CreateMcpServerRequest) => Promise<McpServersResponse>;
+	updateMcpServer?: (serverId: string, requestBody: UpdateMcpServerRequest) => Promise<McpServersResponse>;
+	deleteMcpServer?: (serverId: string) => Promise<McpServersResponse>;
+	refreshMcpServers?: () => Promise<McpServersResponse>;
 }
 
 export interface HandlerActions {
@@ -54,7 +73,12 @@ export function createHandlers(
 	state: HandlerState,
 	clientActions: ClientActions,
 ): HandlerActions {
-	const { logger, cwd, clients, sessions, chatStore, getCustomTools, jobStore, scheduler } = state;
+	const {
+		logger, cwd, clients, sessions, chatStore, getCustomTools, jobStore, scheduler,
+		buildStatusPayload, writeAppendSystemPrompt, recycleIdleSessionControllers,
+		saveProviderApiKey, startProviderLogin,
+		readMcpServers, createMcpServer, updateMcpServer, deleteMcpServer, refreshMcpServers,
+	} = state;
 
 	function listScheduledJobRuns(jobName: string) {
 		const prefix = `[Scheduled: ${jobName}]`;
@@ -100,6 +124,53 @@ export function createHandlers(
 			type: "providers_snapshot" as const,
 			...buildProvidersPayload(cwd),
 		};
+	}
+
+	async function sendStatusSnapshot(clientId: string) {
+		if (!buildStatusPayload) {
+			clientActions.sendError(clientId, "Server status is not available on this server.");
+			return;
+		}
+
+		try {
+			clientActions.sendClientPayload(clientId, {
+				type: "status_snapshot",
+				status: await buildStatusPayload(),
+			});
+		} catch (error) {
+			clientActions.sendError(clientId, getErrorMessage(error));
+		}
+	}
+
+	async function broadcastStatusSnapshot() {
+		if (!buildStatusPayload) {
+			return;
+		}
+
+		try {
+			clientActions.broadcast({
+				type: "status_snapshot",
+				status: await buildStatusPayload(),
+			});
+		} catch (error) {
+			logger.warn("failed to broadcast status snapshot", { error: getErrorMessage(error) });
+		}
+	}
+
+	async function sendMcpServersSnapshot(clientId: string) {
+		if (!readMcpServers) {
+			clientActions.sendError(clientId, "MCP servers are not available on this server.");
+			return;
+		}
+
+		try {
+			clientActions.sendClientPayload(clientId, {
+				type: "mcp_servers_snapshot",
+				...(await readMcpServers()),
+			});
+		} catch (error) {
+			clientActions.sendError(clientId, getErrorMessage(error));
+		}
 	}
 
 	function sendProvidersSnapshot(clientId: string) {
@@ -200,6 +271,126 @@ export function createHandlers(
 				type: "providers_snapshot",
 				...payload,
 			});
+		} catch (error) {
+			clientActions.sendError(clientId, getErrorMessage(error));
+		}
+	}
+
+	async function handleStartProviderLogin(clientId: string, provider: string) {
+		if (!startProviderLogin) {
+			clientActions.sendError(clientId, "Provider login is not available on this server.");
+			return;
+		}
+
+		try {
+			const response = await startProviderLogin(provider);
+			clientActions.sendClientPayload(clientId, {
+				type: "providers_snapshot",
+				...response,
+			});
+		} catch (error) {
+			clientActions.sendError(clientId, getErrorMessage(error));
+		}
+	}
+
+	async function handleSaveProviderApiKey(clientId: string, provider: string, apiKey: string) {
+		if (!saveProviderApiKey) {
+			clientActions.sendError(clientId, "Provider API key storage is not available on this server.");
+			return;
+		}
+
+		try {
+			const response = await saveProviderApiKey(provider, apiKey);
+			clientActions.broadcast({
+				type: "providers_snapshot",
+				...response,
+			});
+		} catch (error) {
+			clientActions.sendError(clientId, getErrorMessage(error));
+		}
+	}
+
+	async function handleSaveAppendSystemPrompt(clientId: string, appendSystemPrompt: string) {
+		if (!writeAppendSystemPrompt || !buildStatusPayload) {
+			clientActions.sendError(clientId, "System prompt editing is not available on this server.");
+			return;
+		}
+
+		try {
+			await writeAppendSystemPrompt(appendSystemPrompt);
+			recycleIdleSessionControllers?.();
+			const response: UpdateAppendSystemPromptResponse = {
+				status: await buildStatusPayload(),
+			};
+			clientActions.broadcast({
+				type: "append_system_prompt_saved",
+				status: response.status,
+			});
+		} catch (error) {
+			clientActions.sendError(clientId, getErrorMessage(error));
+		}
+	}
+
+	async function handleCreateMcpServer(clientId: string, request: CreateMcpServerRequest) {
+		if (!createMcpServer) {
+			clientActions.sendError(clientId, "MCP servers are not available on this server.");
+			return;
+		}
+
+		try {
+			clientActions.broadcast({
+				type: "mcp_servers_snapshot",
+				...(await createMcpServer(request)),
+			});
+		} catch (error) {
+			clientActions.sendError(clientId, getErrorMessage(error));
+		}
+	}
+
+	async function handleUpdateMcpServer(clientId: string, serverId: string, request: UpdateMcpServerRequest) {
+		if (!updateMcpServer) {
+			clientActions.sendError(clientId, "MCP servers are not available on this server.");
+			return;
+		}
+
+		try {
+			clientActions.broadcast({
+				type: "mcp_servers_snapshot",
+				...(await updateMcpServer(serverId, request)),
+			});
+		} catch (error) {
+			clientActions.sendError(clientId, getErrorMessage(error));
+		}
+	}
+
+	async function handleDeleteMcpServer(clientId: string, serverId: string) {
+		if (!deleteMcpServer) {
+			clientActions.sendError(clientId, "MCP servers are not available on this server.");
+			return;
+		}
+
+		try {
+			clientActions.broadcast({
+				type: "mcp_servers_snapshot",
+				...(await deleteMcpServer(serverId)),
+			});
+		} catch (error) {
+			clientActions.sendError(clientId, getErrorMessage(error));
+		}
+	}
+
+	async function handleRefreshMcpServers(clientId: string) {
+		if (!refreshMcpServers) {
+			clientActions.sendError(clientId, "MCP servers are not available on this server.");
+			return;
+		}
+
+		try {
+			clientActions.broadcast({
+				type: "mcp_servers_snapshot",
+				...(await refreshMcpServers()),
+			});
+			await broadcastStatusSnapshot();
 		} catch (error) {
 			clientActions.sendError(clientId, getErrorMessage(error));
 		}
@@ -564,6 +755,16 @@ export function createHandlers(
 			return;
 		}
 
+		if (message.type === "load_status") {
+			await sendStatusSnapshot(clientId);
+			return;
+		}
+
+		if (message.type === "load_mcp_servers") {
+			await sendMcpServersSnapshot(clientId);
+			return;
+		}
+
 		if (message.type === "load_job_runs") {
 			sendJobRunsSnapshot(clientId, message.jobId);
 			return;
@@ -574,6 +775,16 @@ export function createHandlers(
 			return;
 		}
 
+		if (message.type === "start_provider_login") {
+			await handleStartProviderLogin(clientId, message.provider);
+			return;
+		}
+
+		if (message.type === "save_provider_api_key") {
+			await handleSaveProviderApiKey(clientId, message.provider, message.apiKey);
+			return;
+		}
+
 		if (message.type === "update_job") {
 			await handleUpdateJob(clientId, message.jobId, message.changes);
 			return;
@@ -581,6 +792,31 @@ export function createHandlers(
 
 		if (message.type === "delete_job") {
 			await handleDeleteJob(clientId, message.jobId);
+			return;
+		}
+
+		if (message.type === "save_append_system_prompt") {
+			await handleSaveAppendSystemPrompt(clientId, message.appendSystemPrompt);
+			return;
+		}
+
+		if (message.type === "create_mcp_server") {
+			await handleCreateMcpServer(clientId, message.request);
+			return;
+		}
+
+		if (message.type === "update_mcp_server") {
+			await handleUpdateMcpServer(clientId, message.serverId, message.request);
+			return;
+		}
+
+		if (message.type === "delete_mcp_server") {
+			await handleDeleteMcpServer(clientId, message.serverId);
+			return;
+		}
+
+		if (message.type === "refresh_mcp_servers") {
+			await handleRefreshMcpServers(clientId);
 			return;
 		}
 

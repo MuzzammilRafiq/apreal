@@ -181,16 +181,6 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		inventorySnapshotExpiresAt = 0;
 	};
 	await rebuildCustomTools();
-	const handlers = createHandlers(
-		{ logger, cwd, clients, sessions, chatStore, getCustomTools: () => customTools, jobStore, scheduler },
-		clientManager,
-	);
-	const relay = createRelay(
-		{ logger, relayUrl, relayState, clients },
-		clientManager,
-		handlers.handleClientMessage,
-	);
-	const handleHttpClientMessage = clientManager.createHttpClientMessageHandler(handlers.handleClientMessage);
 
 	const readInventorySnapshot = async () => {
 		const now = Date.now();
@@ -225,10 +215,6 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 
 		return inventorySnapshotPromise;
 	};
-
-	if (relayState.auth?.token) {
-		relay.restartRelayTransport();
-	}
 
 	void prewarmAgentRuntime(cwd).catch((error) => {
 		logger.warn("agent runtime prewarm failed", {
@@ -287,6 +273,38 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		await rebuildCustomTools();
 		return readMcpServers();
 	};
+	const handlers = createHandlers(
+		{
+			logger,
+			cwd,
+			clients,
+			sessions,
+			chatStore,
+			getCustomTools: () => customTools,
+			jobStore,
+			scheduler,
+			buildStatusPayload,
+			writeAppendSystemPrompt,
+			recycleIdleSessionControllers,
+			saveProviderApiKey: providerLogin.saveProviderApiKey,
+			startProviderLogin: providerLogin.startProviderLogin,
+			readMcpServers,
+			createMcpServer,
+			updateMcpServer,
+			deleteMcpServer,
+			refreshMcpServers,
+		},
+		clientManager,
+	);
+	const relay = createRelay(
+		{ logger, relayUrl, relayState, clients },
+		clientManager,
+		handlers.handleClientMessage,
+	);
+	const handleHttpClientMessage = clientManager.createHttpClientMessageHandler(handlers.handleClientMessage);
+	if (relayState.auth?.token) {
+		relay.restartRelayTransport();
+	}
 
 	const allowPrivateNetworkAdmin = process.env.APREAL_ALLOW_PRIVATE_NETWORK_ADMIN?.trim() === "true";
 	const assertLocalAdminRequest = (request: Request): Response | null => {
