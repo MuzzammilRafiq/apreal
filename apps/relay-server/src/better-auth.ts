@@ -1,3 +1,5 @@
+import "./env.ts";
+
 import { existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
@@ -7,7 +9,7 @@ import { betterAuth } from "better-auth";
 import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 import type { IncomingMessage } from "node:http";
 
-import { DEFAULT_PORT, parsePort } from "./relay-utils.ts";
+import { DEFAULT_PORT } from "./relay/constants.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -39,7 +41,7 @@ function resolveAuthBaseUrl(): string {
 		return configuredUrl.replace(/\/$/, "");
 	}
 
-	return `http://localhost:${parsePort(process.env.PORT ?? `${DEFAULT_PORT}`)}`;
+	return `http://localhost:${process.env.PORT ?? DEFAULT_PORT}`;
 }
 
 function resolveAuthDatabasePath(): string {
