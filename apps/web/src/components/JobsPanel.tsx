@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { LocalWebAdminStatus } from "@apreal/shared";
 import type { SessionCacheEntry, SessionSummary, ScheduledJobDetails } from "../chatTypes";
+import { ScheduledJobList, formatInterval, formatNextRunRelative, getJobStatusTone } from "./ScheduledJobList";
 import { TranscriptPanel } from "./TranscriptPanel";
 
 type JobsPanelProps = {
-	adminStatus: LocalWebAdminStatus | null;
 	jobs: ScheduledJobDetails[];
 	jobRuns: SessionSummary[];
 	sessionCache: Map<string, SessionCacheEntry>;
@@ -13,47 +12,17 @@ type JobsPanelProps = {
 	isLoadingJobs: boolean;
 	isLoadingJobRuns: boolean;
 	connectionError: string | null;
-	onRefreshJobs: () => void;
 	onRefreshJobRuns: (jobId: string) => void;
 	onUpdateJobInterval: (jobId: string, intervalMinutes: number) => Promise<void>;
 	onToggleJobEnabled: (jobId: string, enabled: boolean) => Promise<void>;
 	onDeleteJob: (jobId: string) => Promise<void>;
 	onEnsureRunLoaded: (runId: string) => void;
+	initialSelectedJobId?: string | null;
 };
 
 function formatTimestamp(value: number | null): string {
 	if (value === null) return "Never";
 	return new Date(value).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
-}
-
-function formatInterval(intervalMs: number): string {
-	const minutes = Math.round(intervalMs / 60_000);
-	if (minutes < 60) return `${minutes}m`;
-	const hours = minutes / 60;
-	return Number.isInteger(hours) ? `${hours}h` : `${hours.toFixed(1)}h`;
-}
-
-function formatNextRunRelative(nextRunAt: number): { label: string; overdue: boolean } {
-	const diff = nextRunAt - Date.now();
-	const absMs = Math.abs(diff);
-	const minutes = Math.round(absMs / 60_000);
-
-	if (absMs < 30_000) return { label: "now", overdue: false };
-	if (absMs < 60_000) return { label: "< 1m", overdue: diff < 0 };
-
-	if (minutes < 60) return { label: diff > 0 ? `in ${minutes}m` : `${minutes}m ago`, overdue: diff < 0 };
-
-	const hours = Math.round(minutes / 60);
-	if (hours < 48) return { label: diff > 0 ? `in ${hours}h` : `${hours}h ago`, overdue: diff < 0 };
-
-	const days = Math.round(hours / 24);
-	return { label: diff > 0 ? `in ${days}d` : `${days}d ago`, overdue: diff < 0 };
-}
-
-function getJobStatusTone(job: ScheduledJobDetails): "active" | "paused" | "error" {
-	if (!job.enabled) return "paused";
-	if (job.lastError) return "error";
-	return "active";
 }
 
 function getRunStatusTone(run: SessionSummary): "running" | "saved" {
@@ -78,14 +47,7 @@ function renderStatusBadge(label: string, tone: "active" | "paused" | "error" | 
 	);
 }
 
-const ACCENT_BORDER: Record<string, string> = {
-	active: "border-l-2 border-l-slate-900",
-	paused: "border-l-2 border-l-slate-300",
-	error: "border-l-2 border-l-slate-500",
-};
-
 export function JobsPanel({
-	adminStatus,
 	jobs,
 	jobRuns,
 	sessionCache,
@@ -94,15 +56,15 @@ export function JobsPanel({
 	isLoadingJobs,
 	isLoadingJobRuns,
 	connectionError,
-	onRefreshJobs,
 	onRefreshJobRuns,
 	onUpdateJobInterval,
 	onToggleJobEnabled,
 	onDeleteJob,
 	onEnsureRunLoaded,
+	initialSelectedJobId = null,
 }: JobsPanelProps) {
 	const transcriptRef = useRef<HTMLDivElement | null>(null);
-	const [selectedJobId, setSelectedJobId] = useState<string | null>(jobs[0]?.id ?? null);
+	const [selectedJobId, setSelectedJobId] = useState<string | null>(initialSelectedJobId ?? jobs[0]?.id ?? null);
 	const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 	const [intervalMinutes, setIntervalMinutes] = useState("");
 	const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -135,10 +97,14 @@ export function JobsPanel({
 
 	useEffect(() => {
 		if (jobs.length === 0) { setSelectedJobId(null); return; }
+		if (initialSelectedJobId && jobs.some((job) => job.id === initialSelectedJobId) && initialSelectedJobId !== selectedJobId) {
+			setSelectedJobId(initialSelectedJobId);
+			return;
+		}
 		if (!selectedJobId || !jobs.some((job) => job.id === selectedJobId)) {
 			setSelectedJobId(jobs[0]?.id ?? null);
 		}
-	}, [jobs, selectedJobId]);
+	}, [initialSelectedJobId, jobs, selectedJobId]);
 
 	useEffect(() => {
 		if (!selectedJob) { setIntervalMinutes(""); return; }
@@ -241,67 +207,13 @@ export function JobsPanel({
 			{/* ---- Main grid ---- */}
 			<div className="grid gap-4 min-[1180px]:grid-cols-[minmax(260px,0.78fr)_minmax(0,1.22fr)] items-start">
 				{/* ======== LEFT: Job List ======== */}
-				<section className="flex min-h-0 flex-col rounded-lg border border-slate-200 bg-white overflow-hidden">
-					<div className="border-b border-slate-200 px-4 py-3 flex items-center justify-between">
-						<h2 className="text-[0.95rem] font-bold text-slate-950">Active Recurring Schedules</h2>
-						{jobs.length > 0 && <span className="text-[0.68rem] text-slate-500 font-semibold font-mono bg-slate-100 px-2 py-0.5 rounded-sm">{jobs.length} Active</span>}
-					</div>
-
-					{jobsError ? (
-						<div className="m-3 rounded-md border border-slate-300 bg-slate-100 px-3 py-2.5 text-xs font-semibold leading-5 text-slate-800">{jobsError}</div>
-					) : null}
-
-					<div className="flex-1 overflow-y-auto px-3 py-3.5 scrollbar-thin">
-						{jobs.length === 0 && !isLoadingJobs ? (
-							<div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-sm leading-[1.5]">
-								<p className="font-bold text-slate-800">No scheduled jobs</p>
-								<p className="mt-1 text-slate-400 font-medium">Ask Pi inside chat to create a recurring scheduled job to monitor anything.</p>
-							</div>
-						) : (
-							<div className="space-y-2.5">
-								{jobs.map((job) => {
-									const isSelected = job.id === selectedJob?.id;
-									const tone = getJobStatusTone(job);
-									const relative = formatNextRunRelative(job.nextRunAt);
-
-									return (
-										<button
-											key={job.id}
-											type="button"
-											onClick={() => setSelectedJobId(job.id)}
-									className={`flex w-full flex-col rounded-md border p-3 text-left transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer ${ACCENT_BORDER[tone]} ${
-										isSelected
-											? "border-slate-900 bg-[#171717] text-white"
-											: "border-slate-150 bg-[#f8fafc]/60 text-[#0f172a] hover:border-slate-200 hover:bg-slate-50"
-									}`}
-										>
-											<div className="flex items-start justify-between gap-3 w-full">
-											<p className={`min-w-0 flex-1 truncate text-[0.84rem] font-bold ${isSelected ? "text-white" : "text-slate-900"}`}>
-													{job.name}
-												</p>
-												{job.enabled
-													? renderStatusBadge(relative.overdue ? "Overdue" : "Active", relative.overdue ? "error" : "active")
-													: renderStatusBadge("Paused", "paused")}
-											</div>
-											<p className={`mt-2 line-clamp-2 text-[0.76rem] leading-[1.45] font-medium ${isSelected ? "text-slate-300" : "text-slate-500"}`}>
-												{job.prompt}
-											</p>
-											<div className={`mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[0.64rem] font-bold tracking-wider ${isSelected ? "text-slate-400" : "text-slate-400"}`}>
-												<span className="flex items-center gap-1 bg-white/5 px-1.5 py-0.5 rounded-sm border border-white/5">
-													Interval: {formatInterval(job.intervalMs)}
-												</span>
-												<span className={`flex items-center gap-1 ${relative.overdue && job.enabled ? "text-slate-200" : ""}`}>
-													Next: {relative.label}
-												</span>
-												<span>{job.runCount} run{job.runCount !== 1 ? "s" : ""}</span>
-											</div>
-										</button>
-									);
-								})}
-							</div>
-						)}
-					</div>
-				</section>
+				<ScheduledJobList
+					jobs={jobs}
+					jobsError={jobsError}
+					isLoadingJobs={isLoadingJobs}
+					selectedJobId={selectedJob?.id ?? null}
+					onSelectJob={setSelectedJobId}
+				/>
 
 				{/* ======== RIGHT: Inspector + Runs + Transcript ======== */}
 				<section className="flex min-h-0 flex-col gap-4">

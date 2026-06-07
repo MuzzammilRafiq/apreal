@@ -1,9 +1,7 @@
-import type { LocalWebAdminStatus } from "@apreal/shared";
 import type { SessionCacheEntry, SessionSummary, ScheduledJobDetails } from "../chatTypes";
 import { JobsPanel } from "./JobsPanel";
 
 type ScheduledJobsPageProps = {
-	adminStatus: LocalWebAdminStatus | null;
 	jobs: ScheduledJobDetails[];
 	jobRuns: SessionSummary[];
 	sessionCache: Map<string, SessionCacheEntry>;
@@ -19,10 +17,10 @@ type ScheduledJobsPageProps = {
 	onToggleJobEnabled: (jobId: string, enabled: boolean) => Promise<void>;
 	onDeleteJob: (jobId: string) => Promise<void>;
 	onEnsureRunLoaded: (runId: string) => void;
+	selectedJobId?: string | null;
 };
 
 export function ScheduledJobsPage({
-	adminStatus,
 	jobs,
 	jobRuns,
 	sessionCache,
@@ -38,6 +36,7 @@ export function ScheduledJobsPage({
 	onToggleJobEnabled,
 	onDeleteJob,
 	onEnsureRunLoaded,
+	selectedJobId,
 }: ScheduledJobsPageProps) {
 	return (
 		<main className="min-h-svh bg-[#f3f3f3] text-[#171717] selection:bg-black/10 selection:text-black">
@@ -84,7 +83,6 @@ export function ScheduledJobsPage({
 
 				<div className="mt-4">
 					<JobsPanel
-						adminStatus={adminStatus}
 						jobs={jobs}
 						jobRuns={jobRuns}
 						sessionCache={sessionCache}
@@ -93,12 +91,12 @@ export function ScheduledJobsPage({
 						isLoadingJobs={isLoadingJobs}
 						isLoadingJobRuns={isLoadingJobRuns}
 						connectionError={connectionError}
-						onRefreshJobs={onRefreshJobs}
 						onRefreshJobRuns={onRefreshJobRuns}
 						onUpdateJobInterval={onUpdateJobInterval}
 						onToggleJobEnabled={onToggleJobEnabled}
 						onDeleteJob={onDeleteJob}
 						onEnsureRunLoaded={onEnsureRunLoaded}
+						initialSelectedJobId={selectedJobId}
 					/>
 				</div>
 			</div>

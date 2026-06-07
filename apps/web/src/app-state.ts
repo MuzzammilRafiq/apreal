@@ -60,13 +60,29 @@ export function readCurrentRoute(): AppRoute {
 	return "chat";
 }
 
-export function navigateToRoute(route: AppRoute) {
+export function readSelectedJobIdFromRoute(): string | null {
+	if (window.location.pathname !== "/jobs") {
+		return null;
+	}
+
+	const jobId = new URLSearchParams(window.location.search).get("job");
+	return jobId && jobId.trim().length > 0 ? jobId : null;
+}
+
+export function navigateToRoute(route: AppRoute, options: { jobId?: string | null } = {}) {
 	const nextPathname = route === "settings" ? "/settings" : route === "jobs" ? "/jobs" : "/";
-	if (window.location.pathname === nextPathname) {
+	const nextUrl = new URL(window.location.href);
+	nextUrl.pathname = nextPathname;
+	nextUrl.search = "";
+	if (route === "jobs" && options.jobId) {
+		nextUrl.searchParams.set("job", options.jobId);
+	}
+
+	if (`${window.location.pathname}${window.location.search}` === `${nextUrl.pathname}${nextUrl.search}`) {
 		return;
 	}
 
-	window.history.pushState({}, "", nextPathname);
+	window.history.pushState({}, "", `${nextUrl.pathname}${nextUrl.search}`);
 }
 
 export function getErrorMessage(error: unknown): string {
