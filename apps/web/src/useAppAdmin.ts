@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { CreateMcpServerRequest, LocalWebAdminStatus, McpServerConfig, ProvidersResponse, UpdateMcpServerRequest } from "@apreal/shared";
 import type { ScheduledJobDetails, SessionSummary } from "./chatTypes";
 import { ADMIN_STATUS_REFRESH_INTERVAL_MS, getErrorMessage, type AppRoute, type ClientMessage, type ServerMessage } from "./app-state";
@@ -49,6 +49,26 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 	const [appendPromptError, setAppendPromptError] = useState<string | null>(null);
 	const [savingAppendPrompt, setSavingAppendPrompt] = useState(false);
 	const [providerLoginRedirect, setProviderLoginRedirect] = useState<string | null>(null);
+	const providersRef = useRef(providers);
+	const mcpServersRef = useRef(mcpServers);
+	const scheduledJobsRef = useRef(scheduledJobs);
+	const scheduledJobRunsRef = useRef(scheduledJobRuns);
+
+	useEffect(() => {
+		providersRef.current = providers;
+	}, [providers]);
+
+	useEffect(() => {
+		mcpServersRef.current = mcpServers;
+	}, [mcpServers]);
+
+	useEffect(() => {
+		scheduledJobsRef.current = scheduledJobs;
+	}, [scheduledJobs]);
+
+	useEffect(() => {
+		scheduledJobRunsRef.current = scheduledJobRuns;
+	}, [scheduledJobRuns]);
 
 	const sendRemoteMessage = useCallback(async (message: ClientMessage) => {
 		setStreamRequested(true);
@@ -69,7 +89,7 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 	const refreshProviders = useCallback(async () => {
 		if (runtime.target === "remote") {
 			await sendRemoteMessage({ type: "load_providers" });
-			return providers;
+			return providersRef.current;
 		}
 
 		try {
@@ -81,14 +101,14 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 			setProvidersError(error instanceof Error ? error.message : "Failed to load providers.");
 			throw error;
 		}
-	}, [providers, runtime.target, sendRemoteMessage]);
+	}, [runtime.target, sendRemoteMessage]);
 
 	const refreshMcpServers = useCallback(async () => {
 		setLoadingMcpServers(true);
 		try {
 			if (runtime.target === "remote") {
 				await sendRemoteMessage({ type: "load_mcp_servers" });
-				return mcpServers;
+				return mcpServersRef.current;
 			}
 
 			const response = await readMcpServers();
@@ -101,14 +121,14 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		} finally {
 			setLoadingMcpServers(false);
 		}
-	}, [mcpServers, runtime.target, sendRemoteMessage]);
+	}, [runtime.target, sendRemoteMessage]);
 
 	const reloadMcpServers = useCallback(async () => {
 		setLoadingMcpServers(true);
 		try {
 			if (runtime.target === "remote") {
 				await sendRemoteMessage({ type: "refresh_mcp_servers" });
-				return mcpServers;
+				return mcpServersRef.current;
 			}
 
 			const response = await refreshMcpServersRequest();
@@ -121,7 +141,7 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		} finally {
 			setLoadingMcpServers(false);
 		}
-	}, [mcpServers, runtime.target, sendRemoteMessage]);
+	}, [runtime.target, sendRemoteMessage]);
 
 	const refreshAdminStatus = useCallback(async () => {
 		const nextStatus = await runtime.transport.readStatus();
@@ -200,7 +220,7 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		try {
 			if (runtime.target === "remote") {
 				await sendRemoteMessage({ type: "load_jobs" });
-				return scheduledJobs;
+				return scheduledJobsRef.current;
 			}
 
 			const jobs = await readScheduledJobs();
@@ -217,7 +237,7 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		} finally {
 			setLoadingScheduledJobs(false);
 		}
-	}, [runtime.target, scheduledJobs, sendRemoteMessage]);
+	}, [runtime.target, sendRemoteMessage]);
 
 	const refreshScheduledJobRuns = useCallback(async (jobId: string) => {
 		setLoadingScheduledJobRuns(true);
@@ -226,7 +246,7 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		try {
 			if (runtime.target === "remote") {
 				await sendRemoteMessage({ type: "load_job_runs", jobId });
-				return scheduledJobRuns;
+				return scheduledJobRunsRef.current;
 			}
 
 			const runs = await readScheduledJobRuns(jobId);
@@ -239,7 +259,7 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		} finally {
 			setLoadingScheduledJobRuns(false);
 		}
-	}, [runtime.target, scheduledJobRuns, sendRemoteMessage]);
+	}, [runtime.target, sendRemoteMessage]);
 
 	const updateScheduledJob = useCallback(async (jobId: string, intervalMinutes: number) => {
 		if (runtime.target === "remote") {
