@@ -1,3 +1,5 @@
+import { getServerEnv } from "./env.ts";
+
 const LOG_LEVEL_ORDER = {
 	debug: 10,
 	info: 20,
@@ -35,12 +37,12 @@ function parseLogLevel(value: string | undefined): LogLevel {
 }
 
 function shouldLog(level: LogLevel): boolean {
-	const configuredLevel = parseLogLevel(process.env.LOG_LEVEL);
+	const configuredLevel = parseLogLevel(getServerEnv().LOG_LEVEL);
 	return LOG_LEVEL_ORDER[level] >= LOG_LEVEL_ORDER[configuredLevel];
 }
 
 function supportsColor(): boolean {
-	if (process.env.NO_COLOR) {
+	if (getServerEnv().NO_COLOR) {
 		return false;
 	}
 

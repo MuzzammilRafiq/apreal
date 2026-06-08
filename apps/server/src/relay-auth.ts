@@ -8,6 +8,7 @@ import {
 	type RelayPrincipalType,
 } from "@apreal/shared";
 import { getAprealAgentPath } from "./agent-dir.ts";
+import { getServerEnv } from "./env.ts";
 
 const APREAL_AGENT_RELAY_AUTH_PATH = getAprealAgentPath("relay-auth.json");
 
@@ -137,7 +138,7 @@ async function requestAgentAuth(relayUrl: string, request: RelayAgentAuthRequest
 }
 
 export function getRelayServerUrl(): string {
-	return process.env.PI_RELAY_URL?.trim() || "https://api.malikmuzzammilrafiq.store";
+	return getServerEnv().PI_RELAY_URL || "https://api.malikmuzzammilrafiq.store";
 }
 
 export async function ensureRelayAgentAuth(

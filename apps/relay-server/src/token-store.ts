@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 
 import type { RelayPrincipalType } from "@apreal/shared";
 
+import { getRelayEnv } from "./env.ts";
 import { generateToken, readRelayToken, type AuthTokenPayload, type UserType } from "./auth.ts";
 
 type RelayStoredTokenFile = {
@@ -29,12 +30,12 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function getDefaultStorePath(): string {
-	const configuredPath = process.env.RELAY_TOKEN_STORE_PATH?.trim();
+	const configuredPath = getRelayEnv().RELAY_TOKEN_STORE_PATH;
 	if (configuredPath) {
 		return resolve(configuredPath);
 	}
 
-	const legacyConfiguredPath = process.env.RELAY_SQLITE_PATH?.trim();
+	const legacyConfiguredPath = getRelayEnv().RELAY_SQLITE_PATH;
 	if (legacyConfiguredPath) {
 		return resolve(dirname(resolve(legacyConfiguredPath)), "relay-issued-tokens.json");
 	}

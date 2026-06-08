@@ -5,6 +5,8 @@ import {
 } from "@apreal/shared";
 import jwt, { type JwtPayload } from "jsonwebtoken";
 
+import { getRelayEnv } from "./env.ts";
+
 // The relay accepts only two authenticated peer roles.
 // Keeping the role set explicit prevents accidental support for extra values
 // that might slip in through a malformed or malicious token.
@@ -61,7 +63,7 @@ export class AuthError extends Error {
 // tests or token generation scripts can set `process.env.JWT_SECRET` right
 // before use. Missing secret configuration is a hard auth failure.
 function getJwtSecret(): string {
-	const secret = process.env.JWT_SECRET?.trim();
+	const secret = getRelayEnv().JWT_SECRET;
 	if (!secret) {
 		throw new AuthError("JWT_SECRET is not configured");
 	}

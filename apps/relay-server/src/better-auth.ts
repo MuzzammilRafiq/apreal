@@ -1,5 +1,3 @@
-import "./env.ts";
-
 import { existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
@@ -9,48 +7,28 @@ import { betterAuth } from "better-auth";
 import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 import type { IncomingMessage } from "node:http";
 
-import { DEFAULT_PORT } from "./relay/constants.ts";
+import { getRelayEnv, readOptionalRelayEnv, readRequiredRelayEnv } from "./env.ts";
 
 const require = createRequire(import.meta.url);
 
-function readRequiredEnv(...names: string[]): string {
-	for (const name of names) {
-		const value = process.env[name]?.trim();
-		if (value) {
-			return value;
-		}
-	}
-
-	throw new Error(`Missing required auth environment variable: ${names.join(" or ")}`);
-}
-
-function readOptionalEnv(...names: string[]): string | null {
-	for (const name of names) {
-		const value = process.env[name]?.trim();
-		if (value) {
-			return value;
-		}
-	}
-
-	return null;
-}
-
 function resolveAuthBaseUrl(): string {
-	const configuredUrl = readOptionalEnv("BETTER_AUTH_URL", "APREAL_AUTH_URL");
+	const env = getRelayEnv();
+	const configuredUrl = readOptionalRelayEnv("BETTER_AUTH_URL", "APREAL_AUTH_URL");
 	if (configuredUrl) {
 		return configuredUrl.replace(/\/$/, "");
 	}
 
-	return `http://localhost:${process.env.PORT ?? DEFAULT_PORT}`;
+	return `http://localhost:${env.PORT}`;
 }
 
 function resolveAuthDatabasePath(): string {
-	const configuredPath = process.env.BETTER_AUTH_SQLITE_PATH?.trim();
+	const env = getRelayEnv();
+	const configuredPath = env.BETTER_AUTH_SQLITE_PATH;
 	if (configuredPath) {
 		return resolve(configuredPath);
 	}
 
-	const tokenStorePath = process.env.RELAY_TOKEN_STORE_PATH?.trim();
+	const tokenStorePath = env.RELAY_TOKEN_STORE_PATH;
 	if (tokenStorePath) {
 		return resolve(dirname(resolve(tokenStorePath)), "better-auth.sqlite");
 	}
@@ -73,9 +51,10 @@ function createAuthDatabase() {
 
 function createAuthOptions() {
 	const authBaseUrl = resolveAuthBaseUrl();
+	const env = getRelayEnv();
 	const trustedOrigins = [
 		authBaseUrl,
-		...(process.env.BETTER_AUTH_TRUSTED_ORIGINS ?? "")
+		...(env.BETTER_AUTH_TRUSTED_ORIGINS ?? "")
 			.split(",")
 			.map((origin) => origin.trim().replace(/\/$/, ""))
 			.filter(Boolean),
@@ -88,12 +67,12 @@ function createAuthOptions() {
 	return {
 		appName: "Apreal",
 		baseURL: authBaseUrl,
-		secret: readRequiredEnv("BETTER_AUTH_SECRET", "JWT_SECRET"),
+		secret: readRequiredRelayEnv("BETTER_AUTH_SECRET", "JWT_SECRET"),
 		database: createAuthDatabase(),
 		socialProviders: {
 			google: {
-				clientId: readRequiredEnv("BETTER_AUTH_GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_ID"),
-				clientSecret: readRequiredEnv("BETTER_AUTH_GOOGLE_CLIENT_SECRET", "GOOGLE_CLIENT_SECRET"),
+				clientId: readRequiredRelayEnv("BETTER_AUTH_GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_ID"),
+				clientSecret: readRequiredRelayEnv("BETTER_AUTH_GOOGLE_CLIENT_SECRET", "GOOGLE_CLIENT_SECRET"),
 				accessType: "offline",
 				prompt: "select_account consent",
 				redirectURI: `${authBaseUrl}/api/auth/callback/google`,
@@ -135,9 +114,9 @@ let authReadyPromise: Promise<void> | null = null;
 
 export function isBetterAuthConfigured(): boolean {
 	return Boolean(
-		readOptionalEnv("BETTER_AUTH_SECRET", "JWT_SECRET") &&
-		readOptionalEnv("BETTER_AUTH_GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_ID") &&
-		readOptionalEnv("BETTER_AUTH_GOOGLE_CLIENT_SECRET", "GOOGLE_CLIENT_SECRET"),
+		readOptionalRelayEnv("BETTER_AUTH_SECRET", "JWT_SECRET") &&
+		readOptionalRelayEnv("BETTER_AUTH_GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_ID") &&
+		readOptionalRelayEnv("BETTER_AUTH_GOOGLE_CLIENT_SECRET", "GOOGLE_CLIENT_SECRET"),
 	);
 }
 

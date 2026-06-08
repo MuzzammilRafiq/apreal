@@ -26,6 +26,7 @@ import {
 import { createChatStore } from "../chat-store.ts";
 import { getConfiguredToolInventory, getConfiguredToolsLabel } from "../agent-tools.ts";
 import { getAprealAgentPath, getAprealServerDatabasePath } from "../agent-dir.ts";
+import { getServerEnv } from "../env.ts";
 import { createLogger } from "../logger.ts";
 import { McpToolRegistry } from "../mcp-tools.ts";
 import { McpStore } from "../mcp-store.ts";
@@ -57,7 +58,6 @@ import {
 	isLoopbackClientRequest,
 	isPrivateNetworkClientRequest,
 	json,
-	parsePort,
 	DEFAULT_PORT,
 	DEFAULT_WORKSPACE_ROOT,
 	SERVER_SRC_DIR,
@@ -118,8 +118,9 @@ async function writeAppendSystemPrompt(value: string): Promise<void> {
 }
 
 export async function runWebServer(options?: { cwd?: string; port?: number }) {
-	const cwd = options?.cwd ?? process.env.PI_WORKSPACE_ROOT ?? DEFAULT_WORKSPACE_ROOT;
-	const port = options?.port ?? parsePort(process.env.PORT);
+	const env = getServerEnv();
+	const cwd = options?.cwd ?? env.PI_WORKSPACE_ROOT ?? DEFAULT_WORKSPACE_ROOT;
+	const port = options?.port ?? env.PORT ?? DEFAULT_PORT;
 	const logger = createLogger("web-server");
 	const relayUrl = getRelayServerUrl();
 	const relayState = await initializeRelayState(logger, relayUrl);
@@ -306,7 +307,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		relay.restartRelayTransport();
 	}
 
-	const allowPrivateNetworkAdmin = process.env.APREAL_ALLOW_PRIVATE_NETWORK_ADMIN?.trim() === "true";
+	const allowPrivateNetworkAdmin = env.APREAL_ALLOW_PRIVATE_NETWORK_ADMIN === "true";
 	const assertLocalAdminRequest = (request: Request): Response | null => {
 		if (isLoopbackClientRequest(request)) {
 			return null;
@@ -395,7 +396,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	logger.info("web server ready", {
 		cwd,
 		port: listeningPort,
-		logLevel: process.env.LOG_LEVEL ?? "info",
+		logLevel: env.LOG_LEVEL ?? "info",
 		transport: "http-sse+relay",
 		agentId: relayState.auth?.agentId ?? null,
 		relayUrl,

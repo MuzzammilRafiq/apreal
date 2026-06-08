@@ -1,8 +1,7 @@
+import "./env.ts";
+
 import { runWebServer } from "./web";
 import { fileURLToPath } from "node:url";
-// import dotenv from "dotenv";
-
-// dotenv.config();
 export async function main() {
 	return runWebServer();
 }

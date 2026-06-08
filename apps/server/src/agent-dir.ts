@@ -1,6 +1,8 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { getServerEnv } from "./env.ts";
+
 function expandHomePath(path: string): string {
 	if (path === "~") {
 		return homedir();
@@ -14,11 +16,13 @@ function expandHomePath(path: string): string {
 }
 
 export function getAprealHomeDir(): string {
-	return expandHomePath(process.env.APREAL_HOME?.trim() || join(homedir(), ".apreal"));
+	const env = getServerEnv();
+	return expandHomePath(env.APREAL_HOME || join(homedir(), ".apreal"));
 }
 
 export function getAprealAgentDir(): string {
-	return expandHomePath(process.env.APREAL_AGENT_DIR?.trim() || join(getAprealHomeDir(), "agent"));
+	const env = getServerEnv();
+	return expandHomePath(env.APREAL_AGENT_DIR || join(getAprealHomeDir(), "agent"));
 }
 
 export function getAprealAgentPath(...segments: string[]): string {

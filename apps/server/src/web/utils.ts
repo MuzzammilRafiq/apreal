@@ -9,6 +9,7 @@ import type {
 	SessionSummary,
 	TranscriptMessage,
 } from "./session-state.ts";
+import { getServerEnv } from "../env.ts";
 import type { ServerAppMessage } from "../protocol.ts";
 
 export const DEFAULT_PORT = 3000;
@@ -155,7 +156,8 @@ function normalizeOrigin(value: string | null | undefined): string | null {
 }
 
 function readConfiguredCorsOrigins(): string[] {
-	return [process.env.APREAL_CORS_ALLOW_ORIGINS, process.env.APREAL_CORS_ALLOW_ORIGIN]
+	const env = getServerEnv();
+	return [env.APREAL_CORS_ALLOW_ORIGINS, env.APREAL_CORS_ALLOW_ORIGIN]
 		.flatMap((value) => (value ?? "").split(","))
 		.map((value) => normalizeOrigin(value))
 		.filter((value): value is string => value !== null);

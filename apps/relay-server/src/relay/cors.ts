@@ -1,5 +1,7 @@
 import type { IncomingMessage } from "node:http";
 
+import { getRelayEnv } from "../env.ts";
+
 function normalizeUrlOrigin(value: string | null | undefined): string | null {
 	const trimmed = value?.trim();
 	if (!trimmed) {
@@ -33,13 +35,14 @@ export function resolveRequestOrigin(request: IncomingMessage): string | null {
 }
 
 export function createCorsHeaders(request?: IncomingMessage): Record<string, string> {
+	const env = getRelayEnv();
 	const requestOrigin = normalizeUrlOrigin(typeof request?.headers.origin === "string" ? request.headers.origin : null);
 	const configuredOrigins = [
-		process.env.RELAY_CORS_ALLOW_ORIGINS,
-		process.env.RELAY_CORS_ALLOW_ORIGIN,
-		process.env.BETTER_AUTH_URL,
-		process.env.APREAL_AUTH_URL,
-		process.env.BETTER_AUTH_TRUSTED_ORIGINS,
+		env.RELAY_CORS_ALLOW_ORIGINS,
+		env.RELAY_CORS_ALLOW_ORIGIN,
+		env.BETTER_AUTH_URL,
+		env.APREAL_AUTH_URL,
+		env.BETTER_AUTH_TRUSTED_ORIGINS,
 	]
 		.flatMap((value) => (value ?? "").split(","))
 		.map((value) => normalizeUrlOrigin(value))

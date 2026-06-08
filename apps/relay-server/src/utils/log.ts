@@ -1,3 +1,5 @@
+import { getRelayEnv } from "../env.ts";
+
 export type LogLevel = "info" | "warn" | "error";
 
 const ANSI_RESET = "\x1b[0m";
@@ -12,7 +14,7 @@ const TAG_COLORS = ["\x1b[95m", "\x1b[96m", "\x1b[94m", "\x1b[92m", "\x1b[93m", 
 
 
 const supportsColor = (): boolean => {
-	if (process.env.NO_COLOR) {
+	if (getRelayEnv().NO_COLOR) {
 		return false;
 	}
 

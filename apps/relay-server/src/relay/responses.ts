@@ -12,6 +12,7 @@ import {
 	type RelayClientHeartbeatResponse,
 	type RelayPrincipalType,
 } from "@apreal/shared";
+import { hasRelayJwtSecret } from "../env.ts";
 import type { StoredRelayToken } from "../token-store.ts";
 import { RelayTokenStore } from "../token-store.ts";
 import type { RelayAgentConnection } from "../utils/types.ts";
@@ -27,7 +28,7 @@ export function buildHealthPayload(corsHeaders: Record<string, string>, tokenSto
 		transport: "http",
 		timestamp: new Date().toISOString(),
 		auth: {
-			jwtSecretConfigured: Boolean(process.env.JWT_SECRET?.trim()),
+			jwtSecretConfigured: hasRelayJwtSecret(),
 			corsAllowOrigin: corsHeaders["access-control-allow-origin"],
 		},
 		storage: {

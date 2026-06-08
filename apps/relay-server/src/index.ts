@@ -1,17 +1,15 @@
-import "./env.ts";
-
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { DEFAULT_PORT } from "./relay/constants.ts";
+import { getRelayEnv } from "./env.ts";
 import { createRelayRequestHandler } from "./relay/routes.ts";
 import { createRelayServerState } from "./relay/state.ts";
 import { log } from "./utils/log.ts";
 
 export function runRelayServer(options?: { port?: number | string }) {
 	const state = createRelayServerState();
-	const port = options?.port ?? process.env.PORT ?? DEFAULT_PORT;
+	const port = options?.port ?? getRelayEnv().PORT;
 	const server = createServer(createRelayRequestHandler(state));
 
 	server.listen(port);
