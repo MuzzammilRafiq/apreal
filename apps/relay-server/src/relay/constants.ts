@@ -1,3 +1,2 @@
 export const DEFAULT_PORT = 3001;
 export const RELAY_SSE_HEARTBEAT_INTERVAL_MS = 15_000;
-export const TOKEN_REFRESH_WINDOW_MS = 60 * 60 * 1000;

@@ -206,11 +206,13 @@ async function openSseStream(url: string, options?: { headers?: Record<string, s
 	};
 }
 
-async function startRelayTestServer(t: TestContext) {
+async function startRelayTestServer(t: TestContext, options?: { tempDir?: string }) {
+	const previousOwnerBindingStorePath = process.env.RELAY_OWNER_BINDING_STORE_PATH;
 	const previousTokenStorePath = process.env.RELAY_TOKEN_STORE_PATH;
 	const previousJwtSecret = process.env.JWT_SECRET;
-	const tempDir = mkdtempSync(join(tmpdir(), "relay-isolation-"));
-	process.env.RELAY_TOKEN_STORE_PATH = join(tempDir, "relay-issued-tokens.json");
+	const tempDir = options?.tempDir ?? mkdtempSync(join(tmpdir(), "relay-isolation-"));
+	process.env.RELAY_OWNER_BINDING_STORE_PATH = join(tempDir, "relay-owner-bindings.json");
+	delete process.env.RELAY_TOKEN_STORE_PATH;
 	process.env.JWT_SECRET = "relay-test-secret";
 
 	const server = runRelayServer({ port: 0 });
@@ -235,7 +237,14 @@ async function startRelayTestServer(t: TestContext) {
 			});
 			server.closeAllConnections?.();
 		});
-		rmSync(tempDir, { force: true, recursive: true });
+		if (!options?.tempDir) {
+			rmSync(tempDir, { force: true, recursive: true });
+		}
+		if (previousOwnerBindingStorePath === undefined) {
+			delete process.env.RELAY_OWNER_BINDING_STORE_PATH;
+		} else {
+			process.env.RELAY_OWNER_BINDING_STORE_PATH = previousOwnerBindingStorePath;
+		}
 		if (previousTokenStorePath === undefined) {
 			delete process.env.RELAY_TOKEN_STORE_PATH;
 		} else {
@@ -250,6 +259,7 @@ async function startRelayTestServer(t: TestContext) {
 
 	return {
 		baseUrl: `http://127.0.0.1:${address.port}`,
+		tempDir,
 	};
 }
 
@@ -431,4 +441,37 @@ test("rejects agent delivery to a client paired with another agent", async (t) =
 	assert.match(blockedResponse.body.message, /Browser client stream is not connected/i);
 	assert.equal(await pairA.clientStream.next(150), null);
 	assert.equal(await pairB.clientStream.next(150), null);
+});
+
+test("persists owner-agent binding without persisting issued relay tokens", async (t) => {
+	const tempDir = mkdtempSync(join(tmpdir(), "relay-binding-"));
+	t.after(() => {
+		rmSync(tempDir, { force: true, recursive: true });
+	});
+
+	const firstServer = await startRelayTestServer(t, { tempDir });
+	const ownerGrant = generateOwnerAgentGrant("owner-restart").ownerGrant;
+	const initialAgent = await issueAgentAuth(firstServer.baseUrl, "agent-restart", "agent-key-restart", ownerGrant);
+	assert.equal(initialAgent.paired, true);
+
+	const secondServer = await startRelayTestServer(t, { tempDir });
+	const restoredAgentResponse = await postJson<RelayAgentAuthResponse>(secondServer.baseUrl, RELAY_AGENT_AUTH_PATH, {
+		agentId: "agent-restart",
+		agentKey: "agent-key-restart",
+	});
+	assert.equal(restoredAgentResponse.status, 200);
+	assert.equal(restoredAgentResponse.body.agentId, "agent-restart");
+	assert.equal(restoredAgentResponse.body.paired, true);
+
+	const pairedClientResponse = await postJson<RelayClientAuthResponse>(secondServer.baseUrl, RELAY_CLIENT_AUTH_PATH, {
+		clientId: "client-restart",
+		clientKey: "client-key-restart",
+		ownerGrant,
+	});
+	assert.equal(pairedClientResponse.status, 200);
+	assert.equal(pairedClientResponse.body.paired, true);
+	assert.deepEqual(pairedClientResponse.body.target, {
+		id: "agent-restart",
+		type: "agent",
+	});
 });

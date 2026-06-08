@@ -11,8 +11,8 @@ import { getRelayEnv } from "./env.ts";
 // Keeping the role set explicit prevents accidental support for extra values
 // that might slip in through a malformed or malicious token.
 export const USER_TYPES = ["agent", "client"] as const;
-export const RELAY_JWT_EXPIRES_IN = "180d" as const;
-export const RELAY_JWT_TTL_MS = 180 * 24 * 60 * 60 * 1000;
+export const RELAY_JWT_EXPIRES_IN = "1h" as const;
+export const RELAY_JWT_TTL_MS = 60 * 60 * 1000;
 export const OWNER_AGENT_GRANT_EXPIRES_IN_SECONDS = 5 * 60;
 
 export type UserType = RelayPrincipalType;
@@ -39,7 +39,12 @@ export type OwnerAgentGrantPayload = {
 	exp: number;
 };
 
-type GenerateTokenInput = {
+export type IssuedRelayToken = {
+	token: string;
+	payload: AuthTokenPayload;
+};
+
+export type GenerateTokenInput = {
 	type: UserType;
 	id: string;
 	key: string;
@@ -221,6 +226,14 @@ export function generateToken({ type, id, key, targetId, targetType, serverUrl, 
 		algorithm: "HS256",
 		expiresIn: RELAY_JWT_EXPIRES_IN,
 	});
+}
+
+export function issueRelayToken(input: GenerateTokenInput): IssuedRelayToken {
+	const token = generateToken(input);
+	return {
+		token,
+		payload: readRelayToken(token),
+	};
 }
 
 function validateOwnerAgentGrantPayload(payload: string | JwtPayload): OwnerAgentGrantPayload {

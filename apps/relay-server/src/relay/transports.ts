@@ -53,7 +53,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		response: ServerResponse,
 		corsHeaders: Record<string, string>,
 	) {
-		const target = resolveClientRelayTarget(request, state.tokenStore);
+		const target = resolveClientRelayTarget(request);
 		response.statusCode = 200;
 		setHeaders(response, createSseHeaders(corsHeaders));
 
@@ -141,7 +141,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		response: ServerResponse,
 		corsHeaders: Record<string, string>,
 	) {
-		const target = resolveClientRelayTarget(request, state.tokenStore);
+		const target = resolveClientRelayTarget(request);
 		const browserClient = state.browserClients.get(target.clientId);
 		if (!browserClient || browserClient.closed) {
 			throw new AuthError("browser client stream is not connected");
@@ -164,10 +164,6 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		corsHeaders: Record<string, string>,
 	) {
 		const token = readBearerTokenFromRequest(request);
-		if (!state.tokenStore.findActiveToken(token)) {
-			throw new AuthError("unknown token");
-		}
-
 		const principal = readRelayToken(token);
 		if (principal.type !== "agent") {
 			throw new AuthError("only agent tokens may open relay agent transport");
@@ -258,10 +254,6 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		corsHeaders: Record<string, string>,
 	) {
 		const token = readBearerTokenFromRequest(request);
-		if (!state.tokenStore.findActiveToken(token)) {
-			throw new AuthError("unknown token");
-		}
-
 		const principal = readRelayToken(token);
 		if (principal.type !== "agent") {
 			throw new AuthError("only agent tokens may post relay agent messages");

@@ -50,26 +50,27 @@ Important details:
 - `ownerUserId` binds the principal to the Better Auth account that owns it.
 - `iat` and `exp` are required and validated.
 
-The relay uses HS256 and currently issues long-lived tokens with a 180 day TTL.
+The relay uses HS256 and issues short-lived transport tokens with a 1 hour TTL.
 
-## 3. Token Store Design
+## 3. Owner Binding Store Design
 
-`apps/relay-server/src/token-store.ts` stores issued tokens as raw JWT strings in a JSON file.
+`apps/relay-server/src/owner-binding-store.ts` persists only the minimal owner-to-agent binding state needed for pairing and agent re-authentication.
 
 Default path behavior:
 
-- `RELAY_TOKEN_STORE_PATH` if configured
+- `RELAY_OWNER_BINDING_STORE_PATH` if configured
+- otherwise legacy `RELAY_TOKEN_STORE_PATH` as a compatibility fallback
 - otherwise a path derived from the legacy sqlite setting if present
-- otherwise `.data/relay-issued-tokens.json` in the current working directory
+- otherwise `.data/relay-owner-bindings.json` in the current working directory
 
-The store does not persist expanded state objects. It persists token strings and reparses them on read.
+The file stores structured agent bindings rather than issued JWT history.
 
-That gives the store a simple model:
+Each binding records:
 
-- load token strings
-- verify and parse them when needed
-- ignore malformed or expired tokens unless explicitly allowed
-- sort valid entries by newest `iat`
+- `agentId`
+- `agentKey`
+- `ownerUserId`
+- `updatedAt`
 
 ## 4. Client Authentication Flow
 
@@ -85,14 +86,13 @@ The browser client calls `POST /api/relay/auth/client` with:
 
 The relay then:
 
-1. looks for the newest token for that `clientId` and `clientKey`
-2. refreshes it if it is near expiry
-3. otherwise issues a new token if none exists
-4. resolves the owner from the Better Auth session or the supplied owner grant
-5. if an active agent token exists for that owner, reissues the client token targeted to that agent
-6. returns token, expiry, targeting state, and target data
+1. resolves the owner from the Better Auth session or the supplied owner grant
+2. looks up the latest agent binding for that `ownerUserId`
+3. issues a fresh client transport token scoped to that agent when a binding exists
+4. otherwise issues a fresh unpaired client transport token
+5. returns token, expiry, targeting state, and target data
 
-The browser identity is durable on the client side. The web app stores `clientId` and `clientKey` in local storage in `apps/web/src/relay-auth.ts`.
+The browser identity is durable on the client side. The web app stores only `clientId` and `clientKey` in local storage in `apps/web/src/relay-auth.ts`; issued client tokens are not persisted.
 
 ## 5. Agent Authentication Flow
 
@@ -108,10 +108,12 @@ The Pi server calls `POST /api/relay/auth/agent` with:
 
 The relay then:
 
-1. validates the short-lived owner grant issued by the relay to a signed-in browser
-2. issues or refreshes the agent token with `ownerUserId` set to that Better Auth user
-3. preserves any existing `serverUrl`
+1. validates the short-lived owner grant issued by the relay to a signed-in browser, when present
+2. persists or reuses the `agentId` + `agentKey` -> `ownerUserId` binding
+3. issues a fresh agent transport token with `ownerUserId` set to that Better Auth user
 4. returns the agent token for the local server to use when opening the relay SSE transport
+
+The local server persists only its stable agent identity (`agentId` and `agentKey`) in `apps/server/src/relay-auth.ts`; issued agent tokens are not persisted.
 
 ## 6. Owner-Binding Lifecycle Diagram
 
@@ -119,22 +121,24 @@ The relay then:
 sequenceDiagram
     participant C as Client
     participant R as Relay
-    participant S as Token Store
+    participant B as Owner Binding Store
     participant A as Agent Server
 
     C->>R: POST /api/relay/auth/client\n{clientId, clientKey, ownerGrant}
-    R->>S: findLatestByPrincipal(client)
-    R->>S: findLatestAgentByOwnerUserId()
-    alt owner has active agent
-        R->>S: issueToken(client, targetId=agentId, ownerUserId)
-    else no active agent yet
-        R->>S: issueToken(client, ownerUserId)
+    R->>B: findLatestAgentByOwnerUserId(ownerUserId)
+    alt owner has bound agent
+        R-->>C: fresh client token scoped to agentId
+    else no bound agent yet
+        R-->>C: fresh unpaired client token
     end
-    R-->>C: client token
 
-    A->>R: POST /api/relay/auth/agent\n{agentId, agentKey, ownerGrant}
-    R->>S: issueToken(agent, ownerUserId)
-    R-->>A: agent token bound to owner
+    A->>R: POST /api/relay/auth/agent\n{agentId, agentKey, ownerGrant?}
+    alt owner grant supplied
+        R->>B: bindAgentToOwner(agentId, agentKey, ownerUserId)
+    else existing binding present
+        R->>B: findOwnerUserIdForAgent(agentId, agentKey)
+    end
+    R-->>A: fresh agent token bound to owner
 ```
 
 ## 7. Connection Authorization Check
@@ -155,6 +159,10 @@ This keeps the Pi server from trusting browser relay tokens locally without rela
 
 ## 8. Important Constraint
 
-A token is not enough by itself. The relay requires the token to also be present in its token store.
+Persistent owner binding is the source of truth for pairing. Issued relay tokens are transport credentials only.
 
-That means the relay treats stored issuance as part of validity, not just signature correctness.
+That means:
+
+- pairing comes from shared OAuth owner identity
+- relay request authentication relies on JWT verification and token scope
+- the relay does not persist issued JWT history as part of token validity

@@ -28,9 +28,9 @@ function resolveAuthDatabasePath(): string {
 		return resolve(configuredPath);
 	}
 
-	const tokenStorePath = env.RELAY_TOKEN_STORE_PATH;
-	if (tokenStorePath) {
-		return resolve(dirname(resolve(tokenStorePath)), "better-auth.sqlite");
+	const ownerBindingStorePath = env.RELAY_OWNER_BINDING_STORE_PATH ?? env.RELAY_TOKEN_STORE_PATH;
+	if (ownerBindingStorePath) {
+		return resolve(dirname(resolve(ownerBindingStorePath)), "better-auth.sqlite");
 	}
 
 	return resolve(process.cwd(), ".data", "better-auth.sqlite");

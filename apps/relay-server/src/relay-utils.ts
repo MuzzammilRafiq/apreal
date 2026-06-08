@@ -1,6 +1,6 @@
-export { DEFAULT_PORT, RELAY_SSE_HEARTBEAT_INTERVAL_MS, TOKEN_REFRESH_WINDOW_MS } from "./relay/constants.ts";
+export { DEFAULT_PORT, RELAY_SSE_HEARTBEAT_INTERVAL_MS } from "./relay/constants.ts";
 export { createCorsHeaders, resolveRequestOrigin } from "./relay/cors.ts";
-export { authorizeRelayConnection, mapRelayConnectionErrorStatus, mapRelayProxyErrorStatus, readClientTokenFromProxyRequest, readOptionalBearerToken, resolveClientRelayTarget, shouldRefreshToken, validateAgentServerUrl } from "./relay/authorization.ts";
+export { authorizeRelayConnection, mapRelayConnectionErrorStatus, mapRelayProxyErrorStatus, readClientTokenFromProxyRequest, readOptionalBearerToken, resolveClientRelayTarget, validateAgentServerUrl } from "./relay/authorization.ts";
 export { getErrorMessage, readRequestBody, sendJson, sendText, setHeaders } from "./relay/http.ts";
 export { isObjectRecord, parseAgentAuthRequest, parseClientAuthRequest, parseRelayAgentMessage, parseRelayConnectionRequest, readStringField, readUrlField } from "./relay/parsing.ts";
 export { buildAgentAuthResponse, buildClientAuthResponse, buildClientHeartbeatResponse, buildHealthPayload } from "./relay/responses.ts";

@@ -13,9 +13,11 @@ import {
 import {
 	AuthError,
 	generateOwnerAgentGrant,
+	issueRelayToken,
 	readBearerTokenFromRequest,
 	readOwnerAgentGrant,
 	readRelayToken,
+	type IssuedRelayToken,
 } from "../auth.ts";
 import {
 	ensureBetterAuthReady,
@@ -23,14 +25,12 @@ import {
 	isBetterAuthConfigured,
 	readBetterAuthUserId,
 } from "../better-auth.ts";
-import type { StoredRelayToken } from "../token-store.ts";
 import type { RelayServerState } from "./state.ts";
 import { createRelayTransportHandlers } from "./transports.ts";
 import {
 	authorizeRelayConnection,
 	mapRelayConnectionErrorStatus,
 	mapRelayProxyErrorStatus,
-	shouldRefreshToken,
 } from "./authorization.ts";
 import { createCorsHeaders } from "./cors.ts";
 import { getErrorMessage, sendJson, sendText, setHeaders } from "./http.ts";
@@ -79,24 +79,38 @@ export function createRelayRequestHandler(state: RelayServerState) {
 		return ownerUserId;
 	}
 
-	function pairClientToOwnerAgentIfAvailable(entry: StoredRelayToken, ownerUserId: string | undefined): StoredRelayToken {
-		if (!entry || !ownerUserId || entry.payload.targetId) {
-			return entry;
-		}
+	function issueClientToken(
+		clientId: string,
+		clientKey: string,
+		ownerUserId: string | undefined,
+	): IssuedRelayToken {
+		const ownerAgent = ownerUserId
+			? state.ownerBindingStore.findLatestAgentByOwnerUserId(ownerUserId)
+			: null;
 
-		const ownerAgent = state.tokenStore.findLatestAgentByOwnerUserId(ownerUserId, { allowExpired: false });
-		if (!ownerAgent) {
-			return entry;
-		}
-
-		return state.tokenStore.issueToken({
+		return issueRelayToken({
 			type: "client",
-			id: entry.payload.id,
-			key: entry.payload.key,
-			targetId: ownerAgent.payload.id,
-			targetType: "agent",
+			id: clientId,
+			key: clientKey,
+			targetId: ownerAgent?.agentId,
+			targetType: ownerAgent ? "agent" : undefined,
 			ownerUserId,
 		});
+	}
+
+	function issueAgentToken(
+		agentId: string,
+		agentKey: string,
+		ownerUserId: string,
+	): IssuedRelayToken {
+		const issuedToken = issueRelayToken({
+			type: "agent",
+			id: agentId,
+			key: agentKey,
+			ownerUserId,
+		});
+		state.agentSessions.set(agentId, issuedToken.payload);
+		return issuedToken;
 	}
 
 	return async (request: IncomingMessage, response: ServerResponse) => {
@@ -122,7 +136,7 @@ export function createRelayRequestHandler(state: RelayServerState) {
 		}
 
 		if (pathname === "/" || pathname === "/health") {
-			sendJson(response, 200, buildHealthPayload(corsHeaders, state.tokenStore), corsHeaders);
+			sendJson(response, 200, buildHealthPayload(corsHeaders, state.ownerBindingStore), corsHeaders);
 			return;
 		}
 
@@ -142,35 +156,11 @@ export function createRelayRequestHandler(state: RelayServerState) {
 					? readOwnerAgentGrant(clientAuthRequest.ownerGrant).ownerUserId
 					: undefined;
 				const ownerUserId = ownerGrantUserId ?? await readRequiredOwnerUserId(request);
-				let issuedToken = state.tokenStore.findLatestByPrincipal(
-					"client",
+				const issuedToken = issueClientToken(
 					clientAuthRequest.clientId,
 					clientAuthRequest.clientKey,
-					{ allowExpired: true },
+					ownerUserId,
 				);
-				if (ownerUserId && issuedToken?.payload.ownerUserId !== ownerUserId) {
-					issuedToken = null;
-				}
-				if (issuedToken && shouldRefreshToken(issuedToken)) {
-					issuedToken = state.tokenStore.issueToken({
-						type: "client",
-						id: issuedToken.payload.id,
-						key: issuedToken.payload.key,
-						targetId: issuedToken.payload.targetId,
-						targetType: issuedToken.payload.targetType,
-						ownerUserId: issuedToken.payload.ownerUserId,
-					});
-				}
-
-				if (!issuedToken) {
-					issuedToken = state.tokenStore.issueToken({
-						type: "client",
-						id: clientAuthRequest.clientId,
-						key: clientAuthRequest.clientKey,
-						ownerUserId,
-					});
-				}
-				issuedToken = pairClientToOwnerAgentIfAvailable(issuedToken, ownerUserId);
 
 				log("info", "issued client auth token", {
 					clientId: issuedToken.payload.id,
@@ -201,38 +191,16 @@ export function createRelayRequestHandler(state: RelayServerState) {
 					? readOwnerAgentGrant(clientHeartbeatRequest.ownerGrant).ownerUserId
 					: undefined;
 				const ownerUserId = ownerGrantUserId ?? await readRequiredOwnerUserId(request);
-				let issuedToken = state.tokenStore.findLatestByPrincipal(
-					"client",
+				const issuedToken = issueClientToken(
 					clientHeartbeatRequest.clientId,
 					clientHeartbeatRequest.clientKey,
-					{ allowExpired: true },
+					ownerUserId,
 				);
-				if (ownerUserId && issuedToken?.payload.ownerUserId !== ownerUserId) {
-					issuedToken = null;
-				}
-				if (!issuedToken) {
-					issuedToken = state.tokenStore.issueToken({
-						type: "client",
-						id: clientHeartbeatRequest.clientId,
-						key: clientHeartbeatRequest.clientKey,
-						ownerUserId,
-					});
-				} else if (shouldRefreshToken(issuedToken)) {
-					issuedToken = state.tokenStore.issueToken({
-						type: "client",
-						id: issuedToken.payload.id,
-						key: issuedToken.payload.key,
-						targetId: issuedToken.payload.targetId,
-						targetType: issuedToken.payload.targetType,
-						ownerUserId: issuedToken.payload.ownerUserId,
-					});
-				}
-				issuedToken = pairClientToOwnerAgentIfAvailable(issuedToken, ownerUserId);
 
 				sendJson(
 					response,
 					200,
-					buildClientHeartbeatResponse(issuedToken, state.tokenStore, state.agentConnections),
+					buildClientHeartbeatResponse(issuedToken, state.agentSessions, state.agentConnections),
 					corsHeaders,
 				);
 			} catch (error) {
@@ -278,38 +246,20 @@ export function createRelayRequestHandler(state: RelayServerState) {
 				const ownerGrantUserId = agentAuthRequest.ownerGrant
 					? readOwnerAgentGrant(agentAuthRequest.ownerGrant).ownerUserId
 					: undefined;
-				let issuedToken = state.tokenStore.findLatestByPrincipal(
-					"agent",
-					agentAuthRequest.agentId,
-					agentAuthRequest.agentKey,
-					{ allowExpired: true },
-				);
-				if (ownerGrantUserId && issuedToken?.payload.ownerUserId !== ownerGrantUserId) {
-					issuedToken = null;
-				}
-				if (ownerGrantUserId) {
-					issuedToken = state.tokenStore.issueToken({
-						type: "agent",
-						id: agentAuthRequest.agentId,
-						key: agentAuthRequest.agentKey,
-						ownerUserId: ownerGrantUserId,
-					});
-				}
-				if (issuedToken && !ownerGrantUserId && shouldRefreshToken(issuedToken)) {
-					issuedToken = state.tokenStore.issueToken({
-						type: "agent",
-						id: issuedToken.payload.id,
-						key: issuedToken.payload.key,
-						targetId: issuedToken.payload.targetId,
-						targetType: issuedToken.payload.targetType,
-						ownerUserId: issuedToken.payload.ownerUserId,
-					});
-				}
-
-				if (!issuedToken) {
+				const ownerUserId = ownerGrantUserId
+					?? state.ownerBindingStore.findOwnerUserIdForAgent(agentAuthRequest.agentId, agentAuthRequest.agentKey);
+				if (!ownerUserId) {
 					sendJson(response, 400, { message: "Sign in locally to authenticate the relay agent." }, corsHeaders);
 					return;
 				}
+				if (ownerGrantUserId) {
+					state.ownerBindingStore.bindAgentToOwner(
+						agentAuthRequest.agentId,
+						agentAuthRequest.agentKey,
+						ownerGrantUserId,
+					);
+				}
+				const issuedToken = issueAgentToken(agentAuthRequest.agentId, agentAuthRequest.agentKey, ownerUserId);
 
 				log("info", "issued agent auth token", {
 					agentId: issuedToken.payload.id,
@@ -402,10 +352,6 @@ export function createRelayRequestHandler(state: RelayServerState) {
 
 			try {
 				const token = readBearerTokenFromRequest(request);
-				if (!state.tokenStore.findActiveToken(token)) {
-					throw new AuthError("unknown token");
-				}
-
 				const principal = readRelayToken(token);
 				const payload = authorizeRelayConnection(principal, connectionRequest);
 				log("info", "authenticated relay http connection", {

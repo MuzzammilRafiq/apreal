@@ -6,9 +6,6 @@ import {
 	type AuthTokenPayload,
 	type UserType,
 } from "../auth.ts";
-import type { StoredRelayToken } from "../token-store.ts";
-import { RelayTokenStore } from "../token-store.ts";
-import { TOKEN_REFRESH_WINDOW_MS } from "./constants.ts";
 import { resolveRequestOrigin } from "./cors.ts";
 import { getErrorMessage } from "./http.ts";
 
@@ -62,10 +59,6 @@ export function mapRelayConnectionErrorStatus(error: unknown): number {
 	return 401;
 }
 
-export function shouldRefreshToken(entry: StoredRelayToken): boolean {
-	return entry.payload.exp * 1000 - Date.now() <= TOKEN_REFRESH_WINDOW_MS;
-}
-
 export function readOptionalBearerToken(headerValue: string | string[] | undefined): string | null {
 	if (!headerValue) {
 		return null;
@@ -94,12 +87,8 @@ export function readClientTokenFromProxyRequest(request: IncomingMessage): strin
 	throw new AuthError("missing client auth token");
 }
 
-export function resolveClientRelayTarget(request: IncomingMessage, tokenStore: RelayTokenStore) {
+export function resolveClientRelayTarget(request: IncomingMessage) {
 	const clientToken = readClientTokenFromProxyRequest(request);
-	if (!tokenStore.findActiveToken(clientToken)) {
-		throw new AuthError("unknown token");
-	}
-
 	const principal = readRelayToken(clientToken);
 	if (principal.type !== "client") {
 		throw new AuthError("only client tokens may access browser relay transport");

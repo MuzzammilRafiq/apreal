@@ -28,6 +28,7 @@ export function getRelayEnv() {
 			PORT: optionalPort,
 			RELAY_CORS_ALLOW_ORIGIN: optionalNonEmptyString,
 			RELAY_CORS_ALLOW_ORIGINS: optionalNonEmptyString,
+			RELAY_OWNER_BINDING_STORE_PATH: optionalNonEmptyString,
 			RELAY_SQLITE_PATH: optionalNonEmptyString,
 			RELAY_TOKEN_STORE_PATH: optionalNonEmptyString,
 		},

@@ -44,6 +44,8 @@ export interface RelayActions {
 	authenticateWithOwnerGrant(ownerGrant: string): Promise<Awaited<ReturnType<typeof ensureRelayAgentAuth>>>;
 }
 
+const RELAY_AGENT_AUTH_REFRESH_WINDOW_MS = 60 * 1000;
+
 export function createRelay(
 	state: RelayState,
 	clientActions: ClientActions,
@@ -51,6 +53,7 @@ export function createRelay(
 ): RelayActions {
 	const { logger, relayUrl, relayState, clients } = state;
 	const { removeClientConnection, registerClientConnection, sendError, sendConnected } = clientActions;
+	let relayAuthRefreshPromise: Promise<Awaited<ReturnType<typeof ensureRelayAgentAuth>>> | null = null;
 
 	function getClientAuthErrorStatus(error: unknown): number {
 		const message = getErrorMessage(error);
@@ -68,6 +71,32 @@ export function createRelay(
 		}
 
 		return verifyRelayClientAccess(relayUrl, clientToken, relayState.auth.agentId);
+	}
+
+	function relayAuthNeedsRefresh(auth: Awaited<ReturnType<typeof ensureRelayAgentAuth>> | null): boolean {
+		return !auth?.token || !auth.expiresAt || auth.expiresAt - Date.now() <= RELAY_AGENT_AUTH_REFRESH_WINDOW_MS;
+	}
+
+	async function ensureActiveRelayAgentAuth(options?: { force?: boolean }) {
+		if (!options?.force && !relayAuthNeedsRefresh(relayState.auth)) {
+			return relayState.auth as Awaited<ReturnType<typeof ensureRelayAgentAuth>>;
+		}
+
+		if (relayAuthRefreshPromise) {
+			return relayAuthRefreshPromise;
+		}
+
+		relayAuthRefreshPromise = ensureRelayAgentAuth(logger, relayUrl)
+			.then((auth) => {
+				relayState.auth = auth;
+				relayState.startupError = null;
+				return auth;
+			})
+			.finally(() => {
+				relayAuthRefreshPromise = null;
+			});
+
+		return relayAuthRefreshPromise;
 	}
 
 	function resetClientConnections(reason: string) {
@@ -89,15 +118,11 @@ export function createRelay(
 		resetRelayClientConnections(reason);
 	}
 
-	async function postRelayServerMessage(clientId: string, payload: ServerMessage) {
-		if (!relayState.auth?.token) {
-			throw new Error("Relay agent transport is not authenticated.");
-		}
-
+	async function sendRelayServerMessage(token: string, clientId: string, payload: ServerMessage) {
 		const response = await fetch(new URL(RELAY_AGENT_MESSAGE_PATH, relayUrl), {
 			method: "POST",
 			headers: {
-				authorization: `Bearer ${relayState.auth.token}`,
+				authorization: `Bearer ${token}`,
 				"content-type": "application/json",
 			},
 			body: JSON.stringify({
@@ -121,7 +146,25 @@ export function createRelay(
 			// Ignore malformed bodies and use the status fallback above.
 		}
 
-		throw new Error(message);
+		const error = new Error(message);
+		if (response.status === 401) {
+			(error as Error & { status?: number }).status = 401;
+		}
+		throw error;
+	}
+
+	async function postRelayServerMessage(clientId: string, payload: ServerMessage) {
+		const currentAuth = await ensureActiveRelayAgentAuth();
+		try {
+			await sendRelayServerMessage(currentAuth.token as string, clientId, payload);
+		} catch (error) {
+			if ((error as { status?: number }).status !== 401) {
+				throw error;
+			}
+
+			const refreshedAuth = await ensureActiveRelayAgentAuth({ force: true });
+			await sendRelayServerMessage(refreshedAuth.token as string, clientId, payload);
+		}
 	}
 
 	function createRelaySendPayload(clientId: string): import("./utils.ts").ClientConnection["send"] {
@@ -240,9 +283,16 @@ export function createRelay(
 
 	async function runRelayTransportLoop(generation: number) {
 		while (generation === relayState.transportGeneration) {
-			const currentAuth = relayState.auth;
-			if (!currentAuth?.token) {
+			let currentAuth: Awaited<ReturnType<typeof ensureRelayAgentAuth>>;
+			try {
+				currentAuth = await ensureActiveRelayAgentAuth();
+			} catch (error) {
+				relayState.startupError = getErrorMessage(error);
 				setRelayTransportDisconnected("relay_transport_unavailable");
+				logger.warn("relay agent transport authentication failed", {
+					relayUrl,
+					error: relayState.startupError,
+				});
 				return;
 			}
 
@@ -250,7 +300,7 @@ export function createRelay(
 			relayState.transportAbortController = abortController;
 
 			try {
-				await consumeRelayAgentStream(currentAuth.token, abortController.signal);
+				await consumeRelayAgentStream(currentAuth.token as string, abortController.signal);
 				if (abortController.signal.aborted || generation !== relayState.transportGeneration) {
 					return;
 				}

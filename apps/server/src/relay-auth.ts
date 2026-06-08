@@ -28,11 +28,18 @@ export type StoredRelayAgentAuth = {
 	updatedAt: number;
 };
 
+type StoredRelayAgentIdentity = {
+	relayUrl: string;
+	agentId: string;
+	agentKey: string;
+	updatedAt: number;
+};
+
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function readStoredRelayAgentAuth(): StoredRelayAgentAuth | null {
+function readStoredRelayAgentIdentity(): StoredRelayAgentIdentity | null {
 	if (!existsSync(APREAL_AGENT_RELAY_AUTH_PATH)) {
 		return null;
 	}
@@ -54,11 +61,6 @@ function readStoredRelayAgentAuth(): StoredRelayAgentAuth | null {
 			relayUrl: typeof parsed.relayUrl === "string" && parsed.relayUrl.trim() ? parsed.relayUrl.trim() : "",
 			agentId,
 			agentKey,
-			token: typeof parsed.token === "string" && parsed.token.trim() ? parsed.token.trim() : null,
-			expiresAt: typeof parsed.expiresAt === "number" ? parsed.expiresAt : null,
-			targetId: typeof parsed.targetId === "string" && parsed.targetId.trim() ? parsed.targetId.trim() : null,
-			targetType:
-				parsed.targetType === "agent" || parsed.targetType === "client" ? parsed.targetType : null,
 			updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
 		};
 	} catch {
@@ -66,20 +68,16 @@ function readStoredRelayAgentAuth(): StoredRelayAgentAuth | null {
 	}
 }
 
-function writeStoredRelayAgentAuth(auth: StoredRelayAgentAuth) {
+function writeStoredRelayAgentIdentity(identity: StoredRelayAgentIdentity) {
 	mkdirSync(dirname(APREAL_AGENT_RELAY_AUTH_PATH), { recursive: true });
-	writeFileSync(APREAL_AGENT_RELAY_AUTH_PATH, `${JSON.stringify(auth, null, 2)}\n`, "utf8");
+	writeFileSync(APREAL_AGENT_RELAY_AUTH_PATH, `${JSON.stringify(identity, null, 2)}\n`, "utf8");
 }
 
-function createAgentIdentity(existing: StoredRelayAgentAuth | null, relayUrl: string): StoredRelayAgentAuth {
+function createAgentIdentity(existing: StoredRelayAgentIdentity | null, relayUrl: string): StoredRelayAgentIdentity {
 	return {
 		relayUrl,
 		agentId: existing?.agentId ?? `agent-${crypto.randomUUID()}`,
 		agentKey: existing?.agentKey ?? `key-${crypto.randomUUID()}`,
-		token: existing?.token ?? null,
-		expiresAt: existing?.expiresAt ?? null,
-		targetId: existing?.targetId ?? null,
-		targetType: existing?.targetType ?? null,
 		updatedAt: Date.now(),
 	};
 }
@@ -145,35 +143,32 @@ export async function ensureRelayAgentAuth(
 	logger: LoggerLike,
 	relayUrl = getRelayServerUrl(),
 ): Promise<StoredRelayAgentAuth> {
-	const storedAuth = createAgentIdentity(readStoredRelayAgentAuth(), relayUrl);
-	writeStoredRelayAgentAuth(storedAuth);
+	const storedIdentity = createAgentIdentity(readStoredRelayAgentIdentity(), relayUrl);
+	writeStoredRelayAgentIdentity(storedIdentity);
 
-	if (storedAuth.token) {
-		try {
-			const refreshed = await requestAgentAuth(relayUrl, {
-				agentId: storedAuth.agentId,
-				agentKey: storedAuth.agentKey,
-			});
-			const nextAuth: StoredRelayAgentAuth = {
-				...storedAuth,
-				token: refreshed.token,
-				expiresAt: refreshed.expiresAt,
-				targetId: refreshed.target?.id ?? null,
-				targetType: refreshed.target?.type ?? null,
-				updatedAt: Date.now(),
-			};
-			writeStoredRelayAgentAuth(nextAuth);
-			logger.info("restored relay agent auth", {
-				agentId: nextAuth.agentId,
-				targetId: nextAuth.targetId,
-			});
-			return nextAuth;
-		} catch (error) {
-			logger.warn("stored relay agent auth could not be reused", {
-				agentId: storedAuth.agentId,
-				error: getErrorMessage(error),
-			});
-		}
+	try {
+		const issued = await requestAgentAuth(relayUrl, {
+			agentId: storedIdentity.agentId,
+			agentKey: storedIdentity.agentKey,
+		});
+		const nextAuth: StoredRelayAgentAuth = {
+			...storedIdentity,
+			token: issued.token,
+			expiresAt: issued.expiresAt,
+			targetId: issued.target?.id ?? null,
+			targetType: issued.target?.type ?? null,
+			updatedAt: Date.now(),
+		};
+		logger.info("restored relay agent auth", {
+			agentId: nextAuth.agentId,
+			targetId: nextAuth.targetId,
+		});
+		return nextAuth;
+	} catch (error) {
+		logger.warn("stored relay agent identity could not be authenticated", {
+			agentId: storedIdentity.agentId,
+			error: getErrorMessage(error),
+		});
 	}
 
 	throw new Error("Relay agent is not authenticated. Sign in locally to link this server to your Google account.");
@@ -184,26 +179,26 @@ export async function authenticateRelayAgentWithOwnerGrant(
 	ownerGrant: string,
 	relayUrl = getRelayServerUrl(),
 ): Promise<StoredRelayAgentAuth> {
-	const storedAuth = createAgentIdentity(readStoredRelayAgentAuth(), relayUrl);
+	const storedIdentity = createAgentIdentity(readStoredRelayAgentIdentity(), relayUrl);
 	if (!ownerGrant.trim()) {
 		throw new Error("Owner grant is required.");
 	}
 
 	const issued = await requestAgentAuth(relayUrl, {
-		agentId: storedAuth.agentId,
-		agentKey: storedAuth.agentKey,
+		agentId: storedIdentity.agentId,
+		agentKey: storedIdentity.agentKey,
 		ownerGrant,
 	});
 
+	writeStoredRelayAgentIdentity(storedIdentity);
 	const nextAuth: StoredRelayAgentAuth = {
-		...storedAuth,
+		...storedIdentity,
 		token: issued.token,
 		expiresAt: issued.expiresAt,
 		targetId: issued.target?.id ?? null,
 		targetType: issued.target?.type ?? null,
 		updatedAt: Date.now(),
 	};
-	writeStoredRelayAgentAuth(nextAuth);
 	logger.info("authenticated relay agent with owner grant", {
 		agentId: nextAuth.agentId,
 		path: APREAL_AGENT_RELAY_AUTH_PATH,

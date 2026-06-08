@@ -12,16 +12,16 @@ import {
 	type RelayClientHeartbeatResponse,
 	type RelayPrincipalType,
 } from "@apreal/shared";
+import type { AuthTokenPayload, IssuedRelayToken } from "../auth.ts";
 import { hasRelayJwtSecret } from "../env.ts";
-import type { StoredRelayToken } from "../token-store.ts";
-import { RelayTokenStore } from "../token-store.ts";
+import { RelayOwnerBindingStore } from "../owner-binding-store.ts";
 import type { RelayAgentConnection } from "../utils/types.ts";
 
-function resolveTargetFromPayload(payload: StoredRelayToken["payload"]): RelayPrincipalType {
+function resolveTargetFromPayload(payload: IssuedRelayToken["payload"]): RelayPrincipalType {
 	return payload.type === "client" ? "agent" : "client";
 }
 
-export function buildHealthPayload(corsHeaders: Record<string, string>, tokenStore: RelayTokenStore) {
+export function buildHealthPayload(corsHeaders: Record<string, string>, ownerBindingStore: RelayOwnerBindingStore) {
 	return {
 		ok: true,
 		service: "relay-server",
@@ -32,9 +32,8 @@ export function buildHealthPayload(corsHeaders: Record<string, string>, tokenSto
 			corsAllowOrigin: corsHeaders["access-control-allow-origin"],
 		},
 		storage: {
-			tokenStorePath: tokenStore.getFilePath(),
-			tokenCount: tokenStore.countTokens({ allowExpired: true }),
-			activeTokenCount: tokenStore.countTokens({ allowExpired: false }),
+			ownerBindingStorePath: ownerBindingStore.getFilePath(),
+			ownerBindingCount: ownerBindingStore.countBindings(),
 		},
 		endpoints: {
 			base: "/",
@@ -51,7 +50,7 @@ export function buildHealthPayload(corsHeaders: Record<string, string>, tokenSto
 	};
 }
 
-export function buildClientAuthResponse(entry: StoredRelayToken): RelayClientAuthResponse {
+export function buildClientAuthResponse(entry: IssuedRelayToken): RelayClientAuthResponse {
 	return {
 		clientId: entry.payload.id,
 		clientKey: entry.payload.key,
@@ -67,15 +66,27 @@ export function buildClientAuthResponse(entry: StoredRelayToken): RelayClientAut
 	};
 }
 
+function hasActiveAgentSession(agentSessions: Map<string, AuthTokenPayload>, agentId: string): boolean {
+	const session = agentSessions.get(agentId);
+	if (!session) {
+		return false;
+	}
+
+	if (session.exp * 1000 <= Date.now()) {
+		agentSessions.delete(agentId);
+		return false;
+	}
+
+	return true;
+}
+
 export function buildClientHeartbeatResponse(
-	entry: StoredRelayToken,
-	tokenStore: RelayTokenStore,
+	entry: IssuedRelayToken,
+	agentSessions: Map<string, AuthTokenPayload>,
 	agentConnections: Map<string, RelayAgentConnection>,
 ): RelayClientHeartbeatResponse {
 	const targetId = entry.payload.targetId ?? null;
-	const serverReady = Boolean(
-		targetId && tokenStore.findLatestByPrincipalId("agent", targetId, { allowExpired: false }),
-	);
+	const serverReady = Boolean(targetId && hasActiveAgentSession(agentSessions, targetId));
 	const transportReady = Boolean(targetId && agentConnections.get(targetId) && !agentConnections.get(targetId)?.closed);
 
 	return {
@@ -88,7 +99,7 @@ export function buildClientHeartbeatResponse(
 	};
 }
 
-export function buildAgentAuthResponse(entry: StoredRelayToken): RelayAgentAuthResponse {
+export function buildAgentAuthResponse(entry: IssuedRelayToken): RelayAgentAuthResponse {
 	return {
 		agentId: entry.payload.id,
 		agentKey: entry.payload.key,

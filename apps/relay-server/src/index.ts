@@ -17,8 +17,8 @@ export function runRelayServer(options?: { port?: number | string }) {
 	log("info", "relay server listening", {
 		port,
 		transport: "http",
-		tokenStorePath: state.tokenStore.getFilePath(),
-		tokenCount: state.tokenStore.countTokens({ allowExpired: true }),
+		ownerBindingStorePath: state.ownerBindingStore.getFilePath(),
+		ownerBindingCount: state.ownerBindingStore.countBindings(),
 	});
 
 	return server;
