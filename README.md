@@ -10,6 +10,12 @@ This repo is now structured as a small monorepo so the desktop surface can grow 
 - `apps/shared`: shared TypeScript package consumed by the server and web apps.
 - `docs`: markdown documentation and notes.
 
+## Architecture Docs
+
+- [`docs/README.md`](./docs/README.md)
+- [`docs/app-architecture/README.md`](./docs/app-architecture/README.md)
+- [`docs/relay-server-architecture/README.md`](./docs/relay-server-architecture/README.md)
+
 ## Install
 
 ```bash

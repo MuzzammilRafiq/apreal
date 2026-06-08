@@ -47,14 +47,14 @@
 - Fix relay CORS for credentialed browser requests.
   The relay currently reflects arbitrary request origins when `RELAY_CORS_ALLOW_ORIGIN` is unset while also sending `Access-Control-Allow-Credentials: true`. Change this to an explicit allowlist for `/api/auth/*`, `/api/relay/auth/*`, and `/api/relay/connection` so third-party sites cannot use a signed-in browser session to read owner grants or mint paired client tokens.
 
-- Remove long-lived relay bearer material from `localStorage`.
-  The remote web app persists `clientKey` and the relay bearer token in browser storage. Move to HttpOnly cookies or short-lived in-memory access tokens with refresh, because any XSS or browser-extension compromise currently exposes durable relay access.
+- Remove durable relay browser credentials from `localStorage`.
+  The remote web app persists `clientId` and `clientKey` in browser storage even though it no longer persists the relay bearer token there. Move durable browser credentials behind HttpOnly cookies or another safer mechanism, because any XSS or browser-extension compromise can still expose reusable relay client identity material.
 
-- Shorten relay token lifetime and separate relay signing from Better Auth signing.
-  Relay JWTs currently last 180 days, and Better Auth falls back to `JWT_SECRET` when `BETTER_AUTH_SECRET` is unset. Use separate secrets and shorter-lived access tokens so one secret leak or browser token theft does not grant months of relay or session forgery.
+- Keep relay signing separate from Better Auth signing and review token lifetimes.
+  Relay transport JWTs are now short-lived and owner grants are short-lived too, but Better Auth may still fall back to `JWT_SECRET` when `BETTER_AUTH_SECRET` is unset. Use separate secrets in all environments and review whether the current relay token lifetime is appropriate for production.
 
 - Tighten filesystem handling for stored auth material.
-  `relay-auth.json`, the relay-issued token store, and the Better Auth SQLite database should be created with user-only permissions and reviewed for safe storage location, because they currently hold reusable credentials in plaintext on disk.
+  `relay-auth.json`, the relay owner binding store, and the Better Auth SQLite database should be created with user-only permissions and reviewed for safe storage location, because they currently hold reusable credentials or account-linking state on disk.
 
 - Bind the laptop-local web server to loopback by default unless LAN access is explicitly enabled.
   Today the HTTP server listens without a host restriction, which broadens the impact of any missed auth check on local admin endpoints.

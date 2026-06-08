@@ -2,9 +2,9 @@
 
 ## 1. Why The Transport Is Split
 
-The relay does not use a full-duplex socket protocol.
+The relay does not use WebSockets.
 
-Instead it composes bidirectional messaging out of two primitives:
+Instead it composes bidirectional messaging from two primitives:
 
 - SSE for server-to-client delivery
 - JSON POST for client-to-server delivery
@@ -16,26 +16,25 @@ That pattern exists on both sides of the relay.
 - downlink: `GET /api/client/stream`
 - uplink: `POST /api/client/message`
 
-### Pi server side
+### Laptop server side
 
 - downlink: `GET /api/relay/agent/stream`
 - uplink: `POST /api/relay/agent/message`
 
-So the relay is really bridging two half-duplex pairs.
+So the relay is bridging two half-duplex transport pairs.
 
 ## 2. Browser Stream Registration
 
-Browser stream setup lives in `registerBrowserClientStream()` in `apps/relay-server/src/index.ts`.
+Browser stream setup lives in `registerBrowserClientStream()` in `apps/relay-server/src/relay/transports.ts`.
 
 The relay:
 
-1. extracts a client token from the `Authorization` header or `token` query parameter
-2. verifies that the token exists in the token store
-3. verifies the token payload is for a `client`
-4. verifies the client is paired to an `agent`
-5. opens an SSE response
-6. stores a `RelayBrowserClientConnection` in `browserClients`
-7. sends a `client_connect` command to the paired agent stream
+1. resolves the browser target from the relay client token
+2. verifies the token is for a `client`
+3. verifies the client token is paired to an `agent`
+4. opens an SSE response
+5. stores a `RelayBrowserClientConnection` in `browserClients`
+6. sends a `client_connect` command to the paired agent stream
 
 The SSE response headers are explicitly set to:
 
@@ -53,22 +52,21 @@ If another stream opens for the same `clientId`, the old one is closed and repla
 
 ## 3. Agent Stream Registration
 
-Agent stream setup lives in `handleAgentStreamRequest()` in `apps/relay-server/src/index.ts`.
+Agent stream setup lives in `handleAgentStreamRequest()` in `apps/relay-server/src/relay/transports.ts`.
 
 The relay:
 
 1. reads the bearer token
-2. requires that it exists in the token store
-3. requires that the principal type is `agent`
-4. opens an SSE response to the Pi server
-5. stores a `RelayAgentConnection` in `agentConnections`
-6. notifies the agent about all currently connected browser clients already paired to it
+2. verifies that it is an `agent` token
+3. opens an SSE response to the laptop server
+4. stores a `RelayAgentConnection` in `agentConnections`
+5. replays `client_connect` for any browser clients already paired to that agent
 
-This last point matters: if the agent stream reconnects while browser streams are still present, the relay replays `client_connect` commands for those clients so the Pi server can rebuild its transport-side connection state.
+This replay matters because it lets the laptop server rebuild relay-backed client connection state after reconnecting its agent stream.
 
 ## 4. Relay Event Shapes
 
-The relay sends commands from relay to Pi server as `RelayAgentCommand`:
+The relay sends commands from relay to laptop server as `RelayAgentCommand`:
 
 ```ts
 type RelayAgentCommand =
@@ -77,7 +75,7 @@ type RelayAgentCommand =
   | { type: "client_message"; clientId: string; message: unknown }
 ```
 
-The Pi server sends messages back to the relay as `RelayAgentMessage`:
+The laptop server sends messages back to the relay as `RelayAgentMessage`:
 
 ```ts
 type RelayAgentMessage = {
@@ -98,7 +96,7 @@ No event names, ids, or resume cursors are used.
 
 That means the stream is intentionally simple:
 
-- JSON data payloads only
+- JSON payloads only
 - comments for keepalive
 - no replay support
 - no resumable cursor protocol
@@ -107,42 +105,45 @@ That means the stream is intentionally simple:
 
 ```mermaid
 sequenceDiagram
-    participant B as Browser
-    participant R as Relay
-    participant P as Pi Server
-    participant Sess as Session / client manager
+    participant Browser as Browser
+    participant Relay as Relay
+    participant Server as Laptop server
+    participant Session as Session layer
 
-    P->>R: GET /api/relay/agent/stream (SSE)
-    R-->>P: : connected / : ping comments
-    B->>R: GET /api/client/stream?token=...
-    R-->>B: : connected / : ping comments
-    R-->>P: data: {type: client_connect, clientId}
-    P->>Sess: register relay-backed client
+    Server->>Relay: GET /api/relay/agent/stream
+    Relay-->>Server: : connected / : ping
 
-    B->>R: POST /api/client/message
-    R-->>P: data: {type: client_message, clientId, message}
-    P->>Sess: handle client message
-    Sess-->>P: server payload
-    P->>R: POST /api/relay/agent/message\n{type: server_message, clientId, message}
-    R-->>B: data: <server payload>
+    Browser->>Relay: GET /api/client/stream?token=...
+    Relay-->>Browser: : connected / : ping
+    Relay-->>Server: data: {type: client_connect, clientId}
+    Server->>Session: register relay-backed client
 
-    B-xR: browser stream closes
-    R-->>P: data: {type: client_disconnect, clientId, reason}
+    Browser->>Relay: POST /api/client/message
+    Relay-->>Server: data: {type: client_message, clientId, message}
+    Server->>Session: handle client message
+    Session-->>Server: server payload
+    Server->>Relay: POST /api/relay/agent/message
+    Relay-->>Browser: data: <server payload>
+
+    Browser-xRelay: browser stream closes
+    Relay-->>Server: data: {type: client_disconnect, clientId, reason}
 ```
 
-## 7. Browser To Relay To Pi Server
+## 7. Browser To Relay To Laptop Server
 
-`handleClientMessageRequest()` in `apps/relay-server/src/index.ts` receives browser POST messages.
+`handleClientMessageRequest()` in `apps/relay-server/src/relay/transports.ts` receives browser POST messages.
 
-The relay first resolves the client target from the token. Then it verifies that the browser stream is already connected. That is a deliberate rule: posting messages is not enough, the relay expects the browser's SSE receive path to be alive too.
+The relay first resolves the browser target from the token. Then it verifies that the browser stream is already connected.
+
+That is a deliberate rule: posting messages is not enough. The relay expects the browser's receive path to be alive too.
 
 If that check passes, the relay forwards a `client_message` command over the agent SSE stream.
 
 If the agent stream is unavailable, the relay returns an availability failure instead of buffering.
 
-## 8. Pi Server To Relay To Browser
+## 8. Laptop Server To Relay To Browser
 
-The Pi server posts browser-visible messages through `postRelayServerMessage()` in `apps/server/src/web-relay.ts`.
+The laptop server posts browser-visible messages through `postRelayServerMessage()` in `apps/server/src/web/relay.ts`.
 
 That function performs an authenticated `POST /api/relay/agent/message`.
 
@@ -158,19 +159,19 @@ If the target browser stream is gone, the relay returns a conflict response.
 
 ## 9. Where Session Handling Starts
 
-The real session handoff is on the Pi server, not inside the relay.
+The real session handoff is on the laptop server, not inside the relay.
 
-In `apps/server/src/web-relay.ts`:
+In `apps/server/src/web/relay.ts`:
 
 - `handleRelayAgentCommand()` receives `client_connect`, `client_disconnect`, and `client_message`
-- `ensureRelayClientConnection()` registers a relay-backed client transport in the Pi server's client manager
-- `handleClientMessage()` is the point where a relay-forwarded browser message enters the normal server-side session pipeline
+- `ensureRelayClientConnection()` registers a relay-backed client transport in the laptop server's client manager
+- `handleClientMessage()` is where a relay-forwarded browser message enters the normal server-side session pipeline
 
-So the relay does not have a dedicated session handler. It hands transport events to the Pi server, and the Pi server reuses its existing local client/session machinery.
+So the relay does not have a dedicated session handler. It hands transport events to the laptop server, and the laptop server reuses its existing local client and session machinery.
 
-## 10. Pi Server Stream Consumer
+## 10. Laptop Server Stream Consumer
 
-The Pi server consumes the relay agent stream in `consumeRelayAgentStream()` in `apps/server/src/web-relay.ts`.
+The laptop server consumes the relay agent stream in `consumeRelayAgentStream()` in `apps/server/src/web/relay.ts`.
 
 It uses the Fetch API stream reader directly:
 
@@ -187,12 +188,12 @@ That is a fully manual SSE consumer on the server side.
 
 ## 11. Reconnect Behavior
 
-The Pi server runs a reconnect loop in `runRelayTransportLoop()`.
+The laptop server runs a reconnect loop in `runRelayTransportLoop()`.
 
 If the agent SSE stream ends or errors:
 
-- the relay-backed client connections are marked disconnected on the Pi server
-- the Pi server waits `RELAY_STREAM_RETRY_MS`
-- the Pi server reconnects using the same current agent token unless a restart or reauthentication changed generation
+- relay-backed client connections are removed on the laptop server
+- the laptop server waits `RELAY_STREAM_RETRY_MS`
+- the laptop server reconnects using the same durable agent identity and a refreshed token when needed
 
-This is a small generation-based reconnect design rather than a full transport supervisor framework.
+This is a small generation-based reconnect design rather than a full transport supervisor.
