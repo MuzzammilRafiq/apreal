@@ -107,21 +107,21 @@ export const Composer = memo(function Composer({
 	return (
 		<div
 			className={[
-				"pointer-events-auto mx-auto flex w-full max-w-[52rem] flex-col gap-1.5 rounded-lg border bg-white/92 px-3 py-2.5 transition-colors duration-150 backdrop-blur-md min-[861px]:px-3.5",
+				"pointer-events-auto mx-auto flex w-full max-w-[54rem] flex-col gap-1.5 border border-black/8 bg-white/82 px-3 py-2.5 shadow-[0_-12px_40px_rgba(255,255,255,0.65)] transition-colors duration-150 backdrop-blur-xl min-[861px]:px-4",
 				isFocused
-					? "border-slate-400 bg-white"
-					: "border-slate-300/90",
+					? "border-black/22 bg-white/94"
+					: "border-black/10",
 			].join(" ")}
 		>
 			{currentContextLabel ? (
-				<div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-1 pb-1.5">
+				<div className="flex flex-wrap items-center justify-between gap-2 border-b border-black/8 px-1 pb-1.5">
 					<span className="flex items-center gap-1.5 font-mono text-[0.66rem] font-semibold uppercase tracking-[0.12em] text-slate-500">
 						<svg viewBox="0 0 24 24" className="h-3 w-3 text-slate-500" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
             </svg>
             Current Context
           </span>
-					<span className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-right font-mono text-[0.68rem] font-medium text-slate-600">
+					<span className="px-1.5 py-0.5 text-right font-mono text-[0.68rem] font-medium text-slate-600">
             {currentContextLabel}
           </span>
         </div>

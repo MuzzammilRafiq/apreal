@@ -397,15 +397,31 @@ export function SettingsPage({
 		};
 	}, [mobileMenuOpen]);
 
+	const refreshIcon = (isSpinning: boolean) => (
+		<svg
+			className={`h-4 w-4 ${isSpinning ? "animate-spin text-slate-700" : "text-[#525252]"}`}
+			fill="none"
+			viewBox="0 0 24 24"
+			stroke="currentColor"
+			strokeWidth={2.2}
+			aria-hidden="true"
+		>
+			<path d="M21 2v6h-6" strokeLinecap="round" strokeLinejoin="round" />
+			<path d="M3 12a9 9 0 0 1 15-6.7L21 8" strokeLinecap="round" strokeLinejoin="round" />
+			<path d="M3 22v-6h6" strokeLinecap="round" strokeLinejoin="round" />
+			<path d="M21 12a9 9 0 0 1-15 6.7L3 16" strokeLinecap="round" strokeLinejoin="round" />
+		</svg>
+	);
+
 	return (
-		<main className="min-h-svh bg-[#f3f3f1] text-[#171717] selection:bg-black/10 selection:text-black">
+		<main className="min-h-svh bg-[linear-gradient(180deg,#f7f6f2_0%,#f1f1ee_28%,#efefec_100%)] text-[#171717] selection:bg-black/10 selection:text-black">
 			<div className="flex min-h-svh w-full flex-col">
 				{/* ---- Main layout: sidebar + content ---- */}
-				<div className="grid flex-1 min-[961px]:grid-cols-[280px_minmax(0,1fr)] min-[1320px]:grid-cols-[300px_minmax(0,1fr)]">
-					<div className="z-30 flex items-center justify-between gap-3 border-b border-black/8 bg-white px-3 py-3 min-[961px]:hidden">
+				<div className="grid flex-1 grid-rows-[auto_minmax(0,1fr)] content-start min-[961px]:grid-cols-[280px_minmax(0,1fr)] min-[961px]:grid-rows-1 min-[1320px]:grid-cols-[300px_minmax(0,1fr)]">
+					<div className="z-30 flex items-center justify-between gap-3 border-b border-black/8 bg-white/88 px-3 py-3 backdrop-blur-md min-[961px]:hidden">
 						<button
 							type="button"
-							className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-900 transition-colors duration-150 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+							className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/[0.045] text-slate-900 transition-colors duration-150 hover:bg-black/[0.08] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
 							onClick={() => setMobileMenuOpen(true)}
 							aria-label="Open settings menu"
 						>
@@ -427,7 +443,7 @@ export function SettingsPage({
 								onClick={() => setMobileMenuOpen(false)}
 								aria-label="Close settings menu"
 							/>
-							<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden bg-white text-ink shadow-2xl">
+							<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden bg-white text-ink shadow-[0_24px_60px_rgba(0,0,0,0.2)]">
 								<div className="border-b border-line px-4 py-4">
 									<div className="flex items-center justify-between gap-3">
 										<div>
@@ -436,7 +452,7 @@ export function SettingsPage({
 										</div>
 										<button
 											type="button"
-											className="flex h-10 w-10 items-center justify-center rounded-md border border-black/10 bg-white text-slate-500 transition-colors duration-150 hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+											className="flex h-10 w-10 items-center justify-center rounded-full bg-black/[0.045] text-slate-500 transition-colors duration-150 hover:bg-black/[0.08] hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
 											onClick={() => setMobileMenuOpen(false)}
 											aria-label="Close settings menu"
 										>
@@ -455,10 +471,10 @@ export function SettingsPage({
 												setActiveSection(section.id);
 												setMobileMenuOpen(false);
 											}}
-											className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[0.9375rem] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring cursor-pointer ${
+											className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[0.9375rem] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring cursor-pointer ${
 												activeSection === section.id
-													? "bg-ink-soft text-ink"
-													: "text-muted hover:bg-ink-soft hover:text-ink"
+													? "bg-black/[0.045] text-ink"
+													: "text-muted hover:bg-black/[0.03] hover:text-ink"
 											}`}
 										>
 											<span className={`mt-0.5 shrink-0 ${activeSection === section.id ? "text-ink" : "text-faint"}`}>
@@ -481,7 +497,7 @@ export function SettingsPage({
 					) : null}
 
 					{/* ======== SIDEBAR ======== */}
-					<nav className="hidden flex-col border-b border-line bg-white min-[961px]:sticky min-[961px]:top-0 min-[961px]:flex min-[961px]:min-h-svh min-[961px]:self-start min-[961px]:border-r min-[961px]:border-b-0">
+					<nav className="hidden flex-col border-b border-line bg-[#fbfbfa] min-[961px]:sticky min-[961px]:top-0 min-[961px]:flex min-[961px]:min-h-svh min-[961px]:self-start min-[961px]:border-r min-[961px]:border-b-0">
 						{/* Desktop: vertical sidebar */}
 						<div className="text-ink min-[961px]:flex min-[961px]:min-h-svh min-[961px]:flex-col">
 							<div className="border-b border-line px-5 py-4">
@@ -495,10 +511,10 @@ export function SettingsPage({
 										key={section.id}
 										type="button"
 										onClick={() => setActiveSection(section.id)}
-										className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[0.9375rem] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring cursor-pointer ${
+										className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[0.9375rem] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring cursor-pointer ${
 											activeSection === section.id
-												? "bg-ink-soft text-ink"
-												: "text-muted hover:bg-ink-soft hover:text-ink"
+												? "bg-black/[0.045] text-ink"
+												: "text-muted hover:bg-black/[0.03] hover:text-ink"
 										}`}
 									>
 										<span className={`mt-0.5 shrink-0 ${activeSection === section.id ? "text-ink" : "text-faint"}`}>
@@ -520,10 +536,10 @@ export function SettingsPage({
 					</nav>
 
 					{/* ======== CONTENT ======== */}
-					<div className="min-w-0 bg-white px-3 py-4 min-[961px]:min-h-svh min-[961px]:p-6">
-						<header className="flex flex-col gap-3 border-b border-black/8 pb-4 min-[961px]:flex-row min-[961px]:items-start min-[961px]:justify-between min-[961px]:gap-4">
+					<div className="min-w-0 bg-white/72 px-3 py-3 backdrop-blur-[2px] min-[961px]:min-h-svh min-[961px]:px-6 min-[961px]:py-5">
+						<header className="flex flex-col gap-2 border-b border-black/8 pb-3 min-[961px]:flex-row min-[961px]:items-start min-[961px]:justify-between min-[961px]:gap-4">
 							<div>
-								<h1 className="text-[1.45rem] font-bold tracking-tight leading-none text-slate-900 min-[961px]:text-[1.7rem]">
+								<h1 className="text-[1.28rem] font-bold tracking-tight leading-none text-slate-900 min-[961px]:text-[1.55rem]">
 									{activeSectionTitle}
 								</h1>
 							</div>
@@ -531,32 +547,27 @@ export function SettingsPage({
 								{activeSection === "jobs" ? (
 									<button
 										type="button"
-										className="inline-flex w-full items-center justify-center gap-2 border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-[#171717] transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[961px]:w-auto"
+										className="inline-flex w-full items-center justify-center gap-2 border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-[#171717] transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[961px]:w-auto"
 										onClick={onRefreshJobs}
 									>
-										<svg className={`h-4 w-4 ${isLoadingJobs ? "animate-spin text-slate-700" : "text-[#525252]"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-											<path strokeLinecap="round" strokeLinejoin="round" d="M160 80A80 80 0 10240 160" />
-											<path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8h-4.21" />
-										</svg>
+										{refreshIcon(isLoadingJobs)}
 										{isLoadingJobs ? "Syncing..." : "Sync Jobs"}
 									</button>
 								) : activeSection === "mcp" ? (
 									<button
 										type="button"
-										className="inline-flex w-full items-center justify-center gap-2 border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-[#171717] transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[961px]:w-auto"
+										className="inline-flex w-full items-center justify-center gap-2 border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-[#171717] transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[961px]:w-auto"
 										onClick={onRefreshMcpServers}
 										disabled={isLoadingMcpServers}
 									>
-										<svg className={`h-4 w-4 ${isLoadingMcpServers ? "animate-spin text-slate-700" : "text-[#525252]"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-											<path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8h-4.21" />
-										</svg>
+										{refreshIcon(isLoadingMcpServers)}
 										{isLoadingMcpServers ? "Syncing..." : "Sync MCP"}
 									</button>
 								) : null}
 							</div>
 						</header>
 
-						<div className="mt-4 space-y-4">
+						<div className="mt-3 space-y-3 min-[961px]:mt-4 min-[961px]:space-y-4">
 						<SettingsAccountSection
 							active={activeSection === "account" || activeSection === "connection"}
 							adminStatus={adminStatus}
@@ -647,11 +658,11 @@ export function SettingsPage({
 
 						{/* ---------- JOBS SECTION ---------- */}
 						{activeSection === "jobs" && (
-							<div className="space-y-4">
-								<div className="rounded-lg border border-line bg-white px-4 py-4">
+							<div className="space-y-3">
+								<div className="border-t border-black/8 pt-3">
 									<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Jobs</p>
-									<h2 className="mt-2 text-[1.05rem] font-bold text-slate-950">Recurring job list</h2>
-									<p className="mt-1 max-w-2xl text-sm font-medium leading-[1.6] text-slate-500">
+									<h2 className="mt-1 text-[1rem] font-bold text-slate-950">Recurring job list</h2>
+									<p className="mt-1 max-w-2xl text-[0.88rem] font-medium leading-[1.55] text-slate-500">
 										Browse active recurring schedules here. Open any job to inspect its full configuration, run history, and transcript on the dedicated jobs page.
 									</p>
 								</div>

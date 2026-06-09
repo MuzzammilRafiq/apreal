@@ -38,6 +38,22 @@ export function ScheduledJobsPage({
 	onEnsureRunLoaded,
 	selectedJobId,
 }: ScheduledJobsPageProps) {
+	const refreshIcon = (
+		<svg
+			className={`h-4 w-4 ${isLoadingJobs ? "animate-spin text-slate-700" : "text-[#525252]"}`}
+			fill="none"
+			viewBox="0 0 24 24"
+			stroke="currentColor"
+			strokeWidth={2.2}
+			aria-hidden="true"
+		>
+			<path d="M21 2v6h-6" strokeLinecap="round" strokeLinejoin="round" />
+			<path d="M3 12a9 9 0 0 1 15-6.7L21 8" strokeLinecap="round" strokeLinejoin="round" />
+			<path d="M3 22v-6h6" strokeLinecap="round" strokeLinejoin="round" />
+			<path d="M21 12a9 9 0 0 1-15 6.7L3 16" strokeLinecap="round" strokeLinejoin="round" />
+		</svg>
+	);
+
 	return (
 		<main className="min-h-svh bg-[#f3f3f3] text-[#171717] selection:bg-black/10 selection:text-black">
 			<div className="mx-auto flex min-h-svh w-full max-w-7xl flex-col px-3 py-4 min-[860px]:px-5 min-[860px]:py-6 min-[1180px]:px-6">
@@ -63,9 +79,7 @@ export function ScheduledJobsPage({
 							className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-[#171717] transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[520px]:w-auto"
 							onClick={onRefreshJobs}
 						>
-							<svg className={`h-4 w-4 ${isLoadingJobs ? "animate-spin text-slate-700" : "text-[#525252]"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-								<path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8h-4.21" />
-							</svg>
+							{refreshIcon}
 							{isLoadingJobs ? "Syncing..." : "Sync Jobs"}
 						</button>
 						<button

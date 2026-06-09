@@ -6,17 +6,17 @@ export function SettingsInventorySections({ activeSection, availableSkills, avai
 	return (
 		<>
 						{activeSection === "skills" && (
-							<div className="space-y-4">
-								<div className="border border-black/8 bg-white p-5">
-									<div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4">
+							<div className="space-y-3">
+								<div className="border-t border-black/8 pt-3">
+									<div className="flex flex-wrap items-start justify-between gap-3">
 										<div>
 											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Pi SDK skills</p>
-											<h2 className="mt-1 text-base font-bold text-slate-900">Current skill inventory</h2>
+											<h2 className="mt-1 text-[1rem] font-bold text-slate-900">Current skill inventory</h2>
 										</div>
 										{renderStatusPill(`${availableSkills.length} loaded`, availableSkills.length > 0 ? "success" : "neutral")}
 									</div>
 
-									<p className="mt-4 text-[0.84rem] leading-[1.6] text-slate-600">
+									<p className="mt-2 text-[0.84rem] leading-[1.55] text-slate-600">
 										These are the currently discoverable Pi skills for this Apreal workspace and agent environment.
 									</p>
 
@@ -25,13 +25,13 @@ export function SettingsInventorySections({ activeSection, availableSkills, avai
 											No skills are currently available.
 										</p>
 									) : (
-										<div className="mt-5 grid gap-3 min-[980px]:grid-cols-2">
+										<div className="mt-3 grid gap-2 min-[980px]:grid-cols-2">
 											{availableSkills.map((skill: any) => (
-												<article key={`${skill.name}:${skill.location}`} className="border border-slate-200 bg-slate-50 p-4">
+												<article key={`${skill.name}:${skill.location}`} className="border border-slate-200 bg-white/70 px-3 py-3">
 													<div className="flex items-start justify-between gap-3">
 														<div className="min-w-0">
-															<h3 className="text-[0.96rem] font-bold text-slate-900">{skill.name}</h3>
-															<p className="mt-2 text-[0.82rem] leading-[1.55] text-slate-600">
+															<h3 className="text-[0.92rem] font-bold text-slate-900">{skill.name}</h3>
+															<p className="mt-1.5 text-[0.79rem] leading-[1.45] text-slate-600">
 																{skill.description}
 															</p>
 														</div>
@@ -39,9 +39,9 @@ export function SettingsInventorySections({ activeSection, availableSkills, avai
 															{skill.sourceLabel}
 														</span>
 													</div>
-													<div className="mt-4 border-t border-slate-200 pt-3">
+													<div className="mt-3 border-t border-slate-200 pt-2.5">
 														<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Source path</p>
-														<p className="mt-1 break-all text-[0.76rem] leading-[1.55] text-slate-700 font-mono">
+														<p className="mt-1 break-all text-[0.73rem] leading-[1.45] text-slate-700 font-mono">
 															{skill.location}
 														</p>
 													</div>
@@ -53,32 +53,32 @@ export function SettingsInventorySections({ activeSection, availableSkills, avai
 							</div>
 						)}
 						{activeSection === "tools" && (
-							<div className="space-y-4">
-								<div className="border border-black/8 bg-white p-5">
-									<div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4">
+							<div className="space-y-3">
+								<div className="border-t border-black/8 pt-3">
+									<div className="flex flex-wrap items-start justify-between gap-3">
 										<div>
 											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Pi SDK tools</p>
-											<h2 className="mt-1 text-base font-bold text-slate-900">Current tool inventory</h2>
+											<h2 className="mt-1 text-[1rem] font-bold text-slate-900">Current tool inventory</h2>
 										</div>
 										{renderStatusPill(`${availableTools.length} enabled`, availableTools.length > 0 ? "success" : "neutral")}
 									</div>
 
-									<div className="mt-4 grid gap-3 min-[720px]:grid-cols-3">
-										<div className="border border-slate-200 bg-slate-50 px-3.5 py-3">
+									<div className="mt-3 grid gap-2 min-[720px]:grid-cols-3">
+										<div className="border-t border-black/8 px-0 py-2.5">
 											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Default tools</p>
-											<p className="mt-2 text-base font-bold text-slate-900">
+											<p className="mt-1 text-base font-bold text-slate-900">
 												{availableTools.filter((tool: any) => tool.kind === "built_in").length}
 											</p>
 										</div>
-										<div className="border border-slate-200 bg-slate-50 px-3.5 py-3">
+										<div className="border-t border-black/8 px-0 py-2.5">
 											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Custom tools</p>
-											<p className="mt-2 text-base font-bold text-slate-900">
+											<p className="mt-1 text-base font-bold text-slate-900">
 												{availableTools.filter((tool: any) => tool.kind === "custom").length}
 											</p>
 										</div>
-										<div className="border border-slate-200 bg-slate-50 px-3.5 py-3">
+										<div className="border-t border-black/8 px-0 py-2.5">
 											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Workspace state</p>
-											<p className="mt-2 text-base font-bold text-slate-900">
+											<p className="mt-1 text-base font-bold text-slate-900">
 												{adminStatus ? "Live inventory" : "Unavailable"}
 											</p>
 										</div>
@@ -89,12 +89,12 @@ export function SettingsInventorySections({ activeSection, availableSkills, avai
 											No tools are currently enabled.
 										</p>
 									) : (
-										<div className="mt-5 overflow-hidden border border-slate-200 bg-[#fafaf8]">
+										<div className="mt-3 overflow-hidden border-t border-black/8">
 											{availableTools.map((tool: any, index: number) => (
 												<div
 													key={tool.name}
-													className={`grid gap-3 px-4 py-3.5 min-[760px]:grid-cols-[minmax(0,1fr)_auto] min-[760px]:items-start ${
-														index > 0 ? "border-t border-slate-200" : ""
+													className={`grid gap-2 px-0 py-3 min-[760px]:grid-cols-[minmax(0,1fr)_auto] min-[760px]:items-start ${
+														index > 0 ? "border-t border-black/8" : ""
 													}`}
 												>
 													<div className="min-w-0">
@@ -102,7 +102,7 @@ export function SettingsInventorySections({ activeSection, availableSkills, avai
 														<p className="mt-1 font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-slate-400">
 															Tool name: {tool.name}
 														</p>
-														<p className="mt-2 text-[0.82rem] leading-[1.55] text-slate-600">
+														<p className="mt-1.5 text-[0.8rem] leading-[1.45] text-slate-600">
 															{tool.description}
 														</p>
 													</div>

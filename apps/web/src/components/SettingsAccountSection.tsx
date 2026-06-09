@@ -20,11 +20,11 @@ type SettingsAccountSectionProps = {
 	appendPromptSubmissionError: string | null;
 };
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function SummaryRow({ label, value }: { label: string; value: string }) {
 	return (
-		<div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+		<div className="flex min-w-0 items-baseline justify-between gap-4 border-b border-black/8 py-3 last:border-b-0">
 			<p className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.12em] text-slate-500">{label}</p>
-			<p className="mt-1.5 text-[0.95rem] font-semibold text-slate-900">{value}</p>
+			<p className="text-right text-[0.95rem] font-semibold text-slate-900">{value}</p>
 		</div>
 	);
 }
@@ -64,10 +64,10 @@ export function SettingsAccountSection({
 
 	return (
 		<div className="space-y-4">
-			<section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+			<section className="bg-white px-1 py-1">
 				<div className="flex flex-col gap-4 min-[760px]:flex-row min-[760px]:items-start min-[760px]:justify-between">
 					<div className="flex min-w-0 items-start gap-4">
-						<div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 text-lg font-bold text-slate-700 shadow-sm">
+						<div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.4rem] bg-[linear-gradient(180deg,#f7f7f7,#ececec)] text-lg font-bold text-slate-700 shadow-[0_10px_24px_rgba(0,0,0,0.06)]">
 							{userImage ? (
 								<img
 									src={userImage}
@@ -97,24 +97,24 @@ export function SettingsAccountSection({
 					</div>
 				</div>
 
-				<div className="mt-4 grid gap-3 min-[700px]:grid-cols-2">
-					<SummaryCard label="Client connection" value={clientLabel} />
-					<SummaryCard label="Sessions" value={sessionLabel} />
+				<div className="mt-6 border-t border-black/8">
+					<SummaryRow label="Client connection" value={clientLabel} />
+					<SummaryRow label="Sessions" value={sessionLabel} />
 				</div>
 
 				{statusError ? (
-					<p className="mt-4 rounded-lg border border-slate-300 bg-slate-100 px-3 py-2.5 text-[0.84rem] font-medium leading-[1.5] text-slate-800">
+					<p className="mt-4 border-l-2 border-black/25 bg-black/[0.03] px-3 py-2.5 text-[0.84rem] font-medium leading-[1.5] text-slate-800">
 						{statusError}
 					</p>
 				) : null}
 				{connectionError ? (
-					<p className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-[0.84rem] font-medium leading-[1.5] text-slate-700">
+					<p className="mt-3 border-l border-black/12 px-3 py-2.5 text-[0.84rem] font-medium leading-[1.5] text-slate-700">
 						{connectionError}
 					</p>
 				) : null}
 			</section>
 
-			<form className="border border-black/8 bg-white p-5" onSubmit={handleAppendSystemPromptSubmit}>
+			<form className="border-t border-black/8 pt-5" onSubmit={handleAppendSystemPromptSubmit}>
 				<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Prompt Layering</p>
 				<h2 className="mt-1 text-base font-bold text-slate-900">Append instructions to Pi's system prompt</h2>
 				<p className="mt-2 text-[0.88rem] leading-[1.6] text-slate-600">
@@ -131,7 +131,7 @@ export function SettingsAccountSection({
 						}}
 						rows={10}
 						placeholder={"Example:\n- Always explain tradeoffs before editing infra code.\n- Prefer existing project patterns over introducing new abstractions."}
-						className="mt-2 min-h-[14rem] w-full resize-y border border-slate-300 bg-[#f8f8f8] px-3 py-2.5 text-[0.95rem] leading-[1.6] text-[#171717] placeholder:text-slate-400 outline-none transition focus:border-slate-500 focus:bg-white"
+						className="mt-2 min-h-[14rem] w-full resize-y border-b border-black/14 bg-black/[0.025] px-0 py-3 text-[0.95rem] leading-[1.6] text-[#171717] placeholder:text-slate-400 outline-none transition focus:border-black focus:bg-transparent"
 						spellCheck={false}
 					/>
 				</label>
@@ -158,12 +158,12 @@ export function SettingsAccountSection({
 				</div>
 
 				{appendPromptSubmissionMessage ? (
-					<p className="mt-3 border border-slate-300 bg-white p-3 text-[0.84rem] leading-[1.5] text-slate-700 font-medium">
+					<p className="mt-3 border-l border-black/12 px-3 py-2.5 text-[0.84rem] leading-[1.5] text-slate-700 font-medium">
 						{appendPromptSubmissionMessage}
 					</p>
 				) : null}
 				{appendPromptSubmissionError ? (
-					<p className="mt-3 border border-slate-300 bg-slate-100 p-3 text-[0.84rem] leading-[1.5] text-slate-800 font-medium">
+					<p className="mt-3 border-l-2 border-black/25 bg-black/[0.03] px-3 py-2.5 text-[0.84rem] leading-[1.5] text-slate-800 font-medium">
 						{appendPromptSubmissionError}
 					</p>
 				) : null}

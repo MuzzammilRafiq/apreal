@@ -77,11 +77,11 @@ export function renderStatusPill(label: string, tone: "neutral" | "success" | "d
 	const toneClassName = tone === "success"
 		? "border-slate-300 bg-white text-slate-800 font-semibold"
 		: tone === "danger"
-			? "border-slate-400 bg-slate-200 text-slate-800 font-semibold"
-			: "border-slate-300 bg-slate-100 text-slate-600 font-semibold";
+			? "border-slate-400 bg-slate-100 text-slate-800 font-semibold"
+			: "border-slate-300 bg-black/[0.03] text-slate-600 font-semibold";
 
 	return (
-		<span className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-0.5 font-mono text-[0.67rem] uppercase tracking-[0.12em] ${toneClassName}`}>
+		<span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[0.63rem] uppercase tracking-[0.12em] ${toneClassName}`}>
 			{tone === "success" && <span className="h-1.5 w-1.5 rounded-full bg-slate-800" />}
 			{label}
 		</span>

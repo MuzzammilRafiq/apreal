@@ -68,30 +68,30 @@ export function ScheduledJobList({
 	onSelectJob,
 }: ScheduledJobListProps) {
 	return (
-		<section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white">
-			<div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+		<section className="flex min-h-0 flex-col overflow-hidden border-t border-black/8">
+			<div className="flex items-center justify-between px-0 py-3">
 				<h2 className="text-[0.95rem] font-bold text-slate-950">{title}</h2>
 				{jobs.length > 0 ? (
-					<span className="rounded-sm bg-slate-100 px-2 py-0.5 font-mono text-[0.68rem] font-semibold text-slate-500">
+					<span className="px-1.5 py-0.5 font-mono text-[0.68rem] font-semibold text-slate-500">
 						{jobs.length} Active
 					</span>
 				) : null}
 			</div>
 
 			{jobsError ? (
-				<div className="m-3 rounded-md border border-slate-300 bg-slate-100 px-3 py-2.5 text-xs font-semibold leading-5 text-slate-800">
+				<div className="mb-3 border-l-2 border-black/25 bg-black/[0.03] px-3 py-2.5 text-xs font-semibold leading-5 text-slate-800">
 					{jobsError}
 				</div>
 			) : null}
 
-			<div className="flex-1 overflow-y-auto px-3 py-3.5 scrollbar-thin">
+			<div className="flex-1 overflow-y-auto py-1 scrollbar-thin">
 				{jobs.length === 0 && !isLoadingJobs ? (
-					<div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-sm leading-[1.5]">
+					<div className="border border-dashed border-slate-300 px-4 py-5 text-center text-sm leading-[1.5]">
 						<p className="font-bold text-slate-800">No scheduled jobs</p>
 						<p className="mt-1 font-medium text-slate-400">Ask Pi inside chat to create a recurring scheduled job to monitor anything.</p>
 					</div>
 				) : (
-					<div className="space-y-2.5">
+					<div className="space-y-2">
 						{jobs.map((job) => {
 							const isSelected = job.id === selectedJobId;
 							const tone = getJobStatusTone(job);
@@ -102,10 +102,10 @@ export function ScheduledJobList({
 									key={job.id}
 									type="button"
 									onClick={() => onSelectJob(job.id)}
-									className={`flex w-full cursor-pointer flex-col rounded-md border p-3 text-left transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 ${ACCENT_BORDER[tone]} ${
+									className={`flex w-full cursor-pointer flex-col border px-3 py-2.5 text-left transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 ${ACCENT_BORDER[tone]} ${
 										isSelected
 											? "border-slate-900 bg-[#171717] text-white"
-											: "border-slate-150 bg-[#f8fafc]/60 text-[#0f172a] hover:border-slate-200 hover:bg-slate-50"
+											: "border-slate-200 bg-white/70 text-[#0f172a] hover:border-slate-300 hover:bg-slate-50"
 									}`}
 								>
 									<div className="flex w-full items-start justify-between gap-3">
@@ -116,11 +116,11 @@ export function ScheduledJobList({
 											? renderStatusBadge(relative.overdue ? "Overdue" : "Active", relative.overdue ? "error" : "active")
 											: renderStatusBadge("Paused", "paused")}
 									</div>
-									<p className={`mt-2 line-clamp-2 text-[0.76rem] font-medium leading-[1.45] ${isSelected ? "text-slate-300" : "text-slate-500"}`}>
+									<p className={`mt-1.5 line-clamp-2 text-[0.75rem] font-medium leading-[1.4] ${isSelected ? "text-slate-300" : "text-slate-500"}`}>
 										{job.prompt}
 									</p>
-									<div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[0.64rem] font-bold tracking-wider text-slate-400">
-										<span className="rounded-sm border border-white/5 bg-white/5 px-1.5 py-0.5">
+									<div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[0.64rem] font-bold tracking-wider text-slate-400">
+										<span className="px-1.5 py-0.5">
 											Interval: {formatInterval(job.intervalMs)}
 										</span>
 										<span className={relative.overdue && job.enabled ? "text-slate-200" : ""}>

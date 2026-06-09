@@ -30,28 +30,28 @@ export function formatSessionState(session: SessionSummary | null, pendingDraft:
 
 export function getSessionCardClassName(isActive: boolean): string {
 	return [
-		"group flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring",
+		"group relative flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring",
 		isActive
-			? "bg-ink-soft text-ink"
-			: "text-muted hover:bg-ink-soft hover:text-ink",
+			? "bg-black/[0.045] text-ink before:absolute before:top-2 before:bottom-2 before:left-0 before:w-px before:rounded-full before:bg-black"
+			: "text-muted hover:bg-black/[0.03] hover:text-ink",
 	].join(" ");
 }
 
 export function getMessageClassName(message: TranscriptMessage): string {
 	const baseClassName = "flex w-full flex-col gap-2.5 animate-message-enter max-w-full min-[861px]:max-w-[85%]";
 
-		switch (message.role) {
-			case "user":
-				return `${baseClassName} ml-auto items-end`;
-			case "assistant":
-				return `${baseClassName} mr-auto border-b border-line-soft pb-5`;
-			case "system":
-				return `${baseClassName} mx-auto rounded-lg border border-slate-200 bg-slate-50 px-4 py-3.5 text-center`;
-			case "error":
-				return `${baseClassName} mr-auto rounded-lg border border-slate-300 bg-slate-100 px-4 py-3.5`;
-			default:
-				return baseClassName;
-		}
+	switch (message.role) {
+		case "user":
+			return `${baseClassName} ml-auto items-end`;
+		case "assistant":
+			return `${baseClassName} mr-auto border-b border-black/6 pb-5`;
+		case "system":
+			return `${baseClassName} mx-auto border-l border-black/10 pl-4 text-left`;
+		case "error":
+			return `${baseClassName} mr-auto border-l-2 border-black/25 pl-4`;
+		default:
+			return baseClassName;
+	}
 }
 
 export function getMessageRoleClassName(role: TranscriptMessage["role"]): string {
@@ -72,7 +72,7 @@ export function getMessageBodyClassName(role: TranscriptMessage["role"], pending
 
 	switch (role) {
 		case "user":
-			return `w-fit max-w-full whitespace-pre-wrap break-words rounded-lg rounded-tr-sm bg-[#171717] px-4 py-2.5 text-[0.95rem] leading-[1.6] text-white transition-colors duration-150 hover:bg-black max-[520px]:px-3.5 max-[520px]:py-2.5${pendingClassName}`;
+			return `w-fit max-w-full whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-[#171717] px-4 py-2.5 text-[0.95rem] leading-[1.6] text-white transition-colors duration-150 hover:bg-black max-[520px]:px-3.5 max-[520px]:py-2.5${pendingClassName}`;
 		case "system":
 			return `whitespace-pre-wrap break-words text-[0.84rem] font-medium text-muted${pendingClassName}`;
 		case "assistant":

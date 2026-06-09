@@ -21,7 +21,7 @@ type SidebarProps = {
 };
 
 const sidebarNavItemClassName =
-	"flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[0.9375rem] font-medium text-ink transition-colors duration-150 hover:bg-ink-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring";
+	"flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[0.9375rem] font-medium text-ink transition-colors duration-150 hover:bg-black/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring";
 
 function SidebarContent({
 	pendingDraft,
@@ -88,7 +88,7 @@ function SidebarContent({
 			<div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 scrollbar-thin">
 				<div id="session-list" className="flex flex-col gap-px" aria-label="Chat sessions">
 					{sessions.length === 0 ? (
-						<div className="mx-1 w-full rounded-lg bg-surface-muted px-4 py-5 text-center">
+						<div className="mx-1 w-full bg-black/[0.03] px-4 py-5 text-center">
 							<p className="text-[0.9375rem] leading-[1.6] text-muted">
 								No saved sessions yet. Start a new chat and your first prompt will turn into a thread here.
 							</p>
@@ -126,7 +126,7 @@ function SidebarContent({
 					{canLoadMoreSessions ? (
 						<button
 							type="button"
-							className="mt-0.5 flex w-full items-center justify-center rounded-lg px-3 py-2.5 text-[0.875rem] font-medium text-muted transition-colors duration-150 hover:bg-ink-soft hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50"
+							className="mt-0.5 flex w-full items-center justify-center rounded-md px-3 py-2.5 text-[0.875rem] font-medium text-muted transition-colors duration-150 hover:bg-black/[0.03] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50"
 								onClick={onLoadMoreSessions}
 							disabled={loadingMoreSessions}
 						>
@@ -174,10 +174,10 @@ export const Sidebar = memo(function Sidebar({
 
 	return (
 		<>
-			<div className="z-30 flex items-center justify-between gap-3 border-b border-black/8 bg-white px-3 py-3 text-[#171717] min-[721px]:hidden">
+			<div className="z-30 flex items-center justify-between gap-3 border-b border-black/8 bg-white/88 px-3 py-3 text-[#171717] backdrop-blur-md min-[721px]:hidden">
 				<button
 					type="button"
-					className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-900 transition-colors duration-150 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+					className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/[0.045] text-slate-900 transition-colors duration-150 hover:bg-black/[0.08] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
 					onClick={() => setMobileMenuOpen(true)}
 					aria-label="Open chat menu"
 				>
@@ -194,7 +194,7 @@ export const Sidebar = memo(function Sidebar({
 				<button
 					type="button"
 					className={[
-						"flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-black bg-black text-white transition-colors duration-150 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-40",
+						"flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black text-white transition-colors duration-150 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-40",
 						!activeSessionId && !pendingDraft ? "opacity-70" : "",
 					].join(" ")}
 					onClick={onStartNewChat}
@@ -212,7 +212,7 @@ export const Sidebar = memo(function Sidebar({
 						onClick={() => setMobileMenuOpen(false)}
 						aria-label="Close chat menu"
 					/>
-					<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden bg-white text-ink shadow-2xl">
+					<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden bg-white text-ink shadow-[0_24px_60px_rgba(0,0,0,0.2)]">
 						<SidebarContent
 							pendingDraft={pendingDraft}
 							sessions={sessions}
@@ -232,7 +232,7 @@ export const Sidebar = memo(function Sidebar({
 				</div>
 			) : null}
 
-			<aside className="hidden min-h-0 flex-col overflow-hidden border-r border-line bg-white text-ink min-[721px]:flex min-[721px]:h-full">
+			<aside className="hidden min-h-0 flex-col overflow-hidden border-r border-black/8 bg-[#fbfbfa] text-ink min-[721px]:flex min-[721px]:h-full">
 				<SidebarContent
 					pendingDraft={pendingDraft}
 					sessions={sessions}

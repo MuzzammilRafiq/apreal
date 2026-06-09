@@ -37,13 +37,13 @@ export function SettingsModelsSection({
 		<>
 						{/* ---------- MODELS SECTION ---------- */}
 						{activeSection === "models" && (
-							<div className="space-y-4">
-								<div className="border border-black/8 bg-white p-5">
+							<div className="space-y-3">
+								<div className="border-t border-black/8 pt-3">
 									<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Agent Provisioning</p>
-									<h2 className="mt-1 text-base font-bold text-slate-900">Set default intelligence model</h2>
+									<h2 className="mt-1 text-[1rem] font-bold text-slate-900">Set default intelligence model</h2>
 
 									{providersError ? (
-										<p className="mt-3 border border-slate-300 bg-slate-100 p-3 text-[0.82rem] leading-[1.5] text-slate-800 font-medium">
+										<p className="mt-3 border-l-2 border-black/25 bg-black/[0.03] px-3 py-2.5 text-[0.82rem] leading-[1.5] text-slate-800 font-medium">
 											{providersError}
 										</p>
 									) : null}
@@ -55,20 +55,20 @@ export function SettingsModelsSection({
 									) : null}
 
 									{providers && providers.providers.length > 0 ? (
-										<div className="mt-5 space-y-6">
-											<div className="grid gap-5 border-b border-slate-200/80 pb-5 min-[1180px]:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+										<div className="mt-3 space-y-4">
+											<div className="grid gap-3 border-b border-black/8 pb-3 min-[1180px]:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
 												<div>
 													<label className="block">
 														<span className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">
 															Deep search models
 														</span>
-														<div className="relative mt-2">
+														<div className="relative mt-1.5">
 															<input
 																type="search"
 																value={modelQuery}
 																onChange={(event) => setModelQuery(event.target.value)}
 																placeholder="Type model id, name, or cloud provider..."
-																className="w-full border border-slate-300 bg-white pl-9 pr-3 py-3 text-sm text-[#171717] placeholder:text-slate-400 outline-none transition focus:border-slate-500"
+																className="w-full border-b border-slate-300 bg-transparent pl-8 pr-2 py-2.5 text-sm text-[#171717] placeholder:text-slate-400 outline-none transition focus:border-slate-500"
 																autoComplete="off"
 																spellCheck={false}
 															/>
@@ -81,7 +81,7 @@ export function SettingsModelsSection({
 														</div>
 													</label>
 
-													<p className="mt-2.5 text-[0.78rem] leading-[1.45] text-slate-500 font-medium">
+													<p className="mt-2 text-[0.75rem] leading-[1.4] text-slate-500 font-medium">
 														{normalizedModelQuery ? `Showing ${visibleModels.length} result${visibleModels.length === 1 ? "" : "s"}.` : currentDefaultModel ? "Default selected." : "Search models."}
 													</p>
 												</div>
@@ -91,13 +91,13 @@ export function SettingsModelsSection({
 														<span className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">
 															Search providers
 														</span>
-														<div className="relative mt-2">
+														<div className="relative mt-1.5">
 															<input
 																type="search"
 																value={providerQuery}
 																onChange={(event) => handleProviderQueryChange(event.target.value)}
 																placeholder="Type provider name, id, subscription, or api key..."
-																className="w-full border border-slate-300 bg-white pl-9 pr-3 py-3 text-sm text-[#171717] placeholder:text-slate-400 outline-none transition focus:border-slate-500"
+																className="w-full border-b border-slate-300 bg-transparent pl-8 pr-2 py-2.5 text-sm text-[#171717] placeholder:text-slate-400 outline-none transition focus:border-slate-500"
 																autoComplete="off"
 																spellCheck={false}
 															/>
@@ -110,7 +110,7 @@ export function SettingsModelsSection({
 														</div>
 													</label>
 
-													<div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[0.78rem] leading-[1.45] text-slate-500 font-medium">
+													<div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[0.75rem] leading-[1.4] text-slate-500 font-medium">
 														<p>
 															{normalizedProviderQuery
 																? `Showing ${visibleProviders.length} provider match${visibleProviders.length === 1 ? "" : "es"}.`
@@ -121,7 +121,7 @@ export function SettingsModelsSection({
 														{!normalizedProviderQuery && filteredProviders.length > DEFAULT_VISIBLE_PROVIDER_COUNT ? (
 															<button
 																type="button"
-																className="border border-slate-200 bg-white px-3 py-1.5 text-[0.72rem] font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer"
+																className="border border-slate-200 bg-white px-2.5 py-1 text-[0.72rem] font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer"
 																onClick={() => setShowAllProviders((current: boolean) => !current)}
 															>
 																{showAllProviders ? "Show Fewer" : `Show ${hiddenProviderCount} More`}
@@ -132,22 +132,22 @@ export function SettingsModelsSection({
 											</div>
 
 											{modelUpdateMessage ? (
-												<p className="border border-slate-300 bg-white px-3 py-2.5 text-xs leading-[1.5] text-slate-700 font-medium">
+												<p className="border-l border-black/12 px-3 py-2.5 text-xs leading-[1.5] text-slate-700 font-medium">
 													{modelUpdateMessage}
 												</p>
 											) : null}
 											{modelUpdateError ? (
-												<p className="border border-slate-300 bg-slate-100 px-3 py-2.5 text-xs leading-[1.5] text-slate-800 font-medium">
+												<p className="border-l-2 border-black/25 bg-black/[0.03] px-3 py-2.5 text-xs leading-[1.5] text-slate-800 font-medium">
 													{modelUpdateError}
 												</p>
 											) : null}
 											{providerAuthError ? (
-												<p className="border border-slate-300 bg-slate-100 px-3 py-2.5 text-xs leading-[1.5] text-slate-800 font-medium">
+												<p className="border-l-2 border-black/25 bg-black/[0.03] px-3 py-2.5 text-xs leading-[1.5] text-slate-800 font-medium">
 													{providerAuthError}
 												</p>
 											) : null}
 
-											<div className="grid gap-6 min-[1280px]:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+											<div className="grid gap-4 min-[1280px]:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
 												<section className="space-y-3">
 													<div className="flex items-center justify-between gap-3">
 														<div>
@@ -158,25 +158,25 @@ export function SettingsModelsSection({
 													</div>
 
 													{visibleModels.length > 0 ? (
-														<ul className="overflow-hidden border border-slate-200 bg-[#fafaf8]">
+														<ul className="overflow-hidden border-t border-black/8">
 															{visibleModels.map((model: any, index: number) => {
 																const isSaving = savingModelKey === model.key;
 																return (
 																	<li
 																		key={model.key}
-																		className={`grid gap-3 px-4 py-3.5 min-[560px]:grid-cols-[minmax(0,1fr)_auto] min-[560px]:items-center ${
-																			index > 0 ? "border-t border-slate-200" : ""
+																		className={`grid gap-2 px-0 py-2.5 min-[560px]:grid-cols-[minmax(0,1fr)_auto] min-[560px]:items-center ${
+																			index > 0 ? "border-t border-black/8" : ""
 																		}`}
 																	>
 																		<div className="min-w-0">
-																			<p className="text-[0.92rem] font-bold text-slate-900">{model.label}</p>
-																			<p className="mt-1 break-all text-[0.72rem] leading-tight font-mono text-slate-500 font-medium">
+																			<p className="text-[0.9rem] font-bold text-slate-900">{model.label}</p>
+																			<p className="mt-0.5 break-all text-[0.7rem] leading-tight font-mono text-slate-500 font-medium">
 																				ID: {model.modelId} · {model.providerLabel} · <span className="text-slate-600 font-bold">{model.authType === "oauth" ? "Subscription" : "Custom Key"}</span>
 																			</p>
 																		</div>
 																		<button
 																			type="button"
-																			className={`min-w-28 border px-3 py-2 text-xs font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50 min-[560px]:justify-self-end cursor-pointer ${
+																			className={`min-w-24 border px-3 py-1.5 text-[0.72rem] font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50 min-[560px]:justify-self-end cursor-pointer ${
 																				model.isDefault
 																					? "border-slate-900 bg-slate-900 text-white"
 																					: "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
@@ -207,7 +207,7 @@ export function SettingsModelsSection({
 														<h3 className="mt-1 text-[1rem] font-bold text-slate-900">Manage logins and API keys</h3>
 													</div>
 
-													<ul className="space-y-2.5">
+													<ul className="space-y-2">
 											{visibleProviders.map((provider: any) => {
 												const isDefaultProvider = provider.id === providers.defaultProvider && provider.models.some((m: any) =>
 													m.id === providers.defaultModel
@@ -215,45 +215,45 @@ export function SettingsModelsSection({
 												return (
 													<li
 														key={provider.id}
-													className={`border p-3.5 ${
-														isDefaultProvider ? "border-slate-300 bg-white" : "border-slate-200 bg-slate-50/40"
+													className={`border px-3 py-3 ${
+														isDefaultProvider ? "border-slate-300 bg-white" : "border-slate-200 bg-white/70"
 													}`}
 													>
 														<div className="flex flex-wrap items-start justify-between gap-2">
 															<div className="min-w-0">
 																<p className="text-[0.92rem] font-bold text-slate-900">{formatProviderId(provider.id)}</p>
-																<p className="mt-1.5 font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-slate-400">
+																<p className="mt-1 font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-slate-400">
 																	ID: {provider.id}
 																</p>
 															</div>
 														<div className="flex flex-wrap items-center gap-2">
 																{isDefaultProvider ? (
-															<span className="inline-flex border border-slate-900 bg-slate-900 px-2 py-0.5 font-mono text-[0.63rem] font-semibold uppercase tracking-[0.1em] text-white">
+															<span className="inline-flex border border-slate-900 bg-slate-900 px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-[0.1em] text-white">
 																		Default provider
 																	</span>
 																) : null}
-															<span className="inline-flex border border-slate-300 bg-white px-2 py-0.5 font-mono text-[0.63rem] font-semibold uppercase tracking-[0.1em] text-slate-500">
+															<span className="inline-flex border border-slate-300 bg-white px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-[0.1em] text-slate-500">
 																	{provider.authType === "oauth" ? "Subscription" : "API key"}
 																</span>
 																{provider.supportsOAuth ? (
-																	<span className="inline-flex border border-slate-300 bg-white px-2 py-0.5 font-mono text-[0.63rem] font-semibold uppercase tracking-[0.1em] text-slate-500">
+																	<span className="inline-flex border border-slate-300 bg-white px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-[0.1em] text-slate-500">
 																		Pi login
 																	</span>
 																) : null}
 																{provider.supportsApiKey ? (
-																	<span className="inline-flex border border-slate-300 bg-white px-2 py-0.5 font-mono text-[0.63rem] font-semibold uppercase tracking-[0.1em] text-slate-500">
+																	<span className="inline-flex border border-slate-300 bg-white px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-[0.1em] text-slate-500">
 																		API key
 																	</span>
 																) : null}
 															</div>
 														</div>
-														<p className="mt-3 text-[0.8rem] text-slate-400 font-semibold">
+														<p className="mt-2 text-[0.76rem] text-slate-400 font-semibold">
 															{provider.models.length > 0
 																? `${provider.models.length} model${provider.models.length === 1 ? "" : "s"} indexed.`
 																: "No available models listed. Check your Apreal login status."}
 														</p>
 														{provider.supportsOAuth || provider.supportsApiKey ? (
-															<div className="mt-3 flex flex-wrap items-center gap-2.5">
+															<div className="mt-2 flex flex-wrap items-center gap-2">
 																<span className="text-[0.78rem] font-medium text-slate-500">
 																	{provider.loginState.status === "pending"
 																		? "Browser login is waiting for completion."
@@ -267,7 +267,7 @@ export function SettingsModelsSection({
 																	{provider.supportsOAuth ? (
 																		<button
 																			type="button"
-																			className="border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+																			className="border border-slate-200 bg-white px-3 py-1.5 text-[0.72rem] font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
 																			onClick={() => {
 																				void handleStartLogin(provider.id);
 																			}}
@@ -283,7 +283,7 @@ export function SettingsModelsSection({
 																	{provider.supportsApiKey ? (
 																		<button
 																			type="button"
-																			className="border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+																			className="border border-slate-200 bg-white px-3 py-1.5 text-[0.72rem] font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
 																			onClick={() => {
 																				setApiKeyEditorProviderId((current: string | null) => current === provider.id ? null : provider.id);
 																				setProviderAuthError(null);
@@ -297,7 +297,7 @@ export function SettingsModelsSection({
 															</div>
 														) : null}
 														{provider.supportsApiKey && apiKeyEditorProviderId === provider.id ? (
-															<div className="mt-3 border border-slate-200 bg-slate-50 p-3">
+															<div className="mt-2 border-t border-black/8 pt-2.5">
 																<label className="block">
 																	<span className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">
 																		Stored API key
@@ -310,15 +310,15 @@ export function SettingsModelsSection({
 																			setApiKeyDrafts((previous: Record<string, string>) => ({ ...previous, [provider.id]: nextValue }));
 																		}}
 																		placeholder="Paste API key"
-																		className="mt-2 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm text-[#171717] placeholder:text-slate-400 outline-none transition focus:border-slate-500"
+																		className="mt-1.5 w-full border-b border-slate-300 bg-transparent px-0 py-2 text-sm text-[#171717] placeholder:text-slate-400 outline-none transition focus:border-slate-500"
 																		autoComplete="off"
 																		spellCheck={false}
 																	/>
 																</label>
-																<div className="mt-3 flex flex-wrap items-center gap-2">
+																<div className="mt-2.5 flex flex-wrap items-center gap-2">
 																	<button
 																		type="button"
-																		className="border border-black bg-black px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+																		className="border border-black bg-black px-3 py-1.5 text-[0.72rem] font-bold text-white transition hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
 																		onClick={() => {
 																			void handleSaveApiKey(provider.id);
 																		}}
