@@ -225,6 +225,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 
 	let server: HttpServer;
 	let listeningPort = port;
+	const bindHost = env.APREAL_ALLOW_PRIVATE_NETWORK_ADMIN === "true" ? undefined : "127.0.0.1";
 	const buildStatusPayload = async (): Promise<LocalWebAdminStatus> => {
 		const inventory = await readInventorySnapshot();
 		return {
@@ -354,7 +355,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		ADMIN_JOBS_PATH, parseAdminMcpRoute, parseAdminJobRoute, listScheduledJobRuns,
 		jobStore, sessions, scheduler, relay, createStaticResponse, createMissingWebUiResponse, webUiReady, getListeningPort: () => listeningPort,
 	});
-		const startedServer = await startHttpServer(port, handleWebRequest);
+		const startedServer = await startHttpServer(port, handleWebRequest, bindHost);
 			server = startedServer.server;
 			listeningPort = startedServer.port;
 	} catch (error) {
@@ -396,6 +397,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	logger.info("web server ready", {
 		cwd,
 		port: listeningPort,
+		host: bindHost ?? "0.0.0.0",
 		logLevel: env.LOG_LEVEL ?? "info",
 		transport: "http-sse+relay",
 		agentId: relayState.auth?.agentId ?? null,
@@ -404,6 +406,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		relayTransportConnected: relayState.transportConnected,
 	});
 	console.log(`Pi web server ready in ${cwd}`);
+	console.log(`Bind host: ${bindHost ?? "0.0.0.0"}`);
 	if (webUiReady) {
 		console.log(`Frontend UI: http://localhost:${listeningPort}`);
 	} else {

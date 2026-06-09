@@ -42,6 +42,7 @@ export interface RelayActions {
 	authenticateClientRequest(request: Request): Promise<{ clientId: string }>;
 	restartRelayTransport(): void;
 	authenticateWithOwnerGrant(ownerGrant: string): Promise<Awaited<ReturnType<typeof ensureRelayAgentAuth>>>;
+	isConfigured(): boolean;
 }
 
 const RELAY_AGENT_AUTH_REFRESH_WINDOW_MS = 60 * 1000;
@@ -371,5 +372,6 @@ export function createRelay(
 		authenticateClientRequest,
 		restartRelayTransport,
 		authenticateWithOwnerGrant,
+		isConfigured: () => Boolean(relayState.auth),
 	};
 }

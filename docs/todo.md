@@ -41,12 +41,6 @@
 - Lock down the local web server against cross-origin localhost abuse.
   The local server currently returns permissive CORS headers and accepts caller-chosen local client IDs for browser chat/auth flows. Require strict `Origin` validation plus an unguessable local session secret or CSRF token for all browser-facing local endpoints instead of trusting loopback/private-network source address alone.
 
-- Put the local-only authorization gate on every MCP admin route.
-  `/api/admin/mcp`, `/api/admin/mcp/refresh`, and per-server PATCH/DELETE routes currently bypass `assertLocalAdminRequest`. Because MCP config can add arbitrary stdio commands and outbound URLs, this is an unauthenticated config-tampering, SSRF, and potential local RCE path if the port is reachable.
-
-- Fix relay CORS for credentialed browser requests.
-  The relay currently reflects arbitrary request origins when `RELAY_CORS_ALLOW_ORIGIN` is unset while also sending `Access-Control-Allow-Credentials: true`. Change this to an explicit allowlist for `/api/auth/*`, `/api/relay/auth/*`, and `/api/relay/connection` so third-party sites cannot use a signed-in browser session to read owner grants or mint paired client tokens.
-
 - Remove durable relay browser credentials from `localStorage`.
   The remote web app persists `clientId` and `clientKey` in browser storage even though it no longer persists the relay bearer token there. Move durable browser credentials behind HttpOnly cookies or another safer mechanism, because any XSS or browser-extension compromise can still expose reusable relay client identity material.
 
@@ -55,6 +49,3 @@
 
 - Tighten filesystem handling for stored auth material.
   `relay-auth.json`, the relay owner binding store, and the Better Auth SQLite database should be created with user-only permissions and reviewed for safe storage location, because they currently hold reusable credentials or account-linking state on disk.
-
-- Bind the laptop-local web server to loopback by default unless LAN access is explicitly enabled.
-  Today the HTTP server listens without a host restriction, which broadens the impact of any missed auth check on local admin endpoints.

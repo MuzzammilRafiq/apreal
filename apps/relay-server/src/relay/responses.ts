@@ -32,7 +32,6 @@ export function buildHealthPayload(corsHeaders: Record<string, string>, ownerBin
 			corsAllowOrigin: corsHeaders["access-control-allow-origin"],
 		},
 		storage: {
-			ownerBindingStorePath: ownerBindingStore.getFilePath(),
 			ownerBindingCount: ownerBindingStore.countBindings(),
 		},
 		endpoints: {

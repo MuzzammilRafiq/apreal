@@ -79,6 +79,7 @@ export async function sendNodeResponse(response: ServerResponse, webResponse: Re
 export async function startHttpServer(
 	port: number,
 	handler: (request: Request) => Promise<Response>,
+	host?: string,
 ): Promise<{ server: HttpServer; port: number }> {
 	const server = createServer((request, response) => {
 		const webRequest = createNodeRequest(request, response);
@@ -114,7 +115,7 @@ export async function startHttpServer(
 
 		server.once("error", onError);
 		server.once("listening", onListening);
-		server.listen(port);
+		server.listen(port, host);
 	});
 
 	const address = server.address();

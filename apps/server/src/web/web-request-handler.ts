@@ -674,7 +674,15 @@ export function createWebRequestHandler(context: any) {
 		}
 	}
 	if (url.pathname === "/health") {
-		return json(await buildStatusPayload());
+		return json({
+			service: "web-server",
+			status: "ok",
+			transport: "http-sse+relay",
+			port: getListeningPort(),
+			webUiReady,
+			relayReady: relay.isConfigured(),
+			timestamp: new Date().toISOString(),
+		});
 	}
 	if (!url.pathname.startsWith("/api/")) {
 		const staticResponse = await createStaticResponse(request, url);
