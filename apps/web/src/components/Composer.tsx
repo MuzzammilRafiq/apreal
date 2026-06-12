@@ -126,19 +126,6 @@ export const Composer = memo(function Composer({
 					<span className="px-1.5 py-0.5 text-right font-mono text-[0.68rem] font-medium text-slate-600">
             {currentContextLabel}
           </span>
-					{activeSession?.busy ? (
-						<button
-							type="button"
-							className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-[0.75rem] font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
-							onClick={() => {
-								void onAbort();
-							}}
-							disabled={!serverReady || Boolean(blockedReason) || aborting}
-						>
-							<span aria-hidden="true" className="h-2.5 w-2.5 rounded-[2px] border-2 border-current" />
-							{aborting ? "Stopping..." : "Stop stream"}
-						</button>
-					) : null}
         </div>
       ) : null}
 			<div className="flex items-end gap-2">
@@ -185,6 +172,7 @@ export const Composer = memo(function Composer({
 				].join(" ")}
           disabled={!serverReady || Boolean(blockedReason) || aborting || (!canSend && !activeSession?.busy)}
           aria-label={activeSession?.busy ? "Stop run" : "Send prompt"}
+          title={activeSession?.busy ? (aborting ? "Stopping stream" : "Stop stream") : "Send prompt"}
           onClick={() => {
             if (activeSession?.busy) {
               void onAbort();
