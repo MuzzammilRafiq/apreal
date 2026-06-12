@@ -12,12 +12,13 @@ type JobsPanelProps = {
 	isLoadingJobs: boolean;
 	isLoadingJobRuns: boolean;
 	connectionError: string | null;
+	onSelectJob: (jobId: string) => void;
 	onRefreshJobRuns: (jobId: string) => void;
 	onUpdateJobInterval: (jobId: string, intervalMinutes: number) => Promise<void>;
 	onToggleJobEnabled: (jobId: string, enabled: boolean) => Promise<void>;
 	onDeleteJob: (jobId: string) => Promise<void>;
 	onEnsureRunLoaded: (runId: string) => void;
-	initialSelectedJobId?: string | null;
+	selectedJobId?: string | null;
 };
 
 function formatTimestamp(value: number | null): string {
@@ -29,18 +30,23 @@ function getRunStatusTone(run: SessionSummary): "running" | "saved" {
 	return run.busy ? "running" : "saved";
 }
 
-function renderStatusBadge(label: string, tone: "active" | "paused" | "error" | "running" | "saved" | "neutral") {
-	const colors: Record<string, string> = {
-		active: "border-slate-300 bg-white text-slate-800",
-		paused: "border-slate-300 bg-slate-100 text-slate-500",
-		error: "border-slate-400 bg-slate-200 text-slate-800",
-		running: "border-slate-900 bg-slate-900 text-white",
-		saved: "border-slate-300 bg-slate-100 text-slate-600",
-		neutral: "border-slate-300 bg-slate-100 text-slate-500",
-	};
+type StatusBadgeProps = {
+	label: string;
+	tone: "active" | "paused" | "error" | "running" | "saved" | "neutral";
+};
 
+const STATUS_BADGE_COLORS: Record<StatusBadgeProps["tone"], string> = {
+	active: "border-slate-300 bg-white text-slate-800",
+	paused: "border-slate-300 bg-slate-100 text-slate-500",
+	error: "border-slate-400 bg-slate-200 text-slate-800",
+	running: "border-slate-900 bg-slate-900 text-white",
+	saved: "border-slate-300 bg-slate-100 text-slate-600",
+	neutral: "border-slate-300 bg-slate-100 text-slate-500",
+};
+
+function StatusBadge({ label, tone }: StatusBadgeProps) {
 	return (
-		<span className={`inline-flex items-center gap-1.5 border rounded-md px-2 py-0.5 font-mono text-[0.64rem] font-bold uppercase tracking-[0.1em] ${colors[tone]}`}>
+		<span className={`inline-flex items-center gap-1.5 border rounded-md px-2 py-0.5 font-mono text-[0.64rem] font-bold uppercase tracking-[0.1em] ${STATUS_BADGE_COLORS[tone]}`}>
 			{tone === "running" ? <span className="inline-block h-1.5 w-1.5 rounded-full bg-white" /> : null}
 			{label}
 		</span>
@@ -56,16 +62,16 @@ export function JobsPanel({
 	isLoadingJobs,
 	isLoadingJobRuns,
 	connectionError,
+	onSelectJob,
 	onRefreshJobRuns,
 	onUpdateJobInterval,
 	onToggleJobEnabled,
 	onDeleteJob,
 	onEnsureRunLoaded,
-	initialSelectedJobId = null,
+	selectedJobId = null,
 }: JobsPanelProps) {
-	const [selectedJobId, setSelectedJobId] = useState<string | null>(initialSelectedJobId ?? jobs[0]?.id ?? null);
 	const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-	const [intervalMinutes, setIntervalMinutes] = useState("");
+	const [intervalDraft, setIntervalDraft] = useState<{ jobId: string | null; value: string }>({ jobId: null, value: "" });
 	const [actionMessage, setActionMessage] = useState<string | null>(null);
 	const [actionError, setActionError] = useState<string | null>(null);
 	const [isMutating, setIsMutating] = useState(false);
@@ -83,53 +89,37 @@ export function JobsPanel({
 		() => jobs.find((job) => job.id === selectedJobId) ?? jobs[0] ?? null,
 		[jobs, selectedJobId],
 	);
+	const intervalMinutes = intervalDraft.jobId === selectedJob?.id
+		? intervalDraft.value
+		: selectedJob
+			? String(Math.max(5, Math.round(selectedJob.intervalMs / 60_000)))
+			: "";
 
-	const selectedRunCache = selectedRunId ? sessionCache.get(selectedRunId) ?? null : null;
 	const selectedRun = useMemo(
-		() => jobRuns.find((run) => run.id === selectedRunId) ?? null,
+		() => (selectedRunId ? jobRuns.find((run) => run.id === selectedRunId) ?? null : null),
 		[jobRuns, selectedRunId],
 	);
+	const selectedRunCache = selectedRun ? sessionCache.get(selectedRun.id) ?? null : null;
 	const selectedRunTranscript = selectedRunCache?.transcriptLoaded
 		? selectedRunCache.transcript.filter((message) => message.role !== "user" && message.role !== "system")
 		: [];
 	const selectedRunTranscriptLoaded = selectedRunCache?.transcriptLoaded ?? false;
 
-	useEffect(() => {
-		if (jobs.length === 0) { setSelectedJobId(null); return; }
-		if (initialSelectedJobId && jobs.some((job) => job.id === initialSelectedJobId) && initialSelectedJobId !== selectedJobId) {
-			setSelectedJobId(initialSelectedJobId);
-			return;
-		}
-		if (!selectedJobId || !jobs.some((job) => job.id === selectedJobId)) {
-			setSelectedJobId(jobs[0]?.id ?? null);
-		}
-	}, [initialSelectedJobId, jobs, selectedJobId]);
-
-	useEffect(() => {
-		if (!selectedJob) { setIntervalMinutes(""); return; }
-		setIntervalMinutes(String(Math.max(5, Math.round(selectedJob.intervalMs / 60_000))));
-	}, [selectedJob?.id, selectedJob?.intervalMs]);
-
-	useEffect(() => {
-		if (!selectedJobId) { setSelectedRunId(null); return; }
+	function handleSelectJob(jobId: string) {
+		onSelectJob(jobId);
+		setSelectedRunId(null);
 		setActionMessage(null);
 		setActionError(null);
-		setSelectedRunId(null);
-		onRefreshJobRuns(selectedJobId);
-	}, [onRefreshJobRuns, selectedJobId]);
+		onRefreshJobRuns(jobId);
+	}
 
-	useEffect(() => {
-		if (jobRuns.length === 0) { setSelectedRunId(null); return; }
-		if (!selectedRunId || !jobRuns.some((run) => run.id === selectedRunId)) {
-			setSelectedRunId(jobRuns[0]?.id ?? null);
+	function handleSelectRun(runId: string) {
+		setSelectedRunId(runId);
+		const runCache = sessionCache.get(runId);
+		if (!runCache?.transcriptLoaded) {
+			onEnsureRunLoaded(runId);
 		}
-	}, [jobRuns, selectedRunId]);
-
-	useEffect(() => {
-		if (selectedRunId && !selectedRunTranscriptLoaded) {
-			onEnsureRunLoaded(selectedRunId);
-		}
-	}, [onEnsureRunLoaded, selectedRunId, selectedRunTranscriptLoaded]);
+	}
 
 	async function handleSaveInterval(event: React.FormEvent<HTMLFormElement>) {
 		event.preventDefault();
@@ -211,7 +201,7 @@ export function JobsPanel({
 					jobsError={jobsError}
 					isLoadingJobs={isLoadingJobs}
 					selectedJobId={selectedJob?.id ?? null}
-					onSelectJob={setSelectedJobId}
+					onSelectJob={handleSelectJob}
 				/>
 
 				{/* ======== RIGHT: Inspector + Runs + Transcript ======== */}
@@ -221,7 +211,7 @@ export function JobsPanel({
 						<div className="border-b border-slate-200 px-4 py-3">
 							<div className="flex items-center justify-between gap-3">
 								<h2 className="text-[0.95rem] font-bold text-slate-950">Job Configuration Inspector</h2>
-								{selectedJob ? renderStatusBadge(selectedJobTone === "active" ? "Active Schedule" : selectedJobTone === "error" ? "Handshake Error" : "Paused", selectedJobTone) : renderStatusBadge("No Selection", "neutral")}
+								{selectedJob ? <StatusBadge label={selectedJobTone === "active" ? "Active Schedule" : selectedJobTone === "error" ? "Handshake Error" : "Paused"} tone={selectedJobTone} /> : <StatusBadge label="No Selection" tone="neutral" />}
 							</div>
 						</div>
 
@@ -269,7 +259,7 @@ export function JobsPanel({
 											min={5}
 											step={1}
 											value={intervalMinutes}
-											onChange={(event) => setIntervalMinutes(event.target.value)}
+											onChange={(event) => setIntervalDraft({ jobId: selectedJob.id, value: event.target.value })}
 											className="mt-1.5 block w-full rounded-md border border-slate-300 bg-[#f8f8f8] px-3 py-2.5 font-mono text-sm font-bold text-[#171717] outline-none transition focus:border-slate-500 focus:bg-white"
 										/>
 									</label>
@@ -340,11 +330,17 @@ export function JobsPanel({
 								) : null}
 							</div>
 							<div className="flex items-center gap-2 shrink-0">
-								{totalRuns > 0 ? renderStatusBadge(`${totalRuns} total`, "neutral") : null}
+								{totalRuns > 0 ? <StatusBadge label={`${totalRuns} total`} tone="neutral" /> : null}
 								<button
 									type="button"
 									className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-[#171717] transition hover:bg-slate-100 cursor-pointer"
-									onClick={() => { if (selectedJob) onRefreshJobRuns(selectedJob.id); }}
+									onClick={() => {
+										if (!selectedJob) {
+											return;
+										}
+										setSelectedRunId(null);
+										onRefreshJobRuns(selectedJob.id);
+									}}
 									disabled={isLoadingJobRuns || !selectedJob}
 								>
 									{isLoadingJobRuns ? "Syncing..." : "Sync Runs"}
@@ -377,7 +373,7 @@ export function JobsPanel({
 												? "border-slate-900 bg-[#171717] text-white"
 												: "border-slate-150 bg-[#f8fafc]/60 text-[#0f172a] hover:border-slate-200 hover:bg-slate-50"
 										}`}
-												onClick={() => setSelectedRunId(run.id)}
+												onClick={() => handleSelectRun(run.id)}
 											>
 												<span className={`mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full ${tone === "running" ? "bg-white" : "bg-slate-400"}`} />
 												<div className="min-w-0 flex-1">
@@ -410,7 +406,7 @@ export function JobsPanel({
 									</p>
 								) : null}
 							</div>
-							{selectedRun ? renderStatusBadge(selectedRun.busy ? "Running" : "Saved Log", selectedRun.busy ? "running" : "saved") : renderStatusBadge("No execution trace selected", "neutral")}
+							{selectedRun ? <StatusBadge label={selectedRun.busy ? "Running" : "Saved Log"} tone={selectedRun.busy ? "running" : "saved"} /> : <StatusBadge label="No execution trace selected" tone="neutral" />}
 						</div>
 						<TranscriptPanel
 							activeSession={selectedRun}

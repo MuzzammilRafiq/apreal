@@ -11,6 +11,7 @@ type ScheduledJobsPageProps = {
 	isLoadingJobRuns: boolean;
 	connectionError: string | null;
 	onBack: () => void;
+	onSelectJob: (jobId: string) => void;
 	onRefreshJobs: () => void;
 	onRefreshJobRuns: (jobId: string) => void;
 	onUpdateJobInterval: (jobId: string, intervalMinutes: number) => Promise<void>;
@@ -30,6 +31,7 @@ export function ScheduledJobsPage({
 	isLoadingJobRuns,
 	connectionError,
 	onBack,
+	onSelectJob,
 	onRefreshJobs,
 	onRefreshJobRuns,
 	onUpdateJobInterval,
@@ -105,12 +107,13 @@ export function ScheduledJobsPage({
 						isLoadingJobs={isLoadingJobs}
 						isLoadingJobRuns={isLoadingJobRuns}
 						connectionError={connectionError}
+						onSelectJob={onSelectJob}
 						onRefreshJobRuns={onRefreshJobRuns}
 						onUpdateJobInterval={onUpdateJobInterval}
 						onToggleJobEnabled={onToggleJobEnabled}
 						onDeleteJob={onDeleteJob}
 						onEnsureRunLoaded={onEnsureRunLoaded}
-						initialSelectedJobId={selectedJobId}
+						selectedJobId={selectedJobId}
 					/>
 				</div>
 			</div>

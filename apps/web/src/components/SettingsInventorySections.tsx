@@ -1,4 +1,4 @@
-import { getSkillToneClassName, getToolKindLabel, getToolToneClassName, renderStatusPill } from "./settings-helpers";
+import { getSkillToneClassName, getToolKindLabel, getToolToneClassName, StatusPill } from "./settings-helpers";
 
 type SettingsInventorySectionsProps = Record<string, any>;
 
@@ -13,7 +13,7 @@ export function SettingsInventorySections({ activeSection, availableSkills, avai
 											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Pi SDK skills</p>
 											<h2 className="mt-1 text-[1rem] font-bold text-slate-900">Current skill inventory</h2>
 										</div>
-										{renderStatusPill(`${availableSkills.length} loaded`, availableSkills.length > 0 ? "success" : "neutral")}
+										<StatusPill label={`${availableSkills.length} loaded`} tone={availableSkills.length > 0 ? "success" : "neutral"} />
 									</div>
 
 									<p className="mt-2 text-[0.84rem] leading-[1.55] text-slate-600">
@@ -60,7 +60,7 @@ export function SettingsInventorySections({ activeSection, availableSkills, avai
 											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Pi SDK tools</p>
 											<h2 className="mt-1 text-[1rem] font-bold text-slate-900">Current tool inventory</h2>
 										</div>
-										{renderStatusPill(`${availableTools.length} enabled`, availableTools.length > 0 ? "success" : "neutral")}
+										<StatusPill label={`${availableTools.length} enabled`} tone={availableTools.length > 0 ? "success" : "neutral"} />
 									</div>
 
 									<div className="mt-3 grid gap-2 min-[720px]:grid-cols-3">

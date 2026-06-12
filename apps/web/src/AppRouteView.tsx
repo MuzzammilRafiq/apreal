@@ -137,6 +137,7 @@ export function AppRouteView({
 				isLoadingJobRuns={loadingScheduledJobRuns}
 				connectionError={connectionError}
 				onBack={() => onRouteChange("chat")}
+				onSelectJob={onOpenJob}
 				onRefreshJobs={onRefreshJobs}
 				onRefreshJobRuns={onRefreshJobRuns}
 				onUpdateJobInterval={onUpdateJobInterval}

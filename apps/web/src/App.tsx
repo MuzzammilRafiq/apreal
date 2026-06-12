@@ -46,7 +46,6 @@ export function App({ runtime }: AppProps) {
 	const [sessions, setSessions] = useState<SessionSummary[]>([]);
 	const [sessionCache, setSessionCache] = useState<Map<string, SessionCacheEntry>>(() => new Map());
 	const [visibleSessionLimit, setVisibleSessionLimit] = useState(SESSION_PAGE_SIZE);
-	const [serverLoadedSessionCount, setServerLoadedSessionCount] = useState(0);
 	const [totalSessionCount, setTotalSessionCount] = useState<number | null>(null);
 	const [loadingMoreSessions, setLoadingMoreSessions] = useState(false);
 	const [activeSessionId, setActiveSessionId] = useState<string | null>(() => readStoredSessionId());
@@ -67,6 +66,7 @@ export function App({ runtime }: AppProps) {
 		handleServerMessage,
 	} = useAppAdmin({ route, runtime, enabled: signedIn, setConnected, setStreamRequested });
 	const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
+	const serverLoadedSessionCountRef = useRef(0);
 	const sessionsRef = useRef(sessions);
 	const sessionCacheRef = useRef(sessionCache);
 	const activeSessionIdRef = useRef(activeSessionId);
@@ -127,10 +127,21 @@ export function App({ runtime }: AppProps) {
 	}), [authorizedSettingsSections, runtime.capabilities]);
 	const composerBlockedReason = authSessionPending ? "Checking your sign-in status..." : null;
 	const chatTransportReady = serverReady && !composerBlockedReason;
+	const previousChatTransportReadyRef = useRef(chatTransportReady);
 	const relayReady = Boolean(adminStatus?.relayReady);
 	const relayTransportConnected = Boolean(adminStatus?.relayTransportConnected);
 	const isBusy = pendingDraft || Boolean(activeSession?.busy);
 	const aborting = Boolean(activeSessionId && activeSessionId === abortingSessionId);
+
+	if (chatTransportReady !== previousChatTransportReadyRef.current) {
+		previousChatTransportReadyRef.current = chatTransportReady;
+		if (chatTransportReady) {
+			setStreamRequested(true);
+		} else {
+			setStreamRequested(false);
+			setConnected(false);
+		}
+	}
 
 	const focusPrompt = useCallback(() => {
 		window.requestAnimationFrame(() => {
@@ -398,20 +409,8 @@ export function App({ runtime }: AppProps) {
 		activateSession(null, { load: false });
 	}, [activateSession]);
 
-
-	useEffect(() => {
-		if (chatTransportReady) {
-			setStreamRequested(true);
-			return;
-		}
-
-		setStreamRequested(false);
-		setConnected(false);
-	}, [chatTransportReady]);
-
 	useEffect(() => {
 		if (!chatTransportReady || !streamRequested) {
-			setConnected(false);
 			return;
 		}
 
@@ -467,8 +466,10 @@ export function App({ runtime }: AppProps) {
 				}
 				case "sessions_page": {
 					setLoadingMoreSessions(false);
-					setServerLoadedSessionCount((previous) => Math.max(previous, message.offset + message.sessions.length));
-					setTotalSessionCount(message.total);
+						serverLoadedSessionCountRef.current = message.offset === 0
+							? message.sessions.length
+							: Math.max(serverLoadedSessionCountRef.current, message.offset + message.sessions.length);
+						setTotalSessionCount(message.total);
 					if (message.offset === 0 && message.total === 0) {
 						setSessions([]);
 						setSessionCache(new Map());
@@ -679,15 +680,15 @@ export function App({ runtime }: AppProps) {
 
 		const knownTotal = totalSessionCount ?? sessionsRef.current.length;
 		const needsServerPage =
-			serverLoadedSessionCount < nextVisibleLimit &&
-			serverLoadedSessionCount < knownTotal;
+			serverLoadedSessionCountRef.current < nextVisibleLimit &&
+			serverLoadedSessionCountRef.current < knownTotal;
 		if (!needsServerPage) {
 			return;
 		}
 
 		setLoadingMoreSessions(true);
-		requestSessionPage(serverLoadedSessionCount, SESSION_PAGE_SIZE);
-	}, [requestSessionPage, serverLoadedSessionCount, totalSessionCount]);
+		requestSessionPage(serverLoadedSessionCountRef.current, SESSION_PAGE_SIZE);
+	}, [requestSessionPage, totalSessionCount]);
 
 	const submitPrompt = useCallback((trimmedPrompt: string) => {
 		if (!trimmedPrompt || isBusy || !chatTransportReady) {
@@ -774,7 +775,8 @@ export function App({ runtime }: AppProps) {
 	const handleOpenJob = useCallback((jobId: string) => {
 		navigateToRoute("jobs", { jobId });
 		setRoute(coerceRouteForCapabilities("jobs", effectiveCapabilities));
-	}, [effectiveCapabilities]);
+		handleRefreshJobRuns(jobId);
+	}, [effectiveCapabilities, handleRefreshJobRuns]);
 
 
 

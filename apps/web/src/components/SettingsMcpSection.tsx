@@ -1,5 +1,5 @@
 import type { McpServerTransport } from "@apreal/shared";
-import { DEFAULT_VISIBLE_PROVIDER_COUNT, MCP_TRANSPORT_OPTIONS, formatProviderId, getMcpRuntimeLabel, getMcpRuntimeTone, renderStatusPill } from "./settings-helpers";
+import { MCP_TRANSPORT_OPTIONS, getMcpRuntimeLabel, getMcpRuntimeTone, StatusPill } from "./settings-helpers";
 
 type SettingsMcpSectionProps = Record<string, any>;
 
@@ -59,7 +59,7 @@ export function SettingsMcpSection({
 											>
 												{isLoadingMcpServers ? "Syncing..." : "Sync MCP"}
 											</button>
-											{renderStatusPill(`${enabledMcpServerCount}/${mcpServers.length} active`, enabledMcpServerCount > 0 ? "success" : "neutral")}
+											<StatusPill label={`${enabledMcpServerCount}/${mcpServers.length} active`} tone={enabledMcpServerCount > 0 ? "success" : "neutral"} />
 										</div>
 									</div>
 
@@ -196,7 +196,7 @@ export function SettingsMcpSection({
 																			<p className="text-[0.94rem] font-bold text-slate-900">{server.name}</p>
 																			<span className={`border px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-[0.1em] ${server.enabled ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-500"}`}>{server.enabled ? "Enabled" : "Disabled"}</span>
 																			<span className="border border-slate-300 bg-white px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-[0.1em] text-slate-500">{server.transport}</span>
-																			{renderStatusPill(getMcpRuntimeLabel(server), getMcpRuntimeTone(server))}
+																			<StatusPill label={getMcpRuntimeLabel(server)} tone={getMcpRuntimeTone(server)} />
 																		</div>
 																		<p className="mt-1.5 break-all font-mono text-[0.72rem] text-slate-500">
 																			{server.transport === "stdio" ? `${server.command ?? "No command"}${server.args.length > 0 ? ` ${server.args.join(" ")}` : ""}` : server.url ?? "No URL"}

@@ -39,15 +39,20 @@ export function getJobStatusTone(job: ScheduledJobDetails): "active" | "paused" 
 	return "active";
 }
 
-function renderStatusBadge(label: string, tone: "active" | "paused" | "error") {
-	const colors: Record<string, string> = {
-		active: "border-slate-300 bg-white text-slate-800",
-		paused: "border-slate-300 bg-slate-100 text-slate-500",
-		error: "border-slate-400 bg-slate-200 text-slate-800",
-	};
+type StatusBadgeProps = {
+	label: string;
+	tone: "active" | "paused" | "error";
+};
 
+const STATUS_BADGE_COLORS: Record<StatusBadgeProps["tone"], string> = {
+	active: "border-slate-300 bg-white text-slate-800",
+	paused: "border-slate-300 bg-slate-100 text-slate-500",
+	error: "border-slate-400 bg-slate-200 text-slate-800",
+};
+
+function StatusBadge({ label, tone }: StatusBadgeProps) {
 	return (
-		<span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-[0.64rem] font-bold uppercase tracking-[0.1em] ${colors[tone]}`}>
+		<span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-[0.64rem] font-bold uppercase tracking-[0.1em] ${STATUS_BADGE_COLORS[tone]}`}>
 			{label}
 		</span>
 	);
@@ -113,8 +118,8 @@ export function ScheduledJobList({
 											{job.name}
 										</p>
 										{job.enabled
-											? renderStatusBadge(relative.overdue ? "Overdue" : "Active", relative.overdue ? "error" : "active")
-											: renderStatusBadge("Paused", "paused")}
+											? <StatusBadge label={relative.overdue ? "Overdue" : "Active"} tone={relative.overdue ? "error" : "active"} />
+											: <StatusBadge label="Paused" tone="paused" />}
 									</div>
 									<p className={`mt-1.5 line-clamp-2 text-[0.75rem] font-medium leading-[1.4] ${isSelected ? "text-slate-300" : "text-slate-500"}`}>
 										{job.prompt}

@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useState, type RefObject } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useState, type RefObject } from "react";
 import type { SessionSummary } from "../chatTypes";
 
 function formatContextCount(value: number): string {
@@ -63,7 +63,7 @@ export const Composer = memo(function Composer({
   const canSend = serverReady && !blockedReason && !activeSession?.busy && prompt.trim().length > 0;
   const currentContextLabel = formatCurrentContext(activeSession);
 
-  function resizePromptInput() {
+  const resizePromptInput = useCallback(() => {
     const node = promptInputRef.current;
     if (!node) {
       return;
@@ -79,11 +79,11 @@ export const Composer = memo(function Composer({
 
     node.style.height = `${Math.min(node.scrollHeight, maxHeight)}px`;
     node.style.overflowY = node.scrollHeight > maxHeight ? "auto" : "hidden";
-  }
+  }, [promptInputRef]);
 
   useLayoutEffect(() => {
     resizePromptInput();
-  }, [prompt]);
+  }, [prompt, resizePromptInput]);
 
   useEffect(() => {
     if (!serverReady || blockedReason) {
@@ -133,6 +133,7 @@ export const Composer = memo(function Composer({
           ref={promptInputRef}
           id="prompt-input"
           name="prompt"
+          aria-label="Prompt input"
           rows={1}
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}

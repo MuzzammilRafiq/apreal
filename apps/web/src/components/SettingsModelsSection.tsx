@@ -1,4 +1,4 @@
-import { DEFAULT_VISIBLE_PROVIDER_COUNT, MCP_TRANSPORT_OPTIONS, formatProviderId, getMcpRuntimeLabel, getMcpRuntimeTone, renderStatusPill } from "./settings-helpers";
+import { DEFAULT_VISIBLE_PROVIDER_COUNT, formatProviderId, StatusPill } from "./settings-helpers";
 
 type SettingsModelsSectionProps = Record<string, any>;
 
@@ -154,7 +154,7 @@ export function SettingsModelsSection({
 															<p className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.14em] text-slate-400">Default model</p>
 															<h3 className="mt-1 text-[1rem] font-bold text-slate-900">Choose what new chats start with</h3>
 														</div>
-														{currentDefaultModel ? renderStatusPill("Configured", "success") : renderStatusPill("Unselected", "neutral")}
+														{currentDefaultModel ? <StatusPill label="Configured" tone="success" /> : <StatusPill label="Unselected" tone="neutral" />}
 													</div>
 
 													{visibleModels.length > 0 ? (

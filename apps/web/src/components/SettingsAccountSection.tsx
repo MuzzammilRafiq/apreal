@@ -14,7 +14,6 @@ type SettingsAccountSectionProps = {
 	handleAppendSystemPromptSubmit: (event: FormEvent<HTMLFormElement>) => void;
 	appendSystemPromptDraft: string;
 	setAppendSystemPromptDraft: (value: string) => void;
-	setAppendSystemPromptDirty: (dirty: boolean) => void;
 	isSavingAppendPrompt: boolean;
 	appendPromptSubmissionMessage: string | null;
 	appendPromptSubmissionError: string | null;
@@ -42,7 +41,6 @@ export function SettingsAccountSection({
 	handleAppendSystemPromptSubmit,
 	appendSystemPromptDraft,
 	setAppendSystemPromptDraft,
-	setAppendSystemPromptDirty,
 	isSavingAppendPrompt,
 	appendPromptSubmissionMessage,
 	appendPromptSubmissionError,
@@ -135,7 +133,6 @@ export function SettingsAccountSection({
 						value={appendSystemPromptDraft}
 						onChange={(event) => {
 							setAppendSystemPromptDraft(event.target.value);
-							setAppendSystemPromptDirty(true);
 						}}
 						rows={10}
 						placeholder={"Example:\n- Always explain tradeoffs before editing infra code.\n- Prefer existing project patterns over introducing new abstractions."}
@@ -158,7 +155,6 @@ export function SettingsAccountSection({
 						disabled={isSavingAppendPrompt || !adminStatus || appendSystemPromptDraft.length === 0}
 						onClick={() => {
 							setAppendSystemPromptDraft("");
-							setAppendSystemPromptDirty(true);
 						}}
 					>
 						Clear editor

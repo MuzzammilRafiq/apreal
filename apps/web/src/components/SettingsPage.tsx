@@ -100,24 +100,17 @@ export function SettingsPage({
 	const [mcpFormError, setMcpFormError] = useState<string | null>(null);
 	const [mcpFormMessage, setMcpFormMessage] = useState<string | null>(null);
 	const [mcpActionServerId, setMcpActionServerId] = useState<string | null>(null);
-	const [appendSystemPromptDraft, setAppendSystemPromptDraft] = useState(adminStatus?.appendSystemPrompt ?? "");
-	const [appendSystemPromptDirty, setAppendSystemPromptDirty] = useState(false);
+	const [appendSystemPromptDraft, setAppendSystemPromptDraft] = useState(() => adminStatus?.appendSystemPrompt ?? "");
+	const [appendSystemPromptBaseline, setAppendSystemPromptBaseline] = useState(() => adminStatus?.appendSystemPrompt ?? "");
 	const [deletingAllSessions, setDeletingAllSessions] = useState(false);
 	const [deleteSessionsMessage, setDeleteSessionsMessage] = useState<string | null>(null);
 	const [deleteSessionsError, setDeleteSessionsError] = useState<string | null>(null);
 
-	useEffect(() => {
-		if (!appendSystemPromptDirty) {
-			setAppendSystemPromptDraft(adminStatus?.appendSystemPrompt ?? "");
-		}
-	}, [adminStatus?.appendSystemPrompt, appendSystemPromptDirty]);
-
-	useEffect(() => {
-		if (appendPromptSubmissionMessage) {
-			setAppendSystemPromptDirty(false);
-			setAppendSystemPromptDraft(adminStatus?.appendSystemPrompt ?? "");
-		}
-	}, [adminStatus?.appendSystemPrompt, appendPromptSubmissionMessage]);
+	const currentAppendSystemPrompt = adminStatus?.appendSystemPrompt ?? "";
+	if (appendSystemPromptBaseline !== currentAppendSystemPrompt) {
+		setAppendSystemPromptBaseline(currentAppendSystemPrompt);
+		setAppendSystemPromptDraft(currentAppendSystemPrompt);
+	}
 
 	useEffect(() => {
 		if (!visibleSections.includes(activeSection)) {
@@ -600,7 +593,6 @@ export function SettingsPage({
 							handleAppendSystemPromptSubmit={handleAppendSystemPromptSubmit}
 							appendSystemPromptDraft={appendSystemPromptDraft}
 							setAppendSystemPromptDraft={setAppendSystemPromptDraft}
-							setAppendSystemPromptDirty={setAppendSystemPromptDirty}
 							isSavingAppendPrompt={isSavingAppendPrompt}
 							appendPromptSubmissionMessage={appendPromptSubmissionMessage}
 							appendPromptSubmissionError={appendPromptSubmissionError}

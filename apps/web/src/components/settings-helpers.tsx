@@ -73,7 +73,12 @@ export function normalizeSearchValue(value: string): string {
 	return value.trim().toLowerCase();
 }
 
-export function renderStatusPill(label: string, tone: "neutral" | "success" | "danger") {
+type StatusPillProps = {
+	label: string;
+	tone: "neutral" | "success" | "danger";
+};
+
+export function StatusPill({ label, tone }: StatusPillProps) {
 	const toneClassName = tone === "success"
 		? "border-slate-300 bg-white text-slate-800 font-semibold"
 		: tone === "danger"
@@ -118,8 +123,10 @@ export const MCP_TRANSPORT_OPTIONS: { value: McpServerTransport; label: string; 
 export function parseLineSeparatedList(value: string): string[] {
 	return value
 		.split(/\r?\n/)
-		.map((entry) => entry.trim())
-		.filter(Boolean);
+		.flatMap((entry) => {
+			const trimmedEntry = entry.trim();
+			return trimmedEntry ? [trimmedEntry] : [];
+		});
 }
 
 export function parseKeyValueText(value: string, label: string): Record<string, string> {
@@ -130,13 +137,13 @@ export function parseKeyValueText(value: string, label: string): Record<string, 
 			continue;
 		}
 
-		const separatorIndex = trimmed.indexOf("=");
-		if (separatorIndex <= 0) {
+		const entryMatch = /^([^=]+)=(.*)$/.exec(trimmed);
+		if (!entryMatch) {
 			throw new Error(`${label} entries must use KEY=VALUE format.`);
 		}
 
-		const key = trimmed.slice(0, separatorIndex).trim();
-		const entryValue = trimmed.slice(separatorIndex + 1);
+		const [, rawKey = "", entryValue = ""] = entryMatch;
+		const key = rawKey.trim();
 		if (!key) {
 			throw new Error(`${label} keys must be non-empty.`);
 		}
