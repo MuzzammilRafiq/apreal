@@ -63,6 +63,7 @@ function handleControllerEvent(
 			if (!getPendingAssistantMessage(session)) {
 				createPendingAssistantMessage(session);
 				clientActions.broadcastSessionSnapshot(session);
+				clientActions.broadcastSessionSummaryUpdated(session);
 			}
 			break;
 		}
@@ -75,7 +76,7 @@ function handleControllerEvent(
 		}
 		case "text_delta": {
 			const message = appendAssistantText(session, event.delta, event.contentIndex);
-			clientActions.broadcast({
+			clientActions.broadcastSessionPayload(session.id, {
 				type: "assistant_delta",
 				sessionId: session.id,
 				messageId: message.id,
@@ -86,7 +87,7 @@ function handleControllerEvent(
 		}
 		case "thinking_delta": {
 			const message = appendAssistantThinking(session, event.delta, event.contentIndex);
-			clientActions.broadcast({
+			clientActions.broadcastSessionPayload(session.id, {
 				type: "assistant_thinking_delta",
 				sessionId: session.id,
 				messageId: message.id,

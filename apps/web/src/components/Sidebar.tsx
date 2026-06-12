@@ -8,6 +8,7 @@ import newChatIcon from "./svgs/new-chat.svg";
 type SidebarProps = {
 	pendingDraft: boolean;
 	sessions: SessionSummary[];
+	sessionIdsNeedingSync: Set<string>;
 	loadingMoreSessions: boolean;
 	canLoadMoreSessions: boolean;
 	activeSessionId: string | null;
@@ -26,6 +27,7 @@ const sidebarNavItemClassName =
 function SidebarContent({
 	pendingDraft,
 	sessions,
+	sessionIdsNeedingSync,
 	loadingMoreSessions,
 	canLoadMoreSessions,
 	activeSessionId,
@@ -96,6 +98,7 @@ function SidebarContent({
 					) : (
 						sessions.map((session) => {
 							const isActive = session.id === activeSessionId;
+							const needsSync = sessionIdsNeedingSync.has(session.id);
 
 							return (
 								<button
@@ -111,6 +114,20 @@ function SidebarContent({
 									<p className="min-w-0 flex-1 truncate text-[0.9375rem] font-medium leading-snug tracking-tight">
 										{session.title}
 									</p>
+									{needsSync ? (
+										<span
+											className={[
+												"flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[0.625rem] font-bold leading-none",
+												isActive
+													? "border-slate-400 text-slate-700"
+													: "border-slate-300 text-slate-500 group-hover:border-slate-400 group-hover:text-slate-700",
+											].join(" ")}
+											title="Transcript updates when opened"
+											aria-label="Transcript updates when opened"
+										>
+											!
+										</span>
+									) : null}
 									<span
 										className={[
 											"shrink-0 text-[0.8125rem] tabular-nums transition-colors duration-150",
@@ -147,6 +164,7 @@ function SidebarContent({
 export const Sidebar = memo(function Sidebar({
 	pendingDraft,
 	sessions,
+	sessionIdsNeedingSync,
 	loadingMoreSessions,
 	canLoadMoreSessions,
 	activeSessionId,
@@ -216,6 +234,7 @@ export const Sidebar = memo(function Sidebar({
 						<SidebarContent
 							pendingDraft={pendingDraft}
 							sessions={sessions}
+							sessionIdsNeedingSync={sessionIdsNeedingSync}
 							loadingMoreSessions={loadingMoreSessions}
 							canLoadMoreSessions={canLoadMoreSessions}
 							activeSessionId={activeSessionId}
@@ -236,6 +255,7 @@ export const Sidebar = memo(function Sidebar({
 				<SidebarContent
 					pendingDraft={pendingDraft}
 					sessions={sessions}
+					sessionIdsNeedingSync={sessionIdsNeedingSync}
 					loadingMoreSessions={loadingMoreSessions}
 					canLoadMoreSessions={canLoadMoreSessions}
 					activeSessionId={activeSessionId}

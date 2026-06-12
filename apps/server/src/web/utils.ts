@@ -30,6 +30,7 @@ export type ClientConnection = {
 	closed: boolean;
 	ready: boolean;
 	transport: ClientTransport;
+	loadedSessionIds: Set<string>;
 	send(payload: ServerMessage): boolean | void;
 	close?(reason: string): void;
 };

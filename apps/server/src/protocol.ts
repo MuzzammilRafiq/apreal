@@ -16,7 +16,7 @@ export type ClientAppMessage =
 	| { type: "prompt"; prompt: string; sessionId?: string | null }
 	| { type: "abort"; sessionId: string }
 	| { type: "delete_session"; sessionId: string }
-	| { type: "load_session"; sessionId: string }
+	| { type: "load_session"; sessionId: string; knownRevision?: number }
 	| { type: "load_sessions_page"; offset?: number; limit?: number }
 	| { type: "ping" }
 	| ClientJobsCommand
@@ -112,7 +112,13 @@ export function parseClientAppMessage(rawMessage: string | Buffer | unknown): Cl
 	}
 
 	if (value.type === "load_session" && typeof value.sessionId === "string") {
-		return { type: "load_session", sessionId: value.sessionId };
+		return {
+			type: "load_session",
+			sessionId: value.sessionId,
+			knownRevision: typeof value.knownRevision === "number" && Number.isInteger(value.knownRevision) && value.knownRevision >= 0
+				? value.knownRevision
+				: undefined,
+		};
 	}
 
 	if (value.type === "load_sessions_page") {

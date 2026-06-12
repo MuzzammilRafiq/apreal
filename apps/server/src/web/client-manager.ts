@@ -34,6 +34,8 @@ export interface ClientActions {
 	sendError(clientId: string, message: string, sessionId?: string): void;
 	sendConnected(clientId: string): void;
 	broadcast(payload: ServerMessage): void;
+	broadcastSessionPayload(sessionId: string, payload: ServerMessage): void;
+	markSessionLoaded(clientId: string, sessionId: string): void;
 	sendSessionPage(clientId: string, offset?: number, limit?: number): void;
 	broadcastSessionSummaryUpdated(session: SharedSessionState): void;
 	sendSessionSnapshot(targetClientId: string, session: SharedSessionState): void;
@@ -114,6 +116,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 			closed: false,
 			ready: false,
 			transport,
+			loadedSessionIds: new Set(),
 			send: sendPayload,
 			close,
 		};
@@ -183,6 +186,25 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 		}
 	}
 
+	function broadcastSessionPayload(sessionId: string, payload: ServerMessage) {
+		for (const client of clients.values()) {
+			if (client.closed || !client.ready || !client.loadedSessionIds.has(sessionId)) {
+				continue;
+			}
+
+			sendClientPayload(client.clientId, payload);
+		}
+	}
+
+	function markSessionLoaded(clientId: string, sessionId: string) {
+		const client = clients.get(clientId);
+		if (!client || client.closed) {
+			return;
+		}
+
+		client.loadedSessionIds.add(sessionId);
+	}
+
 	function sendSessionPage(clientId: string, offset = 0, limit?: number) {
 		sendClientPayload(clientId, {
 			type: "sessions_page",
@@ -198,6 +220,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 	}
 
 	function sendSessionSnapshot(targetClientId: string, session: SharedSessionState) {
+		markSessionLoaded(targetClientId, session.id);
 		sendClientPayload(targetClientId, {
 			type: "session_snapshot",
 			...buildSessionPayload(session),
@@ -205,7 +228,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 	}
 
 	function broadcastSessionSnapshot(session: SharedSessionState) {
-		broadcast({
+		broadcastSessionPayload(session.id, {
 			type: "session_snapshot",
 			...buildSessionPayload(session),
 		});
@@ -353,6 +376,8 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 		sendError,
 		sendConnected,
 		broadcast,
+		broadcastSessionPayload,
+		markSessionLoaded,
 		sendSessionPage,
 		broadcastSessionSummaryUpdated,
 		sendSessionSnapshot,

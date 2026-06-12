@@ -22,7 +22,7 @@ export type AppRoute = "chat" | "settings" | "jobs";
 export type ClientMessage =
 	| { type: "prompt"; prompt: string; sessionId?: string | null }
 	| { type: "abort"; sessionId: string }
-	| { type: "load_session"; sessionId: string }
+	| { type: "load_session"; sessionId: string; knownRevision?: number }
 	| { type: "load_sessions_page"; offset?: number; limit?: number }
 	| { type: "ping" }
 	| ClientJobsCommand
@@ -160,6 +160,7 @@ export function createSummaryOnlyCacheEntry(session: SessionSummary): SessionCac
 		session,
 		transcript: [],
 		transcriptLoaded: false,
+		transcriptRevision: null,
 	};
 }
 

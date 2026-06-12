@@ -76,7 +76,11 @@ export function App({ runtime }: AppProps) {
 	const ensureSessionLoadedRef = useRef<(sessionId: string | null) => void>(() => {});
 	const requestSessionPageRef = useRef<(offset?: number, limit?: number) => void>(() => {});
 	const activateSessionRef = useRef<(sessionId: string | null, options?: { load?: boolean }) => void>(() => {});
-	const upsertSessionSnapshotRef = useRef<(session: SessionSummary, transcript: TranscriptMessage[]) => void>(() => {});
+	const upsertSessionSnapshotRef = useRef<(
+		session: SessionSummary,
+		transcript: TranscriptMessage[],
+		options?: { persist?: boolean },
+	) => void>(() => {});
 
 	useEffect(() => {
 		sessionsRef.current = sessions;
@@ -100,8 +104,21 @@ export function App({ runtime }: AppProps) {
 		sessions.find((session) => session.id === activeSessionId) ??
 		(cachedActiveSession && !isScheduledSessionSummary(cachedActiveSession) ? cachedActiveSession : null);
 	const activeSessionCacheEntry = activeSessionId ? sessionCache.get(activeSessionId) ?? null : null;
-	const activeTranscript = activeSessionCacheEntry?.transcriptLoaded ? activeSessionCacheEntry.transcript : [];
-	const activeTranscriptLoaded = activeSessionCacheEntry?.transcriptLoaded ?? false;
+	const activeTranscriptLoaded = Boolean(
+		activeSessionCacheEntry?.transcriptLoaded &&
+		(!activeSession || (activeSessionCacheEntry.transcriptRevision ?? -1) >= activeSession.revision),
+	);
+	const activeTranscript = activeTranscriptLoaded ? activeSessionCacheEntry?.transcript ?? [] : [];
+	const sessionIdsNeedingSync = useMemo(() => {
+		const ids = new Set<string>();
+		for (const session of sessions) {
+			const cached = sessionCache.get(session.id);
+			if (!cached?.transcriptLoaded || (cached.transcriptRevision ?? -1) < session.revision) {
+				ids.add(session.id);
+			}
+		}
+		return ids;
+	}, [sessionCache, sessions]);
 	const serverReady = transportReady;
 	const effectiveCapabilities = useMemo(() => ({
 		...runtime.capabilities,
@@ -240,22 +257,37 @@ export function App({ runtime }: AppProps) {
 			sessionCacheRef.current.get(sessionId)?.session ??
 			null;
 		const inMemory = sessionCacheRef.current.get(sessionId);
-		if (inMemory?.transcriptLoaded && (!summary || inMemory.session.revision >= summary.revision)) {
+		if (inMemory?.transcriptLoaded && (!summary || (inMemory.transcriptRevision ?? -1) >= summary.revision)) {
+			void sendClientMessage({
+				type: "load_session",
+				sessionId,
+				knownRevision: inMemory.transcriptRevision ?? undefined,
+			}).catch((error) => {
+				setConnectionError(getErrorMessage(error));
+			});
 			return;
 		}
 
 		void (async () => {
-			const cachedSnapshot = await readCachedSessionSnapshot(sessionId);
-			if (cachedSnapshot) {
-				upsertSessionSnapshotRef.current(cachedSnapshot.session, cachedSnapshot.transcript);
-				if (!summary || cachedSnapshot.session.revision >= summary.revision) {
-					return;
-				}
-			}
-
 			try {
+				const cachedSnapshot = await readCachedSessionSnapshot(sessionId);
+				if (cachedSnapshot) {
+					upsertSessionSnapshotRef.current(cachedSnapshot.session, cachedSnapshot.transcript, { persist: false });
+					if (!summary || cachedSnapshot.session.revision >= summary.revision) {
+						await sendClientMessage({
+							type: "load_session",
+							sessionId,
+							knownRevision: cachedSnapshot.session.revision,
+						});
+						return;
+					}
+				}
+
 				await sendClientMessage({ type: "load_session", sessionId });
 			} catch (error) {
+				if (error instanceof Error && error.name === "AbortError") {
+					return;
+				}
 				setConnectionError(getErrorMessage(error));
 			}
 		})();
@@ -301,7 +333,7 @@ export function App({ runtime }: AppProps) {
 					return;
 				}
 
-				upsertSessionSnapshotRef.current(cachedSnapshot.session, cachedSnapshot.transcript);
+				upsertSessionSnapshotRef.current(cachedSnapshot.session, cachedSnapshot.transcript, { persist: false });
 			} catch {
 				// Ignore browser cache hydration failures.
 			}
@@ -328,20 +360,33 @@ export function App({ runtime }: AppProps) {
 		activateSessionRef.current = activateSession;
 	}, [activateSession]);
 
-	const upsertSessionSnapshot = useCallback((session: SessionSummary, transcript: TranscriptMessage[]) => {
+	const upsertSessionSnapshot = useCallback((
+		session: SessionSummary,
+		transcript: TranscriptMessage[],
+		options: { persist?: boolean } = {},
+	) => {
 		setSessionCache((previous) => {
 			const next = new Map(previous);
+			const cached = next.get(session.id);
+			const latestSession = cached && cached.session.revision > session.revision ? cached.session : session;
 			next.set(session.id, {
-				session,
+				session: latestSession,
 				transcript: cloneTranscript(transcript),
 				transcriptLoaded: true,
+				transcriptRevision: session.revision,
 			});
 			return next;
 		});
 		if (!isScheduledSessionSummary(session)) {
-			setSessions((previous) => upsertSessionInList(previous, session));
+			setSessions((previous) => {
+				const existing = previous.find((entry) => entry.id === session.id);
+				const latestSession = existing && existing.revision > session.revision ? existing : session;
+				return upsertSessionInList(previous, latestSession);
+			});
 		}
-		void writeSessionSnapshot(session, transcript);
+		if (options.persist ?? true) {
+			void writeSessionSnapshot(session, transcript);
+		}
 	}, []);
 
 	useEffect(() => {
@@ -727,6 +772,7 @@ export function App({ runtime }: AppProps) {
 			scheduledJobsError={scheduledJobsError} scheduledJobRunsError={scheduledJobRunsError}
 			loadingScheduledJobs={loadingScheduledJobs} loadingScheduledJobRuns={loadingScheduledJobRuns}
 			connectionError={connectionError} pendingDraft={pendingDraft} visibleSessions={visibleSessions}
+			sessionIdsNeedingSync={sessionIdsNeedingSync}
 			loadingMoreSessions={loadingMoreSessions} canLoadMoreSessions={canLoadMoreSessions}
 			activeSessionId={activeSessionId} activeSession={activeSession} activeTranscript={activeTranscript}
 			emptyState={emptyState} connected={connected} serverReady={serverReady} streamRequested={streamRequested} target={runtime.target}

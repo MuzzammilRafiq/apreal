@@ -33,6 +33,7 @@ type AppRouteViewProps = {
 	connectionError: string | null;
 	pendingDraft: boolean;
 	visibleSessions: SessionSummary[];
+	sessionIdsNeedingSync: Set<string>;
 	loadingMoreSessions: boolean;
 	canLoadMoreSessions: boolean;
 	activeSessionId: string | null;
@@ -76,7 +77,7 @@ export function AppRouteView({
 	route, adminStatus, adminStatusError, providers, providersError, mcpServers, mcpServersError, loadingMcpServers,
 	savingAppendPrompt, appendPromptMessage, appendPromptError,
 	scheduledJobs, scheduledJobRuns, sessionCache, scheduledJobsError, scheduledJobRunsError, loadingScheduledJobs, loadingScheduledJobRuns,
-	connectionError, pendingDraft, visibleSessions, loadingMoreSessions, canLoadMoreSessions, activeSessionId, activeSession, activeTranscript,
+	connectionError, pendingDraft, visibleSessions, sessionIdsNeedingSync, loadingMoreSessions, canLoadMoreSessions, activeSessionId, activeSession, activeTranscript,
 	emptyState, connected, serverReady, streamRequested, target, capabilities, connectionLabel, selectedJobId, promptInputRef, transcriptRef, onRouteChange,
 	composerBlockedReason,
 	onOpenJob, onRefreshJobs, onRefreshJobRuns, onUpdateJobInterval, onToggleJobEnabled, onDeleteJob, onEnsureSessionLoaded, onSetDefaultModel,
@@ -149,6 +150,7 @@ export function AppRouteView({
 			<Sidebar
 				pendingDraft={pendingDraft}
 				sessions={visibleSessions}
+				sessionIdsNeedingSync={sessionIdsNeedingSync}
 				loadingMoreSessions={loadingMoreSessions}
 				canLoadMoreSessions={canLoadMoreSessions}
 				activeSessionId={activeSessionId}

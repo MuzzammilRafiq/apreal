@@ -403,6 +403,7 @@ export function createHandlers(
 				if (!getPendingAssistantMessage(session)) {
 					createPendingAssistantMessage(session);
 					clientActions.broadcastSessionSnapshot(session);
+					clientActions.broadcastSessionSummaryUpdated(session);
 				}
 				break;
 			}
@@ -415,7 +416,7 @@ export function createHandlers(
 			}
 			case "text_delta": {
 				const message = appendAssistantText(session, event.delta, event.contentIndex);
-				clientActions.broadcast({
+				clientActions.broadcastSessionPayload(session.id, {
 					type: "assistant_delta",
 					sessionId: session.id,
 					messageId: message.id,
@@ -426,7 +427,7 @@ export function createHandlers(
 			}
 			case "thinking_delta": {
 				const message = appendAssistantThinking(session, event.delta, event.contentIndex);
-				clientActions.broadcast({
+				clientActions.broadcastSessionPayload(session.id, {
 					type: "assistant_thinking_delta",
 					sessionId: session.id,
 					messageId: message.id,
@@ -577,6 +578,7 @@ export function createHandlers(
 			pending: false,
 		});
 		createPendingAssistantMessage(session);
+		clientActions.markSessionLoaded(clientId, session.id);
 		if (createdSession) {
 			chatStore.saveSession(session);
 		}
@@ -738,6 +740,11 @@ export function createHandlers(
 			const session = sessions.get(message.sessionId);
 			if (!session) {
 				clientActions.sendError(clientId, "The selected session could not be found.", message.sessionId);
+				return;
+			}
+
+			clientActions.markSessionLoaded(clientId, session.id);
+			if (message.knownRevision !== undefined && message.knownRevision >= session.revision) {
 				return;
 			}
 

@@ -68,4 +68,5 @@ export type SessionCacheEntry = {
 	session: SessionSummary;
 	transcript: TranscriptMessage[];
 	transcriptLoaded: boolean;
+	transcriptRevision: number | null;
 };
