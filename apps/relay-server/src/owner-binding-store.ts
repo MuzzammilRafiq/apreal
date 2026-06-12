@@ -9,6 +9,7 @@ type OwnerBindingStoreFile = {
 	agents: StoredOwnerAgentBinding[];
 };
 
+// Single persisted owner<->agent association record stored on disk.
 export type StoredOwnerAgentBinding = {
 	agentId: string;
 	agentKey: string;
@@ -16,14 +17,18 @@ export type StoredOwnerAgentBinding = {
 	updatedAt: number;
 };
 
+// Shared guard for JSON loaded from disk before the store trusts its shape.
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+// Normalizes externally supplied principal ids before storing or matching them.
 function ensureId(value: unknown, field: string): string {
 	return assertRelayPrincipalId(value, field);
 }
 
+// Resolves the JSON file path used to persist owner bindings across relay
+// restarts.
 function getDefaultStorePath(): string {
 	const env = getRelayEnv();
 	const configuredPath = env.RELAY_OWNER_BINDING_STORE_PATH ?? env.RELAY_TOKEN_STORE_PATH;
@@ -39,6 +44,8 @@ function getDefaultStorePath(): string {
 	return resolve(process.cwd(), ".data", "relay-owner-bindings.json");
 }
 
+// Converts a parsed JSON entry into a validated binding record, dropping any
+// malformed data instead of crashing the relay.
 function parseStoredBinding(value: unknown): StoredOwnerAgentBinding | null {
 	if (!isObjectRecord(value)) {
 		return null;
@@ -62,21 +69,29 @@ function parseStoredBinding(value: unknown): StoredOwnerAgentBinding | null {
 	}
 }
 
+// Small JSON-backed store that remembers which signed-in owner last bound a
+// given agent id/key pair.
 export class RelayOwnerBindingStore {
 	private readonly filePath: string;
 
+	// Allows tests to inject an isolated store path while production uses the
+	// default relay data location.
 	constructor(filePath = getDefaultStorePath()) {
 		this.filePath = filePath;
 	}
 
+	// Exposes the resolved backing file path for logs and health output.
 	getFilePath(): string {
 		return this.filePath;
 	}
 
+	// Returns the number of valid bindings currently persisted on disk.
 	countBindings(): number {
 		return this.readBindings().length;
 	}
 
+	// Upserts the binding for one agent so the relay can reconnect that agent to
+	// the same owner after a restart.
 	bindAgentToOwner(agentId: string, agentKey: string, ownerUserId: string): StoredOwnerAgentBinding {
 		const binding: StoredOwnerAgentBinding = {
 			agentId: ensureId(agentId, "agentId"),
@@ -91,6 +106,7 @@ export class RelayOwnerBindingStore {
 		return binding;
 	}
 
+	// Looks up which owner previously authenticated a specific agent id/key pair.
 	findOwnerUserIdForAgent(agentId: string, agentKey: string): string | null {
 		for (const binding of this.readBindings()) {
 			if (binding.agentId === agentId && binding.agentKey === agentKey) {
@@ -101,6 +117,7 @@ export class RelayOwnerBindingStore {
 		return null;
 	}
 
+	// Returns the most recently updated agent binding for a given owner.
 	findLatestAgentByOwnerUserId(ownerUserId: string): StoredOwnerAgentBinding | null {
 		const normalizedOwnerUserId = ensureId(ownerUserId, "ownerUserId");
 		for (const binding of this.readBindings()) {
@@ -112,6 +129,8 @@ export class RelayOwnerBindingStore {
 		return null;
 	}
 
+	// Reads and validates the persisted JSON file, returning newest bindings
+	// first so callers can pick the latest match.
 	private readBindings(): StoredOwnerAgentBinding[] {
 		if (!existsSync(this.filePath)) {
 			return [];
@@ -133,6 +152,7 @@ export class RelayOwnerBindingStore {
 		}
 	}
 
+	// Rewrites the binding file with the supplied validated records.
 	private writeBindings(bindings: StoredOwnerAgentBinding[]) {
 		mkdirSync(dirname(this.filePath), { recursive: true });
 

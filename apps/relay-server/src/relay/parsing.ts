@@ -7,10 +7,12 @@ import {
 } from "@apreal/shared";
 import { readRequestBody } from "./http.ts";
 
+// Shared guard for JSON-decoded request bodies.
 export function isObjectRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+// Reads a trimmed non-empty string field from parsed JSON.
 export function readStringField(value: unknown): string | null {
 	if (typeof value !== "string") {
 		return null;
@@ -20,6 +22,7 @@ export function readStringField(value: unknown): string | null {
 	return trimmed.length > 0 ? trimmed : null;
 }
 
+// Reads and normalizes an HTTP(S) URL field from parsed JSON.
 export function readUrlField(value: unknown): string | null {
 	if (typeof value !== "string") {
 		return null;
@@ -43,6 +46,8 @@ export function readUrlField(value: unknown): string | null {
 	}
 }
 
+// Parses the generic relay connection authorization request used to confirm a
+// token is scoped to a specific target.
 export async function parseRelayConnectionRequest(request: IncomingMessage): Promise<RelayConnectionRequest | null> {
 	let value: unknown;
 	try {
@@ -66,6 +71,7 @@ export async function parseRelayConnectionRequest(request: IncomingMessage): Pro
 	};
 }
 
+// Parses the browser client's auth or heartbeat payload.
 export async function parseClientAuthRequest(request: IncomingMessage): Promise<RelayClientAuthRequest | null> {
 	let value: unknown;
 	try {
@@ -91,6 +97,8 @@ export async function parseClientAuthRequest(request: IncomingMessage): Promise<
 	return { clientId, clientKey, ownerGrant };
 }
 
+// Parses the local agent's auth payload, including its optional owner grant
+// and server URL hint.
 export async function parseAgentAuthRequest(request: IncomingMessage): Promise<RelayAgentAuthRequest | null> {
 	let value: unknown;
 	try {
@@ -122,6 +130,8 @@ export async function parseAgentAuthRequest(request: IncomingMessage): Promise<R
 	};
 }
 
+// Validates the envelope an agent uses when pushing a server message back to a
+// specific browser client.
 export function parseRelayAgentMessage(value: unknown): RelayAgentMessage | null {
 	if (!isObjectRecord(value) || value.type !== "server_message") {
 		return null;

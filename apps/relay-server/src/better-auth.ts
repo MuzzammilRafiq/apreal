@@ -11,6 +11,8 @@ import { getRelayEnv, readOptionalRelayEnv, readRequiredRelayEnv } from "./env.t
 
 const require = createRequire(import.meta.url);
 
+// Chooses the public base URL Better Auth should embed into redirects and
+// cookies, falling back to the relay's local host/port during development.
 function resolveAuthBaseUrl(): string {
 	const env = getRelayEnv();
 	const configuredUrl = readOptionalRelayEnv("BETTER_AUTH_URL", "APREAL_AUTH_URL");
@@ -21,6 +23,8 @@ function resolveAuthBaseUrl(): string {
 	return `http://localhost:${env.PORT}`;
 }
 
+// Chooses where the Better Auth SQLite file lives, preferring explicit config
+// and otherwise colocating it with the relay's other persisted state.
 function resolveAuthDatabasePath(): string {
 	const env = getRelayEnv();
 	const configuredPath = env.BETTER_AUTH_SQLITE_PATH;
@@ -36,6 +40,8 @@ function resolveAuthDatabasePath(): string {
 	return resolve(process.cwd(), ".data", "better-auth.sqlite");
 }
 
+// Creates the SQLite database handle Better Auth uses for sessions, accounts,
+// and OAuth bookkeeping.
 function createAuthDatabase() {
 	const databasePath = resolveAuthDatabasePath();
 	mkdirSync(dirname(databasePath), { recursive: true });
@@ -49,6 +55,8 @@ function createAuthDatabase() {
 	return database;
 }
 
+// Builds the full Better Auth configuration, including Google OAuth, trusted
+// origins, and cookie attributes needed for cross-site auth flows.
 function createAuthOptions() {
 	const authBaseUrl = resolveAuthBaseUrl();
 	const env = getRelayEnv();
@@ -101,6 +109,7 @@ function createAuthOptions() {
 	} as const;
 }
 
+// Instantiates the Better Auth runtime from the relay's configuration.
 function createAuth() {
 	return betterAuth(createAuthOptions());
 }
@@ -112,6 +121,7 @@ let cachedAuth: Auth | null = null;
 let cachedAuthHandler: ReturnType<typeof toNodeHandler> | null = null;
 let authReadyPromise: Promise<void> | null = null;
 
+// Reports whether enough env is present to enable Better Auth at all.
 export function isBetterAuthConfigured(): boolean {
 	return Boolean(
 		readOptionalRelayEnv("BETTER_AUTH_SECRET", "JWT_SECRET") &&
@@ -120,16 +130,21 @@ export function isBetterAuthConfigured(): boolean {
 	);
 }
 
+// Lazily creates and caches the Better Auth instance for request handlers.
 export function getBetterAuth(): Auth {
 	cachedAuth ??= createAuth();
 	return cachedAuth;
 }
 
+// Adapts Better Auth's API surface into a Node HTTP request handler and caches
+// that adapter for reuse.
 export function getBetterAuthHandler(): ReturnType<typeof toNodeHandler> {
 	cachedAuthHandler ??= toNodeHandler(getBetterAuth());
 	return cachedAuthHandler;
 }
 
+// Runs Better Auth migrations once before the first real auth request so the
+// SQLite schema exists on fresh deployments.
 export async function ensureBetterAuthReady(): Promise<void> {
 	if (!isBetterAuthConfigured()) {
 		return;
@@ -146,6 +161,8 @@ export async function ensureBetterAuthReady(): Promise<void> {
 	await authReadyPromise;
 }
 
+// Reads the currently signed-in Better Auth user id from the request cookies
+// without forcing a session refresh.
 export async function readBetterAuthUserId(request: IncomingMessage): Promise<string | null> {
 	if (!isBetterAuthConfigured()) {
 		return null;

@@ -7,6 +7,8 @@ import { createRelayRequestHandler } from "./relay/routes.ts";
 import { createRelayServerState } from "./relay/state.ts";
 import { log } from "./utils/log.ts";
 
+// Bootstraps the relay's shared state, attaches the request router, and starts
+// listening on the configured HTTP port.
 export function runRelayServer(options?: { port?: number | string }) {
 	const state = createRelayServerState();
 	const port = options?.port ?? getRelayEnv().PORT;
@@ -24,6 +26,8 @@ export function runRelayServer(options?: { port?: number | string }) {
 	return server;
 }
 
+// Detects whether this file was executed directly so imports from tests or
+// scripts do not accidentally start a long-running relay process.
 const isDirectEntrypoint = process.argv[1]
 	? fileURLToPath(import.meta.url) === resolve(process.argv[1])
 	: false;

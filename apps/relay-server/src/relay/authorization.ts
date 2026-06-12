@@ -9,10 +9,13 @@ import {
 import { resolveRequestOrigin } from "./cors.ts";
 import { getErrorMessage } from "./http.ts";
 
+// Computes the opposite peer role a token is expected to target by default.
 export function getDefaultTargetType(type: UserType): RelayPrincipalType {
 	return type === "client" ? "agent" : "client";
 }
 
+// Confirms that a verified relay token is allowed to connect to the requested
+// target principal.
 export function authorizeRelayConnection(
 	principal: AuthTokenPayload,
 	request: RelayConnectionRequest,
@@ -45,6 +48,8 @@ export function authorizeRelayConnection(
 	};
 }
 
+// Maps connection-authorization failures into the HTTP status codes the route
+// layer returns.
 export function mapRelayConnectionErrorStatus(error: unknown): number {
 	const message = error instanceof Error ? error.message : String(error);
 	if (
@@ -59,6 +64,8 @@ export function mapRelayConnectionErrorStatus(error: unknown): number {
 	return 401;
 }
 
+// Best-effort bearer token reader used in places where missing auth is handled
+// by fallback logic rather than immediate failure.
 export function readOptionalBearerToken(headerValue: string | string[] | undefined): string | null {
 	if (!headerValue) {
 		return null;
@@ -73,6 +80,8 @@ export function readOptionalBearerToken(headerValue: string | string[] | undefin
 	return match?.[1] ?? null;
 }
 
+// Reads the browser client's relay token from either Authorization or the SSE
+// query string form used by EventSource callers.
 export function readClientTokenFromProxyRequest(request: IncomingMessage): string {
 	const headerToken = readOptionalBearerToken(request.headers.authorization);
 	if (headerToken) {
@@ -87,6 +96,7 @@ export function readClientTokenFromProxyRequest(request: IncomingMessage): strin
 	throw new AuthError("missing client auth token");
 }
 
+// Resolves the paired agent target encoded into a browser client's relay token.
 export function resolveClientRelayTarget(request: IncomingMessage) {
 	const clientToken = readClientTokenFromProxyRequest(request);
 	const principal = readRelayToken(clientToken);
@@ -109,6 +119,8 @@ export function resolveClientRelayTarget(request: IncomingMessage) {
 	};
 }
 
+// Maps proxy transport failures into status codes appropriate for browser
+// stream and message endpoints.
 export function mapRelayProxyErrorStatus(error: unknown): number {
 	const message = getErrorMessage(error);
 	if (
@@ -129,6 +141,7 @@ export function mapRelayProxyErrorStatus(error: unknown): number {
 	return 401;
 }
 
+// Prevents an agent from advertising the relay itself as its backing server.
 export function validateAgentServerUrl(request: IncomingMessage, serverUrl?: string) {
 	if (!serverUrl) {
 		return;

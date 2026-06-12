@@ -1,5 +1,6 @@
 import { type RelayAgentCommand } from "@apreal/shared";
 
+// Runtime handle for one browser client's SSE connection through the relay.
 export type RelayBrowserClientConnection = {
 	clientId: string;
 	agentId: string;
@@ -8,6 +9,7 @@ export type RelayBrowserClientConnection = {
 	close(reason: string): void;
 };
 
+// Runtime handle for one agent's SSE command stream through the relay.
 export type RelayAgentConnection = {
 	agentId: string;
 	closed: boolean;

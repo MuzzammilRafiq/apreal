@@ -12,7 +12,7 @@ const LEVEL_COLORS: Record<LogLevel, string> = {
 };
 const TAG_COLORS = ["\x1b[95m", "\x1b[96m", "\x1b[94m", "\x1b[92m", "\x1b[93m", "\x1b[36m"] as const;
 
-
+// Detects whether ANSI colors should be used for relay logs.
 const supportsColor = (): boolean => {
 	if (getRelayEnv().NO_COLOR) {
 		return false;
@@ -21,6 +21,7 @@ const supportsColor = (): boolean => {
 	return Boolean(process.stdout.isTTY);
 }
 
+// Wraps a string in ANSI color codes when terminal output supports them.
 function colorize(value: string, color: string): string {
 	if (!supportsColor()) {
 		return value;
@@ -29,6 +30,7 @@ function colorize(value: string, color: string): string {
 	return `${color}${value}${ANSI_RESET}`;
 }
 
+// Picks a stable color for a log tag so repeated lines stay visually grouped.
 function pickTagColor(tag: string): string {
 	let hash = 0;
 	for (let index = 0; index < tag.length; index += 1) {
@@ -38,6 +40,7 @@ function pickTagColor(tag: string): string {
 	return TAG_COLORS[hash % TAG_COLORS.length] ?? "\x1b[95m";
 }
 
+// Emits one structured relay log line to stdout or stderr.
 export function log(level: LogLevel, message: string, fields?: Record<string, unknown>) {
 	const tag = "relay-server";
 	const serializedFields = fields ? ` ${JSON.stringify(fields)}` : "";

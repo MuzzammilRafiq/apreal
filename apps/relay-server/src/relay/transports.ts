@@ -10,11 +10,15 @@ import { createSseChunk, createSseComment, createSseHeaders } from "./sse.ts";
 import { log } from "../utils/log.ts";
 import type { RelayAgentConnection, RelayBrowserClientConnection } from "../utils/types.ts";
 
+// Builds the in-memory transport operations that attach browser and agent SSE
+// streams and relay messages between them.
 export function createRelayTransportHandlers(state: RelayServerState) {
+	// Returns every currently open browser stream paired to one agent.
 	function listBrowserClientsForAgent(agentId: string): RelayBrowserClientConnection[] {
 		return Array.from(state.browserClients.values()).filter((client) => client.agentId === agentId && !client.closed);
 	}
 
+	// Pushes a command to an agent's active SSE stream, if that stream exists.
 	function sendAgentCommand(agentId: string, command: RelayAgentCommand): boolean {
 		const connection = state.agentConnections.get(agentId);
 		if (!connection || connection.closed) {
@@ -24,6 +28,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		return connection.send(command);
 	}
 
+	// Closes one browser stream by id through its connection handle.
 	function closeBrowserClient(clientId: string, reason: string) {
 		const existing = state.browserClients.get(clientId);
 		if (!existing) {
@@ -33,6 +38,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		existing.close(reason);
 	}
 
+	// Closes one agent stream by id through its connection handle.
 	function closeAgentConnection(agentId: string, reason: string) {
 		const existing = state.agentConnections.get(agentId);
 		if (!existing) {
@@ -42,12 +48,16 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		existing.close(reason);
 	}
 
+	// Replays synthetic client_connect events when an agent stream appears after
+	// browser streams were already open.
 	function notifyAgentOfConnectedClients(agentId: string) {
 		for (const client of listBrowserClientsForAgent(agentId)) {
 			sendAgentCommand(agentId, { type: "client_connect", clientId: client.clientId });
 		}
 	}
 
+	// Opens and registers the browser-facing SSE stream used to receive server
+	// events from the paired agent.
 	function registerBrowserClientStream(
 		request: IncomingMessage,
 		response: ServerResponse,
@@ -60,6 +70,8 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		let closed = false;
 		let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
+		// Tears down the browser stream, removes it from state, and notifies the
+		// paired agent that the client disappeared.
 		const close = (reason: string) => {
 			if (closed) {
 				return;
@@ -88,6 +100,8 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 			}
 		};
 
+		// The runtime handle the rest of the relay uses to talk to this browser
+		// client or close it later.
 		const connection: RelayBrowserClientConnection = {
 			clientId: target.clientId,
 			agentId: target.agentId,
@@ -136,6 +150,8 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		});
 	}
 
+	// Accepts one browser-originated message payload and forwards it to the
+	// paired agent command stream.
 	async function handleClientMessageRequest(
 		request: IncomingMessage,
 		response: ServerResponse,
@@ -158,6 +174,8 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		sendJson(response, 202, { ok: true }, corsHeaders);
 	}
 
+	// Opens and registers the agent-facing SSE stream used to receive commands
+	// from the relay on behalf of connected browser clients.
 	function handleAgentStreamRequest(
 		request: IncomingMessage,
 		response: ServerResponse,
@@ -175,6 +193,8 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		let closed = false;
 		let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
+		// Tears down the agent stream and closes every browser client that was
+		// paired to it because they no longer have an upstream.
 		const close = (reason: string) => {
 			if (closed) {
 				return;
@@ -201,10 +221,12 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 			}
 		};
 
+		// Named wrapper so the connection object can expose a stable close method.
 		const closeConnection = (reason: string) => {
 			close(reason);
 		};
 
+		// The runtime handle the relay uses to deliver commands to this agent.
 		const connection: RelayAgentConnection = {
 			agentId: principal.id,
 			closed: false,
@@ -248,6 +270,8 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		});
 	}
 
+	// Accepts one agent-originated server message and forwards it to the
+	// browser client currently paired to that same agent.
 	async function handleAgentMessageRequest(
 		request: IncomingMessage,
 		response: ServerResponse,

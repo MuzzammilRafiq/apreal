@@ -11,6 +11,8 @@ const optionalNonEmptyString = z.string().trim().min(1).optional();
 const optionalPort = z.coerce.number().int().min(0).max(65535).default(DEFAULT_PORT);
 const optionalUrl = z.url().optional();
 
+// Parses relay-specific environment variables and normalizes empty strings so
+// the rest of the code can treat missing config consistently.
 export function getRelayEnv() {
 	return createEnv({
 		server: {
@@ -42,6 +44,8 @@ type RelayEnvStringKey = Extract<{
 	[K in keyof RelayEnv]: RelayEnv[K] extends string | undefined ? K : never;
 }[keyof RelayEnv], string>;
 
+// Returns the first configured non-empty value from a list of compatible env
+// names such as BETTER_AUTH_* and legacy fallbacks.
 export function readOptionalRelayEnv(...names: RelayEnvStringKey[]): string | null {
 	const env = getRelayEnv();
 	for (const name of names) {
@@ -54,6 +58,8 @@ export function readOptionalRelayEnv(...names: RelayEnvStringKey[]): string | nu
 	return null;
 }
 
+// Same as readOptionalRelayEnv, but fails fast when none of the accepted env
+// names are configured.
 export function readRequiredRelayEnv(...names: RelayEnvStringKey[]): string {
 	const value = readOptionalRelayEnv(...names);
 	if (value) {
@@ -63,6 +69,8 @@ export function readRequiredRelayEnv(...names: RelayEnvStringKey[]): string {
 	throw new Error(`Missing required auth environment variable: ${names.join(" or ")}`);
 }
 
+// Small helper for health/status responses that need to report whether JWT
+// signing is available.
 export function hasRelayJwtSecret(): boolean {
 	return Boolean(getRelayEnv().JWT_SECRET);
 }

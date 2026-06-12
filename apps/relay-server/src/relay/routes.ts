@@ -38,12 +38,14 @@ import { parseAgentAuthRequest, parseClientAuthRequest, parseRelayConnectionRequ
 import { buildAgentAuthResponse, buildClientAuthResponse, buildClientHeartbeatResponse, buildHealthPayload } from "./responses.ts";
 import { log } from "../utils/log.ts";
 
+// Completes a CORS preflight request for any relay endpoint.
 function endPreflight(response: ServerResponse, corsHeaders: Record<string, string>) {
 	response.statusCode = 204;
 	setHeaders(response, corsHeaders);
 	response.end();
 }
 
+// Enforces the expected HTTP method for a route and handles OPTIONS centrally.
 function requireMethod(
 	request: IncomingMessage,
 	response: ServerResponse,
@@ -63,9 +65,12 @@ function requireMethod(
 	return true;
 }
 
+// Creates the top-level HTTP request router for the relay server.
 export function createRelayRequestHandler(state: RelayServerState) {
 	const transports = createRelayTransportHandlers(state);
 
+	// Reads the signed-in Better Auth owner id when auth is enabled, and fails
+	// if a protected route requires a session but none is present.
 	async function readRequiredOwnerUserId(request: IncomingMessage): Promise<string | undefined> {
 		const ownerUserId = await readBetterAuthUserId(request);
 		if (!isBetterAuthConfigured()) {
@@ -79,6 +84,8 @@ export function createRelayRequestHandler(state: RelayServerState) {
 		return ownerUserId;
 	}
 
+	// Issues a browser token and, when possible, pre-pairs it to the owner's
+	// most recently bound agent.
 	function issueClientToken(
 		clientId: string,
 		clientKey: string,
@@ -98,6 +105,8 @@ export function createRelayRequestHandler(state: RelayServerState) {
 		});
 	}
 
+	// Issues an agent token and records its active session payload in memory so
+	// heartbeat responses can report agent readiness.
 	function issueAgentToken(
 		agentId: string,
 		agentKey: string,
@@ -113,10 +122,14 @@ export function createRelayRequestHandler(state: RelayServerState) {
 		return issuedToken;
 	}
 
+	// Handles every incoming relay HTTP request, dispatching to auth, health,
+	// transport, and authorization endpoints.
 	return async (request: IncomingMessage, response: ServerResponse) => {
 		const pathname = new URL(request.url ?? "/", "http://relay.local").pathname;
 		const corsHeaders = createCorsHeaders(request);
 
+		// Better Auth owns its own sub-router once the relay has ensured its
+		// migrations and handler are ready.
 		if (pathname.startsWith("/api/auth/")) {
 			if (request.method === "OPTIONS") {
 				endPreflight(response, corsHeaders);
@@ -135,11 +148,13 @@ export function createRelayRequestHandler(state: RelayServerState) {
 			return;
 		}
 
+		// Lightweight liveness and configuration introspection endpoint.
 		if (pathname === "/" || pathname === "/health") {
 			sendJson(response, 200, buildHealthPayload(corsHeaders, state.ownerBindingStore), corsHeaders);
 			return;
 		}
 
+		// Browser token issuance for hosted clients.
 		if (pathname === RELAY_CLIENT_AUTH_PATH) {
 			if (!requireMethod(request, response, corsHeaders, "POST")) {
 				return;
@@ -175,6 +190,8 @@ export function createRelayRequestHandler(state: RelayServerState) {
 			return;
 		}
 
+		// Browser heartbeat re-issues/refreshes the client token and reports
+		// whether the paired agent session and transport are live.
 		if (pathname === RELAY_CLIENT_HEARTBEAT_PATH) {
 			if (!requireMethod(request, response, corsHeaders, "POST")) {
 				return;
@@ -211,6 +228,8 @@ export function createRelayRequestHandler(state: RelayServerState) {
 			return;
 		}
 
+		// Generates the short-lived owner grant that a local agent/client can use
+		// to bind itself to the signed-in owner.
 		if (pathname === RELAY_AGENT_OWNER_GRANT_PATH) {
 			if (!requireMethod(request, response, corsHeaders, "POST")) {
 				return;
@@ -231,6 +250,8 @@ export function createRelayRequestHandler(state: RelayServerState) {
 			return;
 		}
 
+		// Agent token issuance, either from a fresh owner grant or a previously
+		// persisted owner-agent binding.
 		if (pathname === RELAY_AGENT_AUTH_PATH) {
 			if (!requireMethod(request, response, corsHeaders, "POST")) {
 				return;
@@ -275,6 +296,7 @@ export function createRelayRequestHandler(state: RelayServerState) {
 			return;
 		}
 
+		// Long-lived SSE stream from relay to agent commands.
 		if (pathname === RELAY_AGENT_STREAM_PATH) {
 			if (!requireMethod(request, response, corsHeaders, "GET")) {
 				return;
@@ -291,6 +313,7 @@ export function createRelayRequestHandler(state: RelayServerState) {
 			return;
 		}
 
+		// Agent-to-browser message delivery endpoint.
 		if (pathname === RELAY_AGENT_MESSAGE_PATH) {
 			if (!requireMethod(request, response, corsHeaders, "POST")) {
 				return;
@@ -307,6 +330,7 @@ export function createRelayRequestHandler(state: RelayServerState) {
 			return;
 		}
 
+		// Long-lived SSE stream from relay to browser events.
 		if (pathname === CLIENT_EVENT_STREAM_PATH) {
 			if (!requireMethod(request, response, corsHeaders, "GET")) {
 				return;
@@ -323,6 +347,7 @@ export function createRelayRequestHandler(state: RelayServerState) {
 			return;
 		}
 
+		// Browser-to-agent message delivery endpoint.
 		if (pathname === CLIENT_MESSAGE_PATH) {
 			if (!requireMethod(request, response, corsHeaders, "POST")) {
 				return;
@@ -339,6 +364,8 @@ export function createRelayRequestHandler(state: RelayServerState) {
 			return;
 		}
 
+		// HTTP-only authorization check used by callers that want to validate a
+		// token against a specific target without opening a stream.
 		if (pathname === RELAY_CONNECTION_PATH) {
 			if (!requireMethod(request, response, corsHeaders, "POST")) {
 				return;
@@ -373,6 +400,7 @@ export function createRelayRequestHandler(state: RelayServerState) {
 			return;
 		}
 
+		// Everything else is outside the relay API surface.
 		sendText(response, 404, "Not Found", corsHeaders);
 	};
 }

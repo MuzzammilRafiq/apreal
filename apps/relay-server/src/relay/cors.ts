@@ -2,6 +2,8 @@ import type { IncomingMessage } from "node:http";
 
 import { getRelayEnv } from "../env.ts";
 
+// Normalizes an arbitrary URL string down to a bare origin, rejecting invalid
+// or non-HTTP(S) inputs.
 function normalizeUrlOrigin(value: string | null | undefined): string | null {
 	const trimmed = value?.trim();
 	if (!trimmed) {
@@ -20,6 +22,8 @@ function normalizeUrlOrigin(value: string | null | undefined): string | null {
 	}
 }
 
+// Reconstructs the relay's own public origin from request headers so the CORS
+// layer can treat same-origin requests as allowed.
 export function resolveRequestOrigin(request: IncomingMessage): string | null {
 	const host = request.headers.host?.trim();
 	if (!host) {
@@ -34,6 +38,8 @@ export function resolveRequestOrigin(request: IncomingMessage): string | null {
 	return `${protocol}://${host}`;
 }
 
+// Builds request-aware CORS headers and only echoes Origin when it matches the
+// relay's explicit allowlist.
 export function createCorsHeaders(request?: IncomingMessage): Record<string, string> {
 	const env = getRelayEnv();
 	const requestOrigin = normalizeUrlOrigin(typeof request?.headers.origin === "string" ? request.headers.origin : null);

@@ -103,6 +103,7 @@ function ensureNumber(value: unknown, field: string): number {
 	return value;
 }
 
+// Validates and normalizes a server URL embedded inside a relay token.
 function ensureServerUrl(value: unknown, field: string): string {
 	if (typeof value !== "string" || value.trim().length === 0) {
 		throw new AuthError(`invalid token field: ${field}`);
@@ -156,6 +157,8 @@ function validateTokenPayload(payload: string | JwtPayload): AuthTokenPayload {
 	};
 }
 
+// Extracts a bearer token from an Authorization header and rejects malformed
+// header formats with an auth-specific error.
 function extractBearerToken(headerValue: string | string[] | undefined): string {
 	if (!headerValue) {
 		throw new AuthError("missing authorization header");
@@ -174,6 +177,8 @@ function extractBearerToken(headerValue: string | string[] | undefined): string 
 	return match[1];
 }
 
+// Verifies a relay JWT signature and then validates the payload shape the
+// relay code expects to trust.
 export function readRelayToken(token: string, options?: { ignoreExpiration?: boolean }): AuthTokenPayload {
 	let decoded: string | JwtPayload;
 	try {
@@ -192,10 +197,13 @@ export function readRelayToken(token: string, options?: { ignoreExpiration?: boo
 	return validateTokenPayload(decoded);
 }
 
+// Convenience wrapper for the common "Authorization: Bearer ..." request path.
 export function readBearerTokenFromRequest(request: IncomingMessage): string {
 	return extractBearerToken(request.headers.authorization);
 }
 
+// Authenticates an HTTP request end-to-end and returns the verified relay
+// principal payload.
 export function authenticateHttpRequest(request: IncomingMessage): AuthTokenPayload {
 	return readRelayToken(readBearerTokenFromRequest(request));
 }
@@ -236,6 +244,8 @@ export function issueRelayToken(input: GenerateTokenInput): IssuedRelayToken {
 	};
 }
 
+// Validates the short-lived owner grant payload used to bind an agent to the
+// signed-in owner who generated it.
 function validateOwnerAgentGrantPayload(payload: string | JwtPayload): OwnerAgentGrantPayload {
 	if (typeof payload === "string") {
 		throw new AuthError("invalid owner grant payload");
@@ -253,6 +263,8 @@ function validateOwnerAgentGrantPayload(payload: string | JwtPayload): OwnerAgen
 	};
 }
 
+// Issues a short-lived owner grant that a local agent can present to claim the
+// current signed-in user as its owner.
 export function generateOwnerAgentGrant(ownerUserId: string): { ownerGrant: string; expiresAt: number } {
 	const normalizedOwnerUserId = ensureString(ownerUserId, "ownerUserId");
 	const ownerGrant = jwt.sign(
@@ -273,6 +285,8 @@ export function generateOwnerAgentGrant(ownerUserId: string): { ownerGrant: stri
 	};
 }
 
+// Verifies and decodes an owner grant token before the relay trusts it for
+// binding or client pairing.
 export function readOwnerAgentGrant(ownerGrant: string): OwnerAgentGrantPayload {
 	let decoded: string | JwtPayload;
 	try {
