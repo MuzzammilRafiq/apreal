@@ -16,6 +16,7 @@ export type ClientAppMessage =
 	| { type: "prompt"; prompt: string; sessionId?: string | null }
 	| { type: "abort"; sessionId: string }
 	| { type: "delete_session"; sessionId: string }
+	| { type: "delete_all_sessions" }
 	| { type: "load_session"; sessionId: string; knownRevision?: number }
 	| { type: "load_sessions_page"; offset?: number; limit?: number }
 	| { type: "ping" }
@@ -109,6 +110,10 @@ export function parseClientAppMessage(rawMessage: string | Buffer | unknown): Cl
 
 	if (value.type === "delete_session" && typeof value.sessionId === "string") {
 		return { type: "delete_session", sessionId: value.sessionId };
+	}
+
+	if (value.type === "delete_all_sessions") {
+		return { type: "delete_all_sessions" };
 	}
 
 	if (value.type === "load_session" && typeof value.sessionId === "string") {

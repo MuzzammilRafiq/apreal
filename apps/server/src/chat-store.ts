@@ -68,6 +68,7 @@ type ChatStore = {
 	loadSessions(): Map<string, SharedSessionState>;
 	saveSession(session: SharedSessionState): void;
 	deleteSession?(sessionId: string): void;
+	deleteSessions?(sessionIds: string[]): void;
 };
 
 type SqliteModule = typeof import("node:sqlite");
@@ -433,6 +434,20 @@ export function createChatStore(dbPath: string): ChatStore {
 			} catch (error) {
 				logger.error("failed to delete persisted chat session", {
 					sessionId,
+					error: formatError(error),
+				});
+			}
+		},
+		deleteSessions(sessionIds) {
+			try {
+				runInTransaction(database, () => {
+					for (const sessionId of sessionIds) {
+						deleteSessionStatement.run(sessionId);
+					}
+				});
+			} catch (error) {
+				logger.error("failed to delete persisted chat sessions", {
+					count: sessionIds.length,
 					error: formatError(error),
 				});
 			}

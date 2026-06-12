@@ -49,7 +49,7 @@ export interface HandlerState {
 	cwd: string;
 	clients: Map<string, ClientConnection>;
 	sessions: Map<string, SharedSessionState>;
-	chatStore: { saveSession(session: SharedSessionState): void; deleteSession?(sessionId: string): void };
+	chatStore: { saveSession(session: SharedSessionState): void; deleteSession?(sessionId: string): void; deleteSessions?(sessionIds: string[]): void };
 	getCustomTools?: () => ToolDefinition[];
 	jobStore?: JobStore;
 	scheduler?: Scheduler;
@@ -86,6 +86,10 @@ export function createHandlers(
 			.filter((session) => session.title.startsWith(prefix))
 			.sort((left, right) => right.updatedAt - left.updatedAt || right.createdAt - left.createdAt)
 			.map((session) => buildSessionSummary(session));
+	}
+
+	function isScheduledSession(session: SharedSessionState): boolean {
+		return session.title.startsWith("[Scheduled:");
 	}
 
 	function sendJobsSnapshot(clientId: string) {
@@ -704,6 +708,42 @@ export function createHandlers(
 		clientActions.broadcast({ type: "session_deleted", sessionId });
 	}
 
+	async function handleDeleteAllSessions(clientId: string) {
+		const deletableSessions = [...sessions.values()].filter((session) => !isScheduledSession(session));
+		const busySession = deletableSessions.find((session) => session.busy);
+		if (busySession) {
+			clientActions.sendError(
+				clientId,
+				"One or more chats are still responding. Wait for them to finish or abort them before deleting all chats.",
+				busySession.id,
+			);
+			return;
+		}
+
+		const sessionIds = deletableSessions.map((session) => session.id);
+		for (const session of deletableSessions) {
+			session.abortRequested = true;
+			session.unsubscribe?.();
+			session.unsubscribe = null;
+			session.controller?.dispose();
+			session.controller = null;
+			session.controllerPromise = null;
+			sessions.delete(session.id);
+		}
+
+		if (chatStore.deleteSessions) {
+			chatStore.deleteSessions(sessionIds);
+		} else {
+			for (const sessionId of sessionIds) {
+				chatStore.deleteSession?.(sessionId);
+			}
+		}
+
+		for (const sessionId of sessionIds) {
+			clientActions.broadcast({ type: "session_deleted", sessionId });
+		}
+	}
+
 	async function handleClientMessage(clientId: string, message: ClientAppMessage) {
 		const client = clients.get(clientId);
 		if (!client || client.closed) {
@@ -733,6 +773,11 @@ export function createHandlers(
 
 		if (message.type === "delete_session") {
 			await handleDeleteSession(clientId, message.sessionId);
+			return;
+		}
+
+		if (message.type === "delete_all_sessions") {
+			await handleDeleteAllSessions(clientId);
 			return;
 		}
 

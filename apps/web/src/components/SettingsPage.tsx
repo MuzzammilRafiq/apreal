@@ -40,6 +40,7 @@ type SettingsPageProps = {
 	onDeleteMcpServer: (serverId: string) => Promise<void>;
 	onRefreshMcpServers: () => void;
 	onSaveAppendSystemPrompt: (appendSystemPrompt: string) => void;
+	onDeleteAllSessions: () => Promise<void>;
 	visibleSections: SettingsSection[];
 };
 
@@ -72,6 +73,7 @@ export function SettingsPage({
 	onDeleteMcpServer,
 	onRefreshMcpServers,
 	onSaveAppendSystemPrompt,
+	onDeleteAllSessions,
 	visibleSections,
 }: SettingsPageProps) {
 	const [activeSection, setActiveSection] = useState<SettingsSection>(visibleSections[0] ?? "account");
@@ -100,6 +102,9 @@ export function SettingsPage({
 	const [mcpActionServerId, setMcpActionServerId] = useState<string | null>(null);
 	const [appendSystemPromptDraft, setAppendSystemPromptDraft] = useState(adminStatus?.appendSystemPrompt ?? "");
 	const [appendSystemPromptDirty, setAppendSystemPromptDirty] = useState(false);
+	const [deletingAllSessions, setDeletingAllSessions] = useState(false);
+	const [deleteSessionsMessage, setDeleteSessionsMessage] = useState<string | null>(null);
+	const [deleteSessionsError, setDeleteSessionsError] = useState<string | null>(null);
 
 	useEffect(() => {
 		if (!appendSystemPromptDirty) {
@@ -377,6 +382,24 @@ export function SettingsPage({
 		}
 	};
 
+	const handleDeleteAllSessions = async () => {
+		if (!window.confirm("Delete all chats? This will remove every saved chat from this server.")) {
+			return;
+		}
+
+		setDeletingAllSessions(true);
+		setDeleteSessionsMessage(null);
+		setDeleteSessionsError(null);
+		try {
+			await onDeleteAllSessions();
+			setDeleteSessionsMessage("All chats deleted.");
+		} catch (error) {
+			setDeleteSessionsError(error instanceof Error ? error.message : "Failed to delete all chats.");
+		} finally {
+			setDeletingAllSessions(false);
+		}
+	};
+
 	const activeSectionTitle = SECTION_TITLES[activeSection];
 	const availableSkills = adminStatus?.availableSkills ?? [];
 	const availableTools = adminStatus?.availableTools ?? [];
@@ -581,6 +604,10 @@ export function SettingsPage({
 							isSavingAppendPrompt={isSavingAppendPrompt}
 							appendPromptSubmissionMessage={appendPromptSubmissionMessage}
 							appendPromptSubmissionError={appendPromptSubmissionError}
+							onDeleteAllSessions={handleDeleteAllSessions}
+							deletingAllSessions={deletingAllSessions}
+							deleteSessionsMessage={deleteSessionsMessage}
+							deleteSessionsError={deleteSessionsError}
 						/>
 
 						<SettingsModelsSection

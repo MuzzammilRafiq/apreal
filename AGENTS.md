@@ -10,4 +10,5 @@ This is a monorepo
 - Local chat is working with persisted sessions, provider/model settings, MCP server management, system prompt append support, and scheduled jobs.
 - Remote account sign-in, automatic owner pairing, singleton agent/client takeover, and hosted chat transport are implemented, but production hardening for the remote surface is still in progress.
 - Chat sync now keeps sidebar/session metadata live across connected clients while full transcript snapshots are loaded lazily per opened session, with browser cache revision tracking for stale transcripts.
+- Chat management now exposes per-chat deletion in the sidebar and a settings action to delete all normal chat sessions across connected clients.
 - Update this section after every major project change; skip minor changes.

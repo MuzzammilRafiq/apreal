@@ -18,6 +18,10 @@ type SettingsAccountSectionProps = {
 	isSavingAppendPrompt: boolean;
 	appendPromptSubmissionMessage: string | null;
 	appendPromptSubmissionError: string | null;
+	onDeleteAllSessions: () => void;
+	deletingAllSessions: boolean;
+	deleteSessionsMessage: string | null;
+	deleteSessionsError: string | null;
 };
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
@@ -42,6 +46,10 @@ export function SettingsAccountSection({
 	isSavingAppendPrompt,
 	appendPromptSubmissionMessage,
 	appendPromptSubmissionError,
+	onDeleteAllSessions,
+	deletingAllSessions,
+	deleteSessionsMessage,
+	deleteSessionsError,
 }: SettingsAccountSectionProps) {
 	const { data: session, isPending } = authClient.useSession();
 	const user = session?.user;
@@ -168,6 +176,32 @@ export function SettingsAccountSection({
 					</p>
 				) : null}
 			</form>
+
+			<section className="border-t border-black/8 pt-5">
+				<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Chat Data</p>
+				<h2 className="mt-1 text-base font-bold text-slate-900">Delete saved chats</h2>
+				<p className="mt-2 text-[0.88rem] leading-[1.6] text-slate-600">
+					This removes saved chat sessions from the server and clears them from connected browsers.
+				</p>
+				<button
+					type="button"
+					className="mt-4 inline-flex items-center justify-center border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer"
+					onClick={onDeleteAllSessions}
+					disabled={deletingAllSessions}
+				>
+					{deletingAllSessions ? "Deleting chats..." : "Delete all chats"}
+				</button>
+				{deleteSessionsMessage ? (
+					<p className="mt-3 border-l border-black/12 px-3 py-2.5 text-[0.84rem] leading-[1.5] text-slate-700 font-medium">
+						{deleteSessionsMessage}
+					</p>
+				) : null}
+				{deleteSessionsError ? (
+					<p className="mt-3 border-l-2 border-black/25 bg-black/[0.03] px-3 py-2.5 text-[0.84rem] leading-[1.5] text-slate-800 font-medium">
+						{deleteSessionsError}
+					</p>
+				) : null}
+			</section>
 		</div>
 	);
 }

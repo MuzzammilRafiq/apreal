@@ -66,8 +66,10 @@ type AppRouteViewProps = {
 	onDeleteMcpServer: (serverId: string) => Promise<void>;
 	onRefreshMcpServers: () => void;
 	onSaveAppendSystemPrompt: (appendSystemPrompt: string) => void;
+	onDeleteAllSessions: () => Promise<void>;
 	onStartNewChat: () => void;
 	onActivateSession: (sessionId: string | null) => void;
+	onDeleteSession: (sessionId: string) => Promise<void>;
 	onLoadMoreSessions: () => void;
 	onSendPrompt: (prompt: string) => boolean;
 	onAbort: () => void;
@@ -82,7 +84,7 @@ export function AppRouteView({
 	composerBlockedReason,
 	onOpenJob, onRefreshJobs, onRefreshJobRuns, onUpdateJobInterval, onToggleJobEnabled, onDeleteJob, onEnsureSessionLoaded, onSetDefaultModel,
 	onStartProviderLogin, onSaveProviderApiKey, onCreateMcpServer, onUpdateMcpServer, onDeleteMcpServer, onRefreshMcpServers,
-	onSaveAppendSystemPrompt, onStartNewChat, onActivateSession, onLoadMoreSessions, onSendPrompt, onAbort,
+	onSaveAppendSystemPrompt, onDeleteAllSessions, onStartNewChat, onActivateSession, onDeleteSession, onLoadMoreSessions, onSendPrompt, onAbort,
 }: AppRouteViewProps) {
 	if (route === "settings" && capabilities.settings) {
 		return (
@@ -117,6 +119,7 @@ export function AppRouteView({
 					void onRefreshMcpServers();
 				}}
 				onSaveAppendSystemPrompt={onSaveAppendSystemPrompt}
+				onDeleteAllSessions={onDeleteAllSessions}
 				visibleSections={capabilities.settingsSections}
 			/>
 		);
@@ -157,6 +160,7 @@ export function AppRouteView({
 				onStartNewChat={onStartNewChat}
 				onOpenSettings={capabilities.settings ? () => onRouteChange("settings") : null}
 				onActivateSession={(sessionId) => onActivateSession(sessionId)}
+				onDeleteSession={onDeleteSession}
 				onLoadMoreSessions={onLoadMoreSessions}
 				target={target}
 				clientConnected={connected}

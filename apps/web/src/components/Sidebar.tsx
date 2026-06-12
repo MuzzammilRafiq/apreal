@@ -15,6 +15,7 @@ type SidebarProps = {
 	onStartNewChat: () => void;
 	onOpenSettings: (() => void) | null;
 	onActivateSession: (sessionId: string) => void;
+	onDeleteSession: (sessionId: string) => Promise<void>;
 	onLoadMoreSessions: () => void;
 	target: "local" | "remote";
 	clientConnected: boolean;
@@ -34,6 +35,7 @@ function SidebarContent({
 	onStartNewChat,
 	onOpenSettings,
 	onActivateSession,
+	onDeleteSession,
 	onLoadMoreSessions,
 	target,
 	clientConnected,
@@ -101,19 +103,23 @@ function SidebarContent({
 							const needsSync = sessionIdsNeedingSync.has(session.id);
 
 							return (
-								<button
+								<div
 									key={session.id}
-									type="button"
 									className={getSessionCardClassName(isActive)}
-									aria-pressed={isActive}
-									onClick={() => {
-										onActivateSession(session.id);
-										onClose?.();
-									}}
 								>
-									<p className="min-w-0 flex-1 truncate text-[0.9375rem] font-medium leading-snug tracking-tight">
-										{session.title}
-									</p>
+									<button
+										type="button"
+										className="min-w-0 flex-1 text-left"
+										aria-pressed={isActive}
+										onClick={() => {
+											onActivateSession(session.id);
+											onClose?.();
+										}}
+									>
+										<p className="truncate text-[0.9375rem] font-medium leading-snug tracking-tight">
+											{session.title}
+										</p>
+									</button>
 									{needsSync ? (
 										<span
 											className={[
@@ -136,7 +142,27 @@ function SidebarContent({
 									>
 										{formatRelativeTime(session.updatedAt)}
 									</span>
-								</button>
+									<button
+										type="button"
+										className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 opacity-0 transition hover:bg-black/[0.05] hover:text-slate-900 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring group-hover:opacity-100"
+										aria-label={`Delete ${session.title}`}
+										title="Delete chat"
+										disabled={session.busy}
+										onClick={(event) => {
+											event.stopPropagation();
+											if (!window.confirm(`Delete "${session.title}"?`)) {
+												return;
+											}
+											void onDeleteSession(session.id).catch((error) => {
+												window.alert(error instanceof Error ? error.message : "Failed to delete chat.");
+											});
+										}}
+									>
+										<svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden="true">
+											<path d="M7 4h6M8 4l.5-1h3L12 4m-7 2h10m-9 0 .6 10h6.8L14 6M8.5 8.5v5M11.5 8.5v5" strokeLinecap="round" strokeLinejoin="round" />
+										</svg>
+									</button>
+								</div>
 							);
 						})
 					)}
@@ -171,6 +197,7 @@ export const Sidebar = memo(function Sidebar({
 	onStartNewChat,
 	onOpenSettings,
 	onActivateSession,
+	onDeleteSession,
 	onLoadMoreSessions,
 	target,
 	clientConnected,
@@ -241,6 +268,7 @@ export const Sidebar = memo(function Sidebar({
 							onStartNewChat={onStartNewChat}
 							onOpenSettings={onOpenSettings}
 							onActivateSession={onActivateSession}
+							onDeleteSession={onDeleteSession}
 							onLoadMoreSessions={onLoadMoreSessions}
 							target={target}
 							clientConnected={clientConnected}
@@ -262,6 +290,7 @@ export const Sidebar = memo(function Sidebar({
 					onStartNewChat={onStartNewChat}
 					onOpenSettings={onOpenSettings}
 					onActivateSession={onActivateSession}
+					onDeleteSession={onDeleteSession}
 					onLoadMoreSessions={onLoadMoreSessions}
 					target={target}
 					clientConnected={clientConnected}

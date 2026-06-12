@@ -707,6 +707,20 @@ export function App({ runtime }: AppProps) {
 		return true;
 	}, [activeSessionId, chatTransportReady, focusPrompt, isBusy, sendClientMessage]);
 
+	const handleDeleteSession = useCallback(async (sessionId: string) => {
+		const session = sessionsRef.current.find((entry) => entry.id === sessionId);
+		if (session?.busy) {
+			setConnectionError("Wait for this chat to finish or abort it before deleting.");
+			return;
+		}
+
+		await sendClientMessage({ type: "delete_session", sessionId });
+	}, [sendClientMessage]);
+
+	const handleDeleteAllSessions = useCallback(async () => {
+		await sendClientMessage({ type: "delete_all_sessions" });
+	}, [sendClientMessage]);
+
 	const handleAbort = useCallback(() => {
 		if (!activeSession?.busy) {
 			return;
@@ -796,8 +810,9 @@ export function App({ runtime }: AppProps) {
 				});
 			}}
 			onSaveAppendSystemPrompt={handleSaveAppendSystemPrompt}
+			onDeleteAllSessions={handleDeleteAllSessions}
 			onStartNewChat={handleStartNewChat} onActivateSession={activateSession} onLoadMoreSessions={handleLoadMoreSessions}
-			onSendPrompt={submitPrompt} onAbort={handleAbort}
+			onSendPrompt={submitPrompt} onAbort={handleAbort} onDeleteSession={handleDeleteSession}
 		/>
 	);
 }
