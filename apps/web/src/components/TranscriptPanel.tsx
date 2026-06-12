@@ -1,4 +1,4 @@
-import { Children, isValidElement, type ReactNode, type RefObject } from "react";
+import { Children, isValidElement, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -17,7 +17,6 @@ type EmptyState = {
 };
 
 type TranscriptPanelProps = {
-	transcriptRef: RefObject<HTMLDivElement | null>;
 	activeSession: SessionSummary | null;
 	activeTranscript: TranscriptMessage[];
 	emptyState: EmptyState | null;
@@ -170,11 +169,10 @@ function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 	);
 }
 
-export function TranscriptPanel({ transcriptRef, activeTranscript, emptyState, connectionError }: TranscriptPanelProps) {
+export function TranscriptPanel({ activeTranscript, emptyState, connectionError }: TranscriptPanelProps) {
 	return (
 		<div className="min-h-0 min-w-0 flex-1 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.92),_rgba(243,243,243,0.9)_45%,_rgba(239,239,239,0.92)_100%)]">
 			<div
-				ref={transcriptRef}
 				id="transcript"
 				className="flex h-full flex-col gap-5 overflow-y-auto px-3 pt-4 pb-28 min-[861px]:gap-6 min-[861px]:px-6 min-[861px]:pt-6 min-[861px]:pb-32"
 				aria-live="polite"

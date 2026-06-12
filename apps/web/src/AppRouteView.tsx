@@ -50,7 +50,6 @@ type AppRouteViewProps = {
 	connectionLabel: string;
 	selectedJobId: string | null;
 	promptInputRef: RefObject<HTMLTextAreaElement | null>;
-	transcriptRef: RefObject<HTMLDivElement | null>;
 	onRouteChange: (route: AppRoute) => void;
 	onOpenJob: (jobId: string) => void;
 	onRefreshJobs: () => void;
@@ -81,7 +80,7 @@ export function AppRouteView({
 	savingAppendPrompt, appendPromptMessage, appendPromptError,
 	scheduledJobs, scheduledJobRuns, sessionCache, scheduledJobsError, scheduledJobRunsError, loadingScheduledJobs, loadingScheduledJobRuns,
 	connectionError, pendingDraft, visibleSessions, sessionIdsNeedingSync, loadingMoreSessions, canLoadMoreSessions, activeSessionId, activeSession, activeTranscript,
-	aborting, emptyState, connected, serverReady, streamRequested, target, capabilities, connectionLabel, selectedJobId, promptInputRef, transcriptRef, onRouteChange,
+	aborting, emptyState, connected, serverReady, streamRequested, target, capabilities, connectionLabel, selectedJobId, promptInputRef, onRouteChange,
 	composerBlockedReason,
 	onOpenJob, onRefreshJobs, onRefreshJobRuns, onUpdateJobInterval, onToggleJobEnabled, onDeleteJob, onEnsureSessionLoaded, onSetDefaultModel,
 	onStartProviderLogin, onSaveProviderApiKey, onCreateMcpServer, onUpdateMcpServer, onDeleteMcpServer, onRefreshMcpServers,
@@ -170,7 +169,6 @@ export function AppRouteView({
 
 			<section className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
 				<TranscriptPanel
-					transcriptRef={transcriptRef}
 					activeSession={activeSession}
 					activeTranscript={activeTranscript}
 					emptyState={emptyState}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { SessionCacheEntry, SessionSummary, ScheduledJobDetails } from "../chatTypes";
 import { ScheduledJobList, formatInterval, formatNextRunRelative, getJobStatusTone } from "./ScheduledJobList";
 import { TranscriptPanel } from "./TranscriptPanel";
@@ -63,7 +63,6 @@ export function JobsPanel({
 	onEnsureRunLoaded,
 	initialSelectedJobId = null,
 }: JobsPanelProps) {
-	const transcriptRef = useRef<HTMLDivElement | null>(null);
 	const [selectedJobId, setSelectedJobId] = useState<string | null>(initialSelectedJobId ?? jobs[0]?.id ?? null);
 	const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 	const [intervalMinutes, setIntervalMinutes] = useState("");
@@ -414,7 +413,6 @@ export function JobsPanel({
 							{selectedRun ? renderStatusBadge(selectedRun.busy ? "Running" : "Saved Log", selectedRun.busy ? "running" : "saved") : renderStatusBadge("No execution trace selected", "neutral")}
 						</div>
 						<TranscriptPanel
-							transcriptRef={transcriptRef}
 							activeSession={selectedRun}
 							activeTranscript={selectedRunTranscript}
 							emptyState={runEmptyState}

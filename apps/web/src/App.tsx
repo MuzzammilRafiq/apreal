@@ -67,7 +67,6 @@ export function App({ runtime }: AppProps) {
 		handleServerMessage,
 	} = useAppAdmin({ route, runtime, enabled: signedIn, setConnected, setStreamRequested });
 	const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
-	const transcriptRef = useRef<HTMLDivElement | null>(null);
 	const sessionsRef = useRef(sessions);
 	const sessionCacheRef = useRef(sessionCache);
 	const activeSessionIdRef = useRef(activeSessionId);
@@ -803,7 +802,6 @@ export function App({ runtime }: AppProps) {
 			connectionLabel={runtime.transport.label}
 			selectedJobId={selectedJobId}
 			promptInputRef={promptInputRef}
-			transcriptRef={transcriptRef}
 			onRouteChange={handleRouteChange}
 			onOpenJob={handleOpenJob}
 			onRefreshJobs={handleRefreshJobs} onRefreshJobRuns={handleRefreshJobRuns}
