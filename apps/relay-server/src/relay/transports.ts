@@ -28,6 +28,40 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		return connection.send(command);
 	}
 
+	function getBrowserDisconnectMessage(reason: string): string | null {
+		if (reason === "browser_owner_session_replaced") {
+			return "You were signed out because your account opened Apreal somewhere else.";
+		}
+
+		if (reason === "agent_owner_session_replaced") {
+			return "Your Apreal agent changed because this account signed in on another computer.";
+		}
+
+		return null;
+	}
+
+	function assertActiveBrowserClient(ownerUserId: string | undefined, clientId: string) {
+		if (!ownerUserId) {
+			return;
+		}
+
+		const activeClientId = state.activeClientIdsByOwner.get(ownerUserId);
+		if (activeClientId && activeClientId !== clientId) {
+			throw new AuthError("client session was replaced");
+		}
+	}
+
+	function assertActiveAgentPrincipal(principal: ReturnType<typeof readRelayToken>) {
+		if (!principal.ownerUserId) {
+			return;
+		}
+
+		const ownerUserId = state.ownerBindingStore.findOwnerUserIdForAgent(principal.id, principal.key);
+		if (ownerUserId !== principal.ownerUserId) {
+			throw new AuthError("agent session was replaced");
+		}
+	}
+
 	// Closes one browser stream by id through its connection handle.
 	function closeBrowserClient(clientId: string, reason: string) {
 		const existing = state.browserClients.get(clientId);
@@ -38,6 +72,16 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		existing.close(reason);
 	}
 
+	// Closes every browser stream owned by an account except the stream that is
+	// becoming active.
+	function closeBrowserClientsForOwner(ownerUserId: string, exceptClientId: string, reason: string) {
+		for (const client of Array.from(state.browserClients.values())) {
+			if (client.ownerUserId === ownerUserId && client.clientId !== exceptClientId && !client.closed) {
+				client.close(reason);
+			}
+		}
+	}
+
 	// Closes one agent stream by id through its connection handle.
 	function closeAgentConnection(agentId: string, reason: string) {
 		const existing = state.agentConnections.get(agentId);
@@ -46,6 +90,16 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		}
 
 		existing.close(reason);
+	}
+
+	// Closes every active agent stream owned by an account except the stream
+	// that is becoming active.
+	function closeAgentConnectionsForOwner(ownerUserId: string, exceptAgentId: string, reason: string) {
+		for (const connection of Array.from(state.agentConnections.values())) {
+			if (connection.ownerUserId === ownerUserId && connection.agentId !== exceptAgentId && !connection.closed) {
+				connection.close(reason);
+			}
+		}
 	}
 
 	// Replays synthetic client_connect events when an agent stream appears after
@@ -64,6 +118,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		corsHeaders: Record<string, string>,
 	) {
 		const target = resolveClientRelayTarget(request);
+		assertActiveBrowserClient(target.ownerUserId, target.clientId);
 		response.statusCode = 200;
 		setHeaders(response, createSseHeaders(corsHeaders));
 
@@ -75,6 +130,11 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		const close = (reason: string) => {
 			if (closed) {
 				return;
+			}
+
+			const message = getBrowserDisconnectMessage(reason);
+			if (message && !response.writableEnded) {
+				response.write(createSseChunk({ type: "disconnected", reason, message }));
 			}
 
 			closed = true;
@@ -105,6 +165,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		const connection: RelayBrowserClientConnection = {
 			clientId: target.clientId,
 			agentId: target.agentId,
+			ownerUserId: target.ownerUserId ?? null,
 			closed: false,
 			send(payload) {
 				if (closed || response.writableEnded) {
@@ -128,6 +189,9 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		const existing = state.browserClients.get(target.clientId);
 		if (existing) {
 			existing.close("browser_stream_replaced");
+		}
+		if (target.ownerUserId) {
+			closeBrowserClientsForOwner(target.ownerUserId, target.clientId, "browser_owner_session_replaced");
 		}
 
 		state.browserClients.set(target.clientId, connection);
@@ -158,6 +222,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		corsHeaders: Record<string, string>,
 	) {
 		const target = resolveClientRelayTarget(request);
+		assertActiveBrowserClient(target.ownerUserId, target.clientId);
 		const browserClient = state.browserClients.get(target.clientId);
 		if (!browserClient || browserClient.closed) {
 			throw new AuthError("browser client stream is not connected");
@@ -186,6 +251,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		if (principal.type !== "agent") {
 			throw new AuthError("only agent tokens may open relay agent transport");
 		}
+		assertActiveAgentPrincipal(principal);
 
 		response.statusCode = 200;
 		setHeaders(response, createSseHeaders(corsHeaders));
@@ -229,6 +295,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		// The runtime handle the relay uses to deliver commands to this agent.
 		const connection: RelayAgentConnection = {
 			agentId: principal.id,
+			ownerUserId: principal.ownerUserId ?? null,
 			closed: false,
 			send(command) {
 				if (closed || response.writableEnded) {
@@ -249,6 +316,9 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		const existing = state.agentConnections.get(principal.id);
 		if (existing) {
 			existing.close("agent_stream_replaced");
+		}
+		if (principal.ownerUserId) {
+			closeAgentConnectionsForOwner(principal.ownerUserId, principal.id, "agent_owner_session_replaced");
 		}
 
 		state.agentConnections.set(principal.id, connection);
@@ -282,6 +352,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		if (principal.type !== "agent") {
 			throw new AuthError("only agent tokens may post relay agent messages");
 		}
+		assertActiveAgentPrincipal(principal);
 
 		const payload = parseRelayAgentMessage(JSON.parse(await readRequestBody(request)));
 		if (!payload) {
@@ -303,7 +374,9 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		listBrowserClientsForAgent,
 		sendAgentCommand,
 		closeBrowserClient,
+		closeBrowserClientsForOwner,
 		closeAgentConnection,
+		closeAgentConnectionsForOwner,
 		notifyAgentOfConnectedClients,
 		registerBrowserClientStream,
 		handleClientMessageRequest,

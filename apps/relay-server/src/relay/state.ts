@@ -9,6 +9,7 @@ export type RelayServerState = {
 	browserClients: Map<string, RelayBrowserClientConnection>;
 	agentConnections: Map<string, RelayAgentConnection>;
 	agentSessions: Map<string, AuthTokenPayload>;
+	activeClientIdsByOwner: Map<string, string>;
 };
 
 // Creates the empty runtime state for a fresh relay process.
@@ -18,5 +19,6 @@ export function createRelayServerState(): RelayServerState {
 		browserClients: new Map<string, RelayBrowserClientConnection>(),
 		agentConnections: new Map<string, RelayAgentConnection>(),
 		agentSessions: new Map<string, AuthTokenPayload>(),
+		activeClientIdsByOwner: new Map<string, string>(),
 	};
 }

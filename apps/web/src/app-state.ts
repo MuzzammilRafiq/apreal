@@ -32,6 +32,7 @@ export type ClientMessage =
 
 export type ServerMessage =
 	| { type: "connected"; clientId: string; message: string; tools?: string }
+	| { type: "disconnected"; reason: string; message: string }
 	| { type: "sessions_page"; sessions: SessionSummary[]; offset: number; limit: number; total: number }
 	| { type: "session_summary_updated"; session: SessionSummary }
 	| { type: "session_created"; session: SessionSummary; transcript: TranscriptMessage[] }

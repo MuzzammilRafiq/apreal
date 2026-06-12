@@ -69,8 +69,8 @@ function parseStoredBinding(value: unknown): StoredOwnerAgentBinding | null {
 	}
 }
 
-// Small JSON-backed store that remembers which signed-in owner last bound a
-// given agent id/key pair.
+// Small JSON-backed store that remembers the one active agent last bound by a
+// signed-in owner.
 export class RelayOwnerBindingStore {
 	private readonly filePath: string;
 
@@ -90,8 +90,8 @@ export class RelayOwnerBindingStore {
 		return this.readBindings().length;
 	}
 
-	// Upserts the binding for one agent so the relay can reconnect that agent to
-	// the same owner after a restart.
+	// Upserts the binding for one agent and removes any previous agent for the
+	// same owner so the relay keeps a single active agent per account.
 	bindAgentToOwner(agentId: string, agentKey: string, ownerUserId: string): StoredOwnerAgentBinding {
 		const binding: StoredOwnerAgentBinding = {
 			agentId: ensureId(agentId, "agentId"),
@@ -100,7 +100,9 @@ export class RelayOwnerBindingStore {
 			updatedAt: Date.now(),
 		};
 
-		const nextBindings = this.readBindings().filter((entry) => entry.agentId !== binding.agentId);
+		const nextBindings = this.readBindings().filter((entry) =>
+			entry.agentId !== binding.agentId && entry.ownerUserId !== binding.ownerUserId
+		);
 		nextBindings.push(binding);
 		this.writeBindings(nextBindings);
 		return binding;

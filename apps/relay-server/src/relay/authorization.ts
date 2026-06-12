@@ -116,6 +116,7 @@ export function resolveClientRelayTarget(request: IncomingMessage) {
 		clientToken,
 		clientId: principal.id,
 		agentId: principal.targetId,
+		ownerUserId: principal.ownerUserId,
 	};
 }
 

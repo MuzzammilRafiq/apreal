@@ -413,6 +413,12 @@ export function App({ runtime }: AppProps) {
 					ensureSessionLoadedRef.current(activeSessionIdRef.current);
 					break;
 				}
+				case "disconnected": {
+					setConnected(false);
+					setStreamRequested(false);
+					setConnectionError(message.message);
+					break;
+				}
 				case "sessions_page": {
 					setLoadingMoreSessions(false);
 					setServerLoadedSessionCount((previous) => Math.max(previous, message.offset + message.sessions.length));
