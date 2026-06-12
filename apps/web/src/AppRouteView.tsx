@@ -39,6 +39,7 @@ type AppRouteViewProps = {
 	activeSessionId: string | null;
 	activeSession: SessionSummary | null;
 	activeTranscript: TranscriptMessage[];
+	aborting: boolean;
 	emptyState: EmptyState;
 	connected: boolean;
 	serverReady: boolean;
@@ -72,7 +73,7 @@ type AppRouteViewProps = {
 	onDeleteSession: (sessionId: string) => Promise<void>;
 	onLoadMoreSessions: () => void;
 	onSendPrompt: (prompt: string) => boolean;
-	onAbort: () => void;
+	onAbort: () => Promise<void>;
 };
 
 export function AppRouteView({
@@ -80,7 +81,7 @@ export function AppRouteView({
 	savingAppendPrompt, appendPromptMessage, appendPromptError,
 	scheduledJobs, scheduledJobRuns, sessionCache, scheduledJobsError, scheduledJobRunsError, loadingScheduledJobs, loadingScheduledJobRuns,
 	connectionError, pendingDraft, visibleSessions, sessionIdsNeedingSync, loadingMoreSessions, canLoadMoreSessions, activeSessionId, activeSession, activeTranscript,
-	emptyState, connected, serverReady, streamRequested, target, capabilities, connectionLabel, selectedJobId, promptInputRef, transcriptRef, onRouteChange,
+	aborting, emptyState, connected, serverReady, streamRequested, target, capabilities, connectionLabel, selectedJobId, promptInputRef, transcriptRef, onRouteChange,
 	composerBlockedReason,
 	onOpenJob, onRefreshJobs, onRefreshJobRuns, onUpdateJobInterval, onToggleJobEnabled, onDeleteJob, onEnsureSessionLoaded, onSetDefaultModel,
 	onStartProviderLogin, onSaveProviderApiKey, onCreateMcpServer, onUpdateMcpServer, onDeleteMcpServer, onRefreshMcpServers,
@@ -184,6 +185,7 @@ export function AppRouteView({
 						connectionLabel={connectionLabel}
 						activeSession={activeSession}
 						activeSessionId={activeSessionId}
+						aborting={aborting}
 						promptInputRef={promptInputRef}
 						onSend={onSendPrompt}
 						onAbort={onAbort}

@@ -53,6 +53,7 @@ export function App({ runtime }: AppProps) {
 	const [connectionError, setConnectionError] = useState<string | null>(null);
 	const [streamRequested, setStreamRequested] = useState(false);
 	const [streamGeneration, setStreamGeneration] = useState(0);
+	const [abortingSessionId, setAbortingSessionId] = useState<string | null>(null);
 	const signedIn = Boolean(authSession?.user);
 	const signInRequired = !authSessionPending && !signedIn;
 	const {
@@ -130,6 +131,7 @@ export function App({ runtime }: AppProps) {
 	const relayReady = Boolean(adminStatus?.relayReady);
 	const relayTransportConnected = Boolean(adminStatus?.relayTransportConnected);
 	const isBusy = pendingDraft || Boolean(activeSession?.busy);
+	const aborting = Boolean(activeSessionId && activeSessionId === abortingSessionId);
 
 	const focusPrompt = useCallback(() => {
 		window.requestAnimationFrame(() => {
@@ -721,14 +723,19 @@ export function App({ runtime }: AppProps) {
 		await sendClientMessage({ type: "delete_all_sessions" });
 	}, [sendClientMessage]);
 
-	const handleAbort = useCallback(() => {
+	const handleAbort = useCallback(async () => {
 		if (!activeSession?.busy) {
 			return;
 		}
 
-		void sendClientMessage({ type: "abort", sessionId: activeSession.id }).catch((error) => {
+		setAbortingSessionId(activeSession.id);
+		try {
+			await sendClientMessage({ type: "abort", sessionId: activeSession.id });
+		} catch (error) {
 			setConnectionError(getErrorMessage(error));
-		});
+		} finally {
+			setAbortingSessionId((current) => (current === activeSession.id ? null : current));
+		}
 	}, [activeSession, sendClientMessage]);
 
 	const emptyState = !activeSession
@@ -789,6 +796,7 @@ export function App({ runtime }: AppProps) {
 			sessionIdsNeedingSync={sessionIdsNeedingSync}
 			loadingMoreSessions={loadingMoreSessions} canLoadMoreSessions={canLoadMoreSessions}
 			activeSessionId={activeSessionId} activeSession={activeSession} activeTranscript={activeTranscript}
+			aborting={aborting}
 			emptyState={emptyState} connected={connected} serverReady={serverReady} streamRequested={streamRequested} target={runtime.target}
 			composerBlockedReason={composerBlockedReason}
 			capabilities={effectiveCapabilities}

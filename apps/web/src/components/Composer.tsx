@@ -39,9 +39,10 @@ type ComposerProps = {
   connectionLabel: string;
   activeSession: SessionSummary | null;
   activeSessionId: string | null;
+  aborting: boolean;
   promptInputRef: RefObject<HTMLTextAreaElement | null>;
   onSend: (prompt: string) => boolean;
-  onAbort: () => void;
+  onAbort: () => Promise<void>;
 };
 
 export const Composer = memo(function Composer({
@@ -52,6 +53,7 @@ export const Composer = memo(function Composer({
   connectionLabel,
   activeSession,
   activeSessionId,
+  aborting,
   promptInputRef,
   onSend,
   onAbort,
@@ -124,6 +126,19 @@ export const Composer = memo(function Composer({
 					<span className="px-1.5 py-0.5 text-right font-mono text-[0.68rem] font-medium text-slate-600">
             {currentContextLabel}
           </span>
+					{activeSession?.busy ? (
+						<button
+							type="button"
+							className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-[0.75rem] font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+							onClick={() => {
+								void onAbort();
+							}}
+							disabled={!serverReady || Boolean(blockedReason) || aborting}
+						>
+							<span aria-hidden="true" className="h-2.5 w-2.5 rounded-[2px] border-2 border-current" />
+							{aborting ? "Stopping..." : "Stop stream"}
+						</button>
+					) : null}
         </div>
       ) : null}
 			<div className="flex items-end gap-2">
@@ -168,11 +183,11 @@ export const Composer = memo(function Composer({
 						? "bg-slate-700 text-white hover:bg-black"
 						: "bg-black text-white hover:bg-slate-800",
 				].join(" ")}
-          disabled={!serverReady || Boolean(blockedReason) || (!canSend && !activeSession?.busy)}
+          disabled={!serverReady || Boolean(blockedReason) || aborting || (!canSend && !activeSession?.busy)}
           aria-label={activeSession?.busy ? "Stop run" : "Send prompt"}
           onClick={() => {
             if (activeSession?.busy) {
-              onAbort();
+              void onAbort();
               return;
             }
 
@@ -182,7 +197,7 @@ export const Composer = memo(function Composer({
           {activeSession?.busy ? (
             <span
               aria-hidden="true"
-					className="h-3 w-3 rounded-[2px] border-2 border-white"
+					className={aborting ? "h-3 w-3 animate-pulse rounded-[2px] border-2 border-white" : "h-3 w-3 rounded-[2px] border-2 border-white"}
             />
           ) : (
             <svg
