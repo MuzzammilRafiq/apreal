@@ -44,7 +44,13 @@ function SidebarContent({
 }: SidebarProps & { onClose?: () => void }) {
 	return (
 		<>
-		<div className="shrink-0 px-2 pt-2 pb-1.5">
+			<ConnectionSidebarFooter
+				target={target}
+				clientConnected={clientConnected}
+				hostConnected={hostConnected}
+				placement="top"
+			/>
+			<div className="shrink-0 px-2 pt-2 pb-1.5">
 			{onClose ? (
 				<div className="mb-0.5 flex justify-end px-1">
 						<button
@@ -178,11 +184,6 @@ function SidebarContent({
 					) : null}
 				</div>
 			</div>
-			<ConnectionSidebarFooter
-				target={target}
-				clientConnected={clientConnected}
-				hostConnected={hostConnected}
-			/>
 		</>
 	);
 }
