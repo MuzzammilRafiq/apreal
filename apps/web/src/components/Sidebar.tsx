@@ -1,9 +1,8 @@
 import { memo, useEffect, useState } from "react";
+import { Menu, MessageSquarePlus, Settings, Trash2, X } from "lucide-react";
 import type { SessionSummary } from "../chatTypes";
 import { formatRelativeTime, getSessionCardClassName } from "../chatView";
 import { ConnectionSidebarFooter } from "./ConnectionSidebarFooter";
-import gearIcon from "./svgs/gear.svg";
-import newChatIcon from "./svgs/new-chat.svg";
 
 type SidebarProps = {
 	pendingDraft: boolean;
@@ -23,7 +22,7 @@ type SidebarProps = {
 };
 
 const sidebarNavItemClassName =
-	"flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[0.9375rem] font-medium text-ink transition-colors duration-150 hover:bg-black/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring";
+	"ui-nav-item flex w-full items-center gap-3 rounded-lg px-3 py-1.5 text-left text-[0.9375rem] font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring";
 
 function SidebarContent({
 	pendingDraft,
@@ -59,9 +58,7 @@ function SidebarContent({
 							onClick={onClose}
 							aria-label="Close chat menu"
 						>
-							<svg viewBox="0 0 20 20" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth="2">
-								<path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" strokeLinejoin="round" />
-							</svg>
+							<X className="h-4.5 w-4.5" strokeWidth={2.2} aria-hidden="true" />
 						</button>
 					</div>
 				) : null}
@@ -76,7 +73,7 @@ function SidebarContent({
 							onClose?.();
 						}}
 					>
-						<img src={newChatIcon} alt="" className="h-5 w-5 shrink-0" aria-hidden="true" />
+						<MessageSquarePlus className="h-5 w-5 shrink-0" strokeWidth={2.1} aria-hidden="true" />
 						<span className="truncate">New chat</span>
 					</button>
 					{onOpenSettings ? (
@@ -88,17 +85,17 @@ function SidebarContent({
 								onClose?.();
 							}}
 						>
-							<img src={gearIcon} alt="" className="h-5 w-5 shrink-0" aria-hidden="true" />
+							<Settings className="h-5 w-5 shrink-0" strokeWidth={2.1} aria-hidden="true" />
 							<span className="truncate">Settings</span>
 						</button>
 					) : null}
 				</nav>
 			</div>
 
-			<div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 scrollbar-thin">
+			<div className="sidebar-scrollable-container min-h-0 flex-1 overflow-y-auto px-2 pb-2 scrollbar-thin">
 				<div id="session-list" className="flex flex-col gap-px" aria-label="Chat sessions">
 					{sessions.length === 0 ? (
-						<div className="mx-1 w-full bg-black/[0.03] px-4 py-5 text-center">
+						<div className="mx-1 w-full bg-white px-4 py-5 text-center">
 							<p className="text-[0.9375rem] leading-[1.6] text-muted">
 								No saved sessions yet. Start a new chat and your first prompt will turn into a thread here.
 							</p>
@@ -140,34 +137,34 @@ function SidebarContent({
 											!
 										</span>
 									) : null}
-									<span
-										className={[
-											"shrink-0 text-[0.8125rem] tabular-nums transition-colors duration-150",
-											isActive ? "text-faint" : "text-faint group-hover:text-muted",
-										].join(" ")}
-									>
-										{formatRelativeTime(session.updatedAt)}
-									</span>
-									<button
-										type="button"
-										className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 opacity-0 transition hover:bg-black/[0.05] hover:text-slate-900 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring group-hover:opacity-100"
-										aria-label={`Delete ${session.title}`}
-										title="Delete chat"
-										disabled={session.busy}
-										onClick={(event) => {
-											event.stopPropagation();
-											if (!window.confirm(`Delete "${session.title}"?`)) {
-												return;
-											}
-											void onDeleteSession(session.id).catch((error) => {
-												window.alert(error instanceof Error ? error.message : "Failed to delete chat.");
-											});
-										}}
-									>
-										<svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden="true">
-											<path d="M7 4h6M8 4l.5-1h3L12 4m-7 2h10m-9 0 .6 10h6.8L14 6M8.5 8.5v5M11.5 8.5v5" strokeLinecap="round" strokeLinejoin="round" />
-										</svg>
-									</button>
+									<div className="relative flex items-center justify-end shrink-0 min-w-[3.5rem] h-7">
+										<span
+											className={[
+												"text-[0.8125rem] tabular-nums transition-opacity duration-150 group-hover:opacity-0 group-focus-within:opacity-0",
+												isActive ? "text-faint" : "text-faint",
+											].join(" ")}
+										>
+											{formatRelativeTime(session.updatedAt)}
+										</span>
+										<button
+											type="button"
+											className="ui-icon-button absolute right-0 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-slate-400 opacity-0 transition-opacity duration-150 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring group-hover:opacity-100"
+											aria-label={`Delete ${session.title}`}
+											title="Delete chat"
+											disabled={session.busy}
+											onClick={(event) => {
+												event.stopPropagation();
+												if (!window.confirm(`Delete "${session.title}"?`)) {
+													return;
+												}
+												void onDeleteSession(session.id).catch((error) => {
+													window.alert(error instanceof Error ? error.message : "Failed to delete chat.");
+												});
+											}}
+										>
+											<Trash2 className="h-4 w-4" strokeWidth={1.9} aria-hidden="true" />
+										</button>
+									</div>
 								</div>
 							);
 						})
@@ -175,7 +172,7 @@ function SidebarContent({
 					{canLoadMoreSessions ? (
 						<button
 							type="button"
-							className="mt-0.5 flex w-full items-center justify-center rounded-md px-3 py-2.5 text-[0.875rem] font-medium text-muted transition-colors duration-150 hover:bg-black/[0.03] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50"
+							className="ui-nav-item mt-0.5 flex w-full items-center justify-center rounded-lg px-3 py-1.5 text-[0.875rem] font-medium text-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50"
 								onClick={onLoadMoreSessions}
 							disabled={loadingMoreSessions}
 						>
@@ -220,45 +217,43 @@ export const Sidebar = memo(function Sidebar({
 
 	return (
 		<>
-			<div className="z-30 flex items-center justify-between gap-3 border-b border-black/8 bg-white/88 px-3 py-3 text-[#171717] backdrop-blur-md min-[721px]:hidden">
+			<div className="z-30 flex items-center justify-between gap-3 border-b border-[var(--color-brand-line)] bg-[rgba(255,248,250,0.88)] px-3 py-2 text-[#171717] backdrop-blur-md min-[721px]:hidden">
 				<button
 					type="button"
-					className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/[0.045] text-slate-900 transition-colors duration-150 hover:bg-black/[0.08] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+					className="ui-icon-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
 					onClick={() => setMobileMenuOpen(true)}
 					aria-label="Open chat menu"
 				>
-					<svg viewBox="0 0 20 20" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth="2.2">
-						<path d="M3.333 5h13.334M3.333 10h13.334M3.333 15h13.334" strokeLinecap="round" strokeLinejoin="round" />
-					</svg>
+					<Menu className="h-4.5 w-4.5" strokeWidth={2.2} aria-hidden="true" />
 				</button>
 				<div className="min-w-0 flex-1">
 					<p className="font-mono text-[0.64rem] font-semibold uppercase tracking-[0.14em] text-slate-500">Chat</p>
-					<p className="truncate text-[0.9rem] font-semibold tracking-tight text-slate-900">
+					<p className="truncate text-[0.9rem] font-semibold tracking-tight text-slate-800">
 						{sessions.find((session) => session.id === activeSessionId)?.title ?? "New conversation"}
 					</p>
 				</div>
 				<button
 					type="button"
 					className={[
-						"flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black text-white transition-colors duration-150 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-40",
+						"ui-button-primary flex h-9 w-9 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-40",
 						!activeSessionId && !pendingDraft ? "opacity-70" : "",
 					].join(" ")}
 					onClick={onStartNewChat}
 					aria-label="Start new chat"
 				>
-					<img src={newChatIcon} alt="" className="h-4 w-4" aria-hidden="true" />
+					<MessageSquarePlus className="h-4 w-4" strokeWidth={2.3} aria-hidden="true" />
 				</button>
 			</div>
 
 			{mobileMenuOpen ? (
-				<div className="fixed inset-0 z-50 bg-black/40 min-[721px]:hidden" aria-hidden="true">
+				<div className="fixed inset-0 z-50 bg-[rgba(79,62,69,0.28)] min-[721px]:hidden" aria-hidden="true">
 					<button
 						type="button"
 						className="absolute inset-0 h-full w-full cursor-default"
 						onClick={() => setMobileMenuOpen(false)}
 						aria-label="Close chat menu"
 					/>
-					<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden bg-white text-ink shadow-[0_24px_60px_rgba(0,0,0,0.2)]">
+					<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden border-r border-[var(--color-brand-line)] bg-sidebar-panel text-ink shadow-[0_24px_60px_var(--color-brand-shadow)]">
 						<SidebarContent
 							pendingDraft={pendingDraft}
 							sessions={sessions}
@@ -280,7 +275,7 @@ export const Sidebar = memo(function Sidebar({
 				</div>
 			) : null}
 
-			<aside className="hidden min-h-0 flex-col overflow-hidden border-r border-black/8 bg-[#fbfbfa] text-ink min-[721px]:flex min-[721px]:h-full">
+			<aside className="hidden min-h-0 flex-col overflow-hidden border-r border-black/8 bg-white text-ink min-[721px]:flex min-[721px]:h-full">
 				<SidebarContent
 					pendingDraft={pendingDraft}
 					sessions={sessions}

@@ -72,8 +72,8 @@ export function ConnectionSidebarFooter({
 			: "text-red-400/30 group-hover/face:text-red-400/60";
 
 	return (
-		<div className={isTopPlacement ? "border-b border-line px-2 pt-2 pb-2" : "mt-auto border-t border-line px-2 pt-3 pb-2"}>
-			<div className={`flex items-center ${isTopPlacement ? "justify-center" : "justify-end"} px-1 py-1.5`}>
+		<div className={isTopPlacement ? "border-b border-line px-2 pt-1.5 pb-1.5" : "mt-auto border-t border-line px-2 pt-3 pb-2"}>
+			<div className={`flex items-center ${isTopPlacement ? "justify-center" : "justify-end"} px-1 py-1`}>
 				<div className="group/face relative flex flex-col items-center pt-1 pb-1">
 					<div className="flex items-center gap-4.5 pb-2.5">
 						<StatusDot label={clientLabel} connected={clientConnected} tooltipPosition={isTopPlacement ? "bottom" : "top"} />

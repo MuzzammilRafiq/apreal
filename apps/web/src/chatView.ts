@@ -30,10 +30,10 @@ export function formatSessionState(session: SessionSummary | null, pendingDraft:
 
 export function getSessionCardClassName(isActive: boolean): string {
 	return [
-		"group relative flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring",
+		"group relative flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-1.5 text-left transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring",
 		isActive
-			? "bg-black/[0.045] text-ink before:absolute before:top-2 before:bottom-2 before:left-0 before:w-px before:rounded-full before:bg-black"
-			: "text-muted hover:bg-black/[0.03] hover:text-ink",
+			? "ui-nav-item-active text-[var(--color-brand-ink)]"
+			: "ui-nav-item text-slate-600",
 	].join(" ");
 }
 
@@ -72,7 +72,7 @@ export function getMessageBodyClassName(role: TranscriptMessage["role"], pending
 
 	switch (role) {
 		case "user":
-			return `w-fit max-w-full whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-[#171717] px-4 py-2.5 text-[0.95rem] leading-[1.6] text-white transition-colors duration-150 hover:bg-black max-[520px]:px-3.5 max-[520px]:py-2.5${pendingClassName}`;
+			return `w-fit max-w-full whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-brand px-4 py-2.5 text-[0.95rem] leading-[1.6] text-white transition-colors duration-150 hover:bg-brand-strong max-[520px]:px-3.5 max-[520px]:py-2.5${pendingClassName}`;
 		case "system":
 			return `whitespace-pre-wrap break-words text-[0.84rem] font-medium text-muted${pendingClassName}`;
 		case "assistant":

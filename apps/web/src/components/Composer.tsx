@@ -109,14 +109,14 @@ export const Composer = memo(function Composer({
 	return (
 		<div
 			className={[
-				"pointer-events-auto mx-auto flex w-full max-w-[54rem] flex-col gap-1.5 border border-black/8 bg-white/82 px-3 py-2.5 shadow-[0_-12px_40px_rgba(255,255,255,0.65)] transition-colors duration-150 backdrop-blur-xl min-[861px]:px-4",
+				"pointer-events-auto mx-auto flex w-full max-w-[54rem] flex-col gap-1.5 border bg-[rgba(255,248,250,0.92)] px-3 py-2.5 shadow-[0_-12px_40px_var(--color-brand-shadow)] transition-colors duration-150 min-[861px]:px-4",
 				isFocused
-					? "border-black/22 bg-white/94"
-					: "border-black/10",
+					? "border-[var(--color-brand-line-strong)] bg-white"
+					: "border-[var(--color-brand-line)]",
 			].join(" ")}
 		>
 			{currentContextLabel ? (
-				<div className="flex flex-wrap items-center justify-between gap-2 border-b border-black/8 px-1 pb-1.5">
+				<div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-brand-line)] px-1 pb-1.5">
 					<span className="flex items-center gap-1.5 font-mono text-[0.66rem] font-semibold uppercase tracking-[0.12em] text-slate-500">
 						<svg viewBox="0 0 24 24" className="h-3 w-3 text-slate-500" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
@@ -166,10 +166,10 @@ export const Composer = memo(function Composer({
 				type="button"
 				id={activeSession?.busy ? "abort-button" : "send-button"}
 				className={[
-					"flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-transparent transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-30",
+					"flex h-9 w-9 shrink-0 items-center justify-center rounded-md border transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-30",
 					activeSession?.busy
-						? "bg-slate-700 text-white hover:bg-black"
-						: "bg-black text-white hover:bg-slate-800",
+						? "border-[var(--color-brand-strong)] bg-[var(--color-brand-strong)] text-white hover:bg-[var(--color-brand-ink)] hover:border-[var(--color-brand-ink)]"
+						: "ui-button-primary",
 				].join(" ")}
           disabled={!serverReady || Boolean(blockedReason) || aborting || (!canSend && !activeSession?.busy)}
           aria-label={activeSession?.busy ? "Stop run" : "Send prompt"}

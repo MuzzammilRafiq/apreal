@@ -107,7 +107,7 @@ function AssistantSegmentBlock({ item, segment, isLiveThinking }: { item: Transc
 				</span>
 				<span className="shrink-0 text-[0.64rem] font-medium text-slate-500">Toggle</span>
 			</summary>
-			<pre className="mt-2 whitespace-pre-wrap break-words bg-black/[0.025] px-3 py-2.5 font-mono text-[0.78rem] leading-[1.6] text-[#525252]">
+			<pre className="mt-2 whitespace-pre-wrap break-words bg-white px-3 py-2.5 font-mono text-[0.78rem] leading-[1.6] text-[#525252]">
 				{segment.content}
 			</pre>
 		</details>
@@ -171,7 +171,7 @@ function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 
 export function TranscriptPanel({ activeTranscript, emptyState, connectionError }: TranscriptPanelProps) {
 	return (
-		<div className="min-h-0 min-w-0 flex-1 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.92),_rgba(243,243,243,0.9)_45%,_rgba(239,239,239,0.92)_100%)]">
+		<div className="min-h-0 min-w-0 flex-1 bg-white">
 			<div
 				id="transcript"
 				className="flex h-full flex-col gap-5 overflow-y-auto px-3 pt-4 pb-28 min-[861px]:gap-6 min-[861px]:px-6 min-[861px]:pt-6 min-[861px]:pb-32"
@@ -180,7 +180,7 @@ export function TranscriptPanel({ activeTranscript, emptyState, connectionError 
 				{connectionError ? (
 					<div
 						role="alert"
-						className="mr-auto flex w-full items-start gap-3 border-l-2 border-black/25 bg-white/70 px-4 py-3 text-[0.9rem] font-medium leading-[1.6] text-slate-800 backdrop-blur-sm min-[861px]:max-w-3xl"
+						className="mr-auto flex w-full items-start gap-3 border-l-2 border-black/25 bg-white px-4 py-3 text-[0.9rem] font-medium leading-[1.6] text-slate-800 min-[861px]:max-w-3xl"
 					>
 						<svg viewBox="0 0 24 24" className="mt-0.5 h-4.5 w-4.5 shrink-0 text-slate-600" fill="none" stroke="currentColor" strokeWidth="2.2">
 							<circle cx="12" cy="12" r="10" />

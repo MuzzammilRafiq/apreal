@@ -70,10 +70,10 @@ export function SettingsAccountSection({
 
 	return (
 		<div className="space-y-4">
-			<section className="bg-white px-1 py-1">
+			<section className="ui-panel rounded-xl px-4 py-4">
 				<div className="flex flex-col gap-4 min-[760px]:flex-row min-[760px]:items-start min-[760px]:justify-between">
 					<div className="flex min-w-0 items-start gap-4">
-						<div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.4rem] bg-[linear-gradient(180deg,#f7f7f7,#ececec)] text-lg font-bold text-slate-700 shadow-[0_10px_24px_rgba(0,0,0,0.06)]">
+						<div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.4rem] bg-[linear-gradient(180deg,#fff8fa,var(--color-brand-soft))] text-lg font-bold text-[var(--color-brand-ink)] shadow-[0_10px_24px_var(--color-brand-shadow)]">
 							{userImage ? (
 								<img
 									src={userImage}
@@ -103,24 +103,24 @@ export function SettingsAccountSection({
 					</div>
 				</div>
 
-				<div className="mt-6 border-t border-black/8">
+				<div className="mt-6 border-t border-[var(--color-brand-line)]">
 					<SummaryRow label="Client connection" value={clientLabel} />
 					<SummaryRow label="Sessions" value={sessionLabel} />
 				</div>
 
 				{statusError ? (
-					<p className="mt-4 border-l-2 border-black/25 bg-black/[0.03] px-3 py-2.5 text-[0.84rem] font-medium leading-[1.5] text-slate-800">
+					<p className="ui-feedback mt-4 px-3 py-2.5 text-[0.84rem] font-medium leading-[1.5]">
 						{statusError}
 					</p>
 				) : null}
 				{connectionError ? (
-					<p className="mt-3 border-l border-black/12 px-3 py-2.5 text-[0.84rem] font-medium leading-[1.5] text-slate-700">
+					<p className="ui-feedback-soft mt-3 px-3 py-2.5 text-[0.84rem] font-medium leading-[1.5]">
 						{connectionError}
 					</p>
 				) : null}
 			</section>
 
-			<form className="border-t border-black/8 pt-5" onSubmit={handleAppendSystemPromptSubmit}>
+			<form className="border-t border-[var(--color-brand-line)] pt-5" onSubmit={handleAppendSystemPromptSubmit}>
 				<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Prompt Layering</p>
 				<h2 className="mt-1 text-base font-bold text-slate-900">Append instructions to Pi's system prompt</h2>
 				<p className="mt-2 text-[0.88rem] leading-[1.6] text-slate-600">
@@ -136,7 +136,7 @@ export function SettingsAccountSection({
 						}}
 						rows={10}
 						placeholder={"Example:\n- Always explain tradeoffs before editing infra code.\n- Prefer existing project patterns over introducing new abstractions."}
-						className="mt-2 min-h-[14rem] w-full resize-y border-b border-black/14 bg-black/[0.025] px-0 py-3 text-[0.95rem] leading-[1.6] text-[#171717] placeholder:text-slate-400 outline-none transition focus:border-black focus:bg-transparent"
+						className="ui-field-line mt-2 min-h-[14rem] w-full resize-y border-b bg-[rgba(255,194,212,0.14)] px-0 py-3 text-[0.95rem] leading-[1.6] text-[#171717] placeholder:text-slate-400 outline-none"
 						spellCheck={false}
 					/>
 				</label>
@@ -144,14 +144,14 @@ export function SettingsAccountSection({
 				<div className="mt-4 flex flex-wrap items-center gap-3">
 					<button
 						type="submit"
-						className="inline-flex items-center justify-center border border-black bg-black px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer"
+						className="ui-button-primary inline-flex items-center justify-center border px-4 py-2.5 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer"
 						disabled={isSavingAppendPrompt || !adminStatus || appendSystemPromptDraft === (adminStatus.appendSystemPrompt ?? "")}
 					>
 						{isSavingAppendPrompt ? "Saving prompt..." : "Save appended prompt"}
 					</button>
 					<button
 						type="button"
-						className="inline-flex items-center justify-center border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer"
+						className="ui-button-secondary inline-flex items-center justify-center border px-4 py-2.5 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer"
 						disabled={isSavingAppendPrompt || !adminStatus || appendSystemPromptDraft.length === 0}
 						onClick={() => {
 							setAppendSystemPromptDraft("");
@@ -162,18 +162,18 @@ export function SettingsAccountSection({
 				</div>
 
 				{appendPromptSubmissionMessage ? (
-					<p className="mt-3 border-l border-black/12 px-3 py-2.5 text-[0.84rem] leading-[1.5] text-slate-700 font-medium">
+					<p className="ui-feedback-soft mt-3 px-3 py-2.5 text-[0.84rem] leading-[1.5] font-medium">
 						{appendPromptSubmissionMessage}
 					</p>
 				) : null}
 				{appendPromptSubmissionError ? (
-					<p className="mt-3 border-l-2 border-black/25 bg-black/[0.03] px-3 py-2.5 text-[0.84rem] leading-[1.5] text-slate-800 font-medium">
+					<p className="ui-feedback mt-3 px-3 py-2.5 text-[0.84rem] leading-[1.5] font-medium">
 						{appendPromptSubmissionError}
 					</p>
 				) : null}
 			</form>
 
-			<section className="border-t border-black/8 pt-5">
+			<section className="border-t border-[var(--color-brand-line)] pt-5">
 				<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Chat Data</p>
 				<h2 className="mt-1 text-base font-bold text-slate-900">Delete saved chats</h2>
 				<p className="mt-2 text-[0.88rem] leading-[1.6] text-slate-600">
@@ -181,19 +181,19 @@ export function SettingsAccountSection({
 				</p>
 				<button
 					type="button"
-					className="mt-4 inline-flex items-center justify-center border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer"
+					className="ui-button-secondary mt-4 inline-flex items-center justify-center border px-4 py-2.5 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer"
 					onClick={onDeleteAllSessions}
 					disabled={deletingAllSessions}
 				>
 					{deletingAllSessions ? "Deleting chats..." : "Delete all chats"}
 				</button>
 				{deleteSessionsMessage ? (
-					<p className="mt-3 border-l border-black/12 px-3 py-2.5 text-[0.84rem] leading-[1.5] text-slate-700 font-medium">
+					<p className="ui-feedback-soft mt-3 px-3 py-2.5 text-[0.84rem] leading-[1.5] font-medium">
 						{deleteSessionsMessage}
 					</p>
 				) : null}
 				{deleteSessionsError ? (
-					<p className="mt-3 border-l-2 border-black/25 bg-black/[0.03] px-3 py-2.5 text-[0.84rem] leading-[1.5] text-slate-800 font-medium">
+					<p className="ui-feedback mt-3 px-3 py-2.5 text-[0.84rem] leading-[1.5] font-medium">
 						{deleteSessionsError}
 					</p>
 				) : null}

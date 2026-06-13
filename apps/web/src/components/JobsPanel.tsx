@@ -216,10 +216,10 @@ export function JobsPanel({
 						</div>
 
 						{actionMessage ? (
-							<div className="mx-4 mt-3 rounded-md border border-slate-300 bg-white px-3 py-2.5 text-xs font-semibold leading-5 text-slate-700">{actionMessage}</div>
+							<div className="ui-feedback-soft mx-4 mt-3 rounded-md px-3 py-2.5 text-xs font-semibold leading-5">{actionMessage}</div>
 						) : null}
 						{actionError ? (
-							<div className="mx-4 mt-3 rounded-md border border-slate-300 bg-slate-100 px-3 py-2.5 text-xs font-semibold leading-5 text-slate-800">{actionError}</div>
+							<div className="ui-feedback mx-4 mt-3 rounded-md px-3 py-2.5 text-xs font-semibold leading-5">{actionError}</div>
 						) : null}
 
 						{selectedJob ? (
@@ -260,12 +260,12 @@ export function JobsPanel({
 											step={1}
 											value={intervalMinutes}
 											onChange={(event) => setIntervalDraft({ jobId: selectedJob.id, value: event.target.value })}
-											className="mt-1.5 block w-full rounded-md border border-slate-300 bg-[#f8f8f8] px-3 py-2.5 font-mono text-sm font-bold text-[#171717] outline-none transition focus:border-slate-500 focus:bg-white"
+											className="ui-field-surface mt-1.5 block w-full rounded-md border px-3 py-2.5 font-mono text-sm font-bold text-[#171717] outline-none"
 										/>
 									</label>
 									<button
 										type="submit"
-										className="w-full rounded-md border border-black bg-black px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer min-[640px]:w-auto"
+										className="ui-button-primary w-full rounded-md border px-4 py-2.5 text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer min-[640px]:w-auto"
 										disabled={isMutating || intervalMinutes.trim().length === 0}
 									>
 										{isMutating ? "Syncing..." : "Update Schedule"}
@@ -277,8 +277,8 @@ export function JobsPanel({
 										type="button"
 									className={`w-full rounded-md border px-4 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer min-[520px]:w-auto ${
 										selectedJob.enabled
-											? "border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
-											: "border-slate-900 bg-slate-900 text-white hover:bg-black"
+											? "ui-button-secondary"
+											: "ui-button-primary"
 									}`}
 										onClick={() => { void handleToggleEnabled(); }}
 										disabled={isMutating}
@@ -287,7 +287,7 @@ export function JobsPanel({
 									</button>
 									<button
 										type="button"
-									className="w-full rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer min-[520px]:w-auto"
+									className="ui-button-secondary w-full rounded-md border px-4 py-2.5 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer min-[520px]:w-auto"
 										onClick={() => { void handleDeleteJob(); }}
 										disabled={isMutating}
 									>
@@ -296,7 +296,7 @@ export function JobsPanel({
 								</div>
 
 								{selectedJob.lastError ? (
-									<div className="mt-3 rounded-md border border-slate-300 bg-slate-100 p-3.5 text-[0.84rem] leading-[1.5]">
+									<div className="ui-feedback mt-3 rounded-md p-3.5 text-[0.84rem] leading-[1.5]">
 										<p className="font-mono text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate-700">Last Execution Error</p>
 										<p className="mt-2 break-all text-slate-800 font-semibold">{selectedJob.lastError}</p>
 									</div>
@@ -333,7 +333,7 @@ export function JobsPanel({
 								{totalRuns > 0 ? <StatusBadge label={`${totalRuns} total`} tone="neutral" /> : null}
 								<button
 									type="button"
-									className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-[#171717] transition hover:bg-slate-100 cursor-pointer"
+									className="ui-button-secondary rounded-md border px-3 py-1.5 text-xs font-bold cursor-pointer"
 									onClick={() => {
 										if (!selectedJob) {
 											return;

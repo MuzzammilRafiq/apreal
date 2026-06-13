@@ -430,14 +430,14 @@ export function SettingsPage({
 	);
 
 	return (
-		<main className="min-h-svh bg-[linear-gradient(180deg,#f7f6f2_0%,#f1f1ee_28%,#efefec_100%)] text-[#171717] selection:bg-black/10 selection:text-black">
+		<main className="min-h-svh bg-[linear-gradient(180deg,var(--color-brand-bg)_0%,#fff1f5_38%,#fff8fa_100%)] text-[#171717] selection:bg-[rgba(244,172,183,0.3)] selection:text-[var(--color-brand-ink)]">
 			<div className="flex min-h-svh w-full flex-col">
 				{/* ---- Main layout: sidebar + content ---- */}
 				<div className="grid flex-1 grid-rows-[auto_minmax(0,1fr)] content-start min-[961px]:grid-cols-[280px_minmax(0,1fr)] min-[961px]:grid-rows-1 min-[1320px]:grid-cols-[300px_minmax(0,1fr)]">
-					<div className="z-30 flex items-center justify-between gap-3 border-b border-black/8 bg-white/88 px-3 py-3 backdrop-blur-md min-[961px]:hidden">
+					<div className="z-30 flex items-center justify-between gap-3 border-b border-[var(--color-brand-line)] bg-[rgba(255,248,250,0.88)] px-3 py-3 backdrop-blur-md min-[961px]:hidden">
 						<button
 							type="button"
-							className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/[0.045] text-slate-900 transition-colors duration-150 hover:bg-black/[0.08] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+							className="ui-icon-button flex h-11 w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
 							onClick={() => setMobileMenuOpen(true)}
 							aria-label="Open settings menu"
 						>
@@ -452,14 +452,14 @@ export function SettingsPage({
 					</div>
 
 					{mobileMenuOpen ? (
-						<div className="fixed inset-0 z-50 bg-black/40 min-[961px]:hidden" aria-hidden="true">
+						<div className="fixed inset-0 z-50 bg-[rgba(79,62,69,0.28)] min-[961px]:hidden" aria-hidden="true">
 							<button
 								type="button"
 								className="absolute inset-0 h-full w-full cursor-default"
 								onClick={() => setMobileMenuOpen(false)}
 								aria-label="Close settings menu"
 							/>
-							<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden bg-white text-ink shadow-[0_24px_60px_rgba(0,0,0,0.2)]">
+							<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden bg-sidebar-panel text-ink shadow-[0_24px_60px_var(--color-brand-shadow)]">
 								<div className="border-b border-line px-4 py-4">
 									<div className="flex items-center justify-between gap-3">
 										<div>
@@ -468,7 +468,7 @@ export function SettingsPage({
 										</div>
 										<button
 											type="button"
-											className="flex h-10 w-10 items-center justify-center rounded-full bg-black/[0.045] text-slate-500 transition-colors duration-150 hover:bg-black/[0.08] hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+											className="ui-icon-button flex h-10 w-10 items-center justify-center rounded-full text-slate-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
 											onClick={() => setMobileMenuOpen(false)}
 											aria-label="Close settings menu"
 										>
@@ -487,10 +487,10 @@ export function SettingsPage({
 												setActiveSection(section.id);
 												setMobileMenuOpen(false);
 											}}
-											className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[0.9375rem] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring cursor-pointer ${
+											className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[0.9375rem] font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring cursor-pointer ${
 												activeSection === section.id
-													? "bg-black/[0.045] text-ink"
-													: "text-muted hover:bg-black/[0.03] hover:text-ink"
+													? "ui-nav-item-active text-ink"
+													: "ui-nav-item text-muted"
 											}`}
 										>
 											<span className={`mt-0.5 shrink-0 ${activeSection === section.id ? "text-ink" : "text-faint"}`}>
@@ -513,7 +513,7 @@ export function SettingsPage({
 					) : null}
 
 					{/* ======== SIDEBAR ======== */}
-					<nav className="hidden flex-col border-b border-line bg-[#fbfbfa] min-[961px]:sticky min-[961px]:top-0 min-[961px]:flex min-[961px]:min-h-svh min-[961px]:self-start min-[961px]:border-r min-[961px]:border-b-0">
+					<nav className="hidden flex-col border-b border-line bg-sidebar-bg min-[961px]:sticky min-[961px]:top-0 min-[961px]:flex min-[961px]:min-h-svh min-[961px]:self-start min-[961px]:border-r min-[961px]:border-b-0">
 						{/* Desktop: vertical sidebar */}
 						<div className="text-ink min-[961px]:flex min-[961px]:min-h-svh min-[961px]:flex-col">
 							<div className="border-b border-line px-5 py-4">
@@ -527,10 +527,10 @@ export function SettingsPage({
 										key={section.id}
 										type="button"
 										onClick={() => setActiveSection(section.id)}
-										className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[0.9375rem] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring cursor-pointer ${
+										className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[0.9375rem] font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring cursor-pointer ${
 											activeSection === section.id
-												? "bg-black/[0.045] text-ink"
-												: "text-muted hover:bg-black/[0.03] hover:text-ink"
+												? "ui-nav-item-active text-ink"
+												: "ui-nav-item text-muted"
 										}`}
 									>
 										<span className={`mt-0.5 shrink-0 ${activeSection === section.id ? "text-ink" : "text-faint"}`}>
@@ -552,8 +552,8 @@ export function SettingsPage({
 					</nav>
 
 					{/* ======== CONTENT ======== */}
-					<div className="min-w-0 bg-white/72 px-3 py-3 backdrop-blur-[2px] min-[961px]:min-h-svh min-[961px]:px-6 min-[961px]:py-5">
-						<header className="flex flex-col gap-2 border-b border-black/8 pb-3 min-[961px]:flex-row min-[961px]:items-start min-[961px]:justify-between min-[961px]:gap-4">
+					<div className="min-w-0 bg-[rgba(255,248,250,0.68)] px-3 py-3 backdrop-blur-[2px] min-[961px]:min-h-svh min-[961px]:px-6 min-[961px]:py-5">
+						<header className="flex flex-col gap-2 border-b border-[var(--color-brand-line)] pb-2 min-[961px]:flex-row min-[961px]:items-start min-[961px]:justify-between min-[961px]:gap-4">
 							<div>
 								<h1 className="text-[1.28rem] font-bold tracking-tight leading-none text-slate-900 min-[961px]:text-[1.55rem]">
 									{activeSectionTitle}
@@ -563,7 +563,7 @@ export function SettingsPage({
 								{activeSection === "jobs" ? (
 									<button
 										type="button"
-										className="inline-flex w-full items-center justify-center gap-2 border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-[#171717] transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[961px]:w-auto"
+										className="ui-button-secondary inline-flex w-full items-center justify-center gap-2 border px-3 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[961px]:w-auto"
 										onClick={onRefreshJobs}
 									>
 										{refreshIcon(isLoadingJobs)}
@@ -572,7 +572,7 @@ export function SettingsPage({
 								) : activeSection === "mcp" ? (
 									<button
 										type="button"
-										className="inline-flex w-full items-center justify-center gap-2 border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-[#171717] transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[961px]:w-auto"
+										className="ui-button-secondary inline-flex w-full items-center justify-center gap-2 border px-3 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[961px]:w-auto"
 										onClick={onRefreshMcpServers}
 										disabled={isLoadingMcpServers}
 									>
