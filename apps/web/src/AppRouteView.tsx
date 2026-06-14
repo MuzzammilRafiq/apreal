@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type { RefObject } from "react";
 import type { CreateMcpServerRequest, LocalWebAdminStatus, McpServerConfig, ProvidersResponse, UpdateMcpServerRequest } from "@apreal/shared";
 import { Composer } from "./components/Composer";
@@ -86,6 +87,27 @@ export function AppRouteView({
 	onStartProviderLogin, onSaveProviderApiKey, onCreateMcpServer, onUpdateMcpServer, onDeleteMcpServer, onRefreshMcpServers,
 	onSaveAppendSystemPrompt, onDeleteAllSessions, onStartNewChat, onActivateSession, onDeleteSession, onLoadMoreSessions, onSendPrompt, onAbort,
 }: AppRouteViewProps) {
+	useEffect(() => {
+		const visualViewport = window.visualViewport;
+		if (!visualViewport) {
+			return;
+		}
+
+		const updateKeyboardInset = () => {
+			const keyboardInset = Math.max(0, window.innerHeight - visualViewport.height - visualViewport.offsetTop);
+			document.documentElement.style.setProperty("--composer-keyboard-inset", `${keyboardInset}px`);
+		};
+
+		updateKeyboardInset();
+		visualViewport.addEventListener("resize", updateKeyboardInset);
+		visualViewport.addEventListener("scroll", updateKeyboardInset);
+		return () => {
+			visualViewport.removeEventListener("resize", updateKeyboardInset);
+			visualViewport.removeEventListener("scroll", updateKeyboardInset);
+			document.documentElement.style.removeProperty("--composer-keyboard-inset");
+		};
+	}, []);
+
 	if (route === "settings" && capabilities.settings) {
 		return (
 			<SettingsPage
@@ -150,7 +172,7 @@ export function AppRouteView({
 	}
 
 	return (
-		<main className="grid h-svh w-full overflow-hidden grid-cols-1 grid-rows-[auto_minmax(0,1fr)] font-ui text-ink min-[721px]:grid-cols-[240px_minmax(0,1fr)] min-[721px]:grid-rows-1 min-[1221px]:grid-cols-[280px_minmax(0,1fr)]">
+		<main className="fixed inset-0 grid h-svh w-full overflow-hidden grid-cols-1 grid-rows-[auto_minmax(0,1fr)] font-ui text-ink min-[721px]:grid-cols-[240px_minmax(0,1fr)] min-[721px]:grid-rows-1 min-[1221px]:grid-cols-[280px_minmax(0,1fr)]">
 			<Sidebar
 				pendingDraft={pendingDraft}
 				sessions={visibleSessions}
@@ -175,7 +197,10 @@ export function AppRouteView({
 					emptyState={emptyState}
 					connectionError={connectionError}
 				/>
-				<div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-3 pb-3 max-[860px]:px-2 max-[860px]:pb-2">
+				<div
+					className="pointer-events-none absolute inset-x-0 z-20 flex justify-center px-3 pb-3 max-[860px]:px-2 max-[860px]:pb-2"
+					style={{ bottom: "var(--composer-keyboard-inset, 0px)" }}
+				>
 					<Composer
 						connected={connected}
 						serverReady={serverReady}

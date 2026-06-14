@@ -240,7 +240,7 @@ export function TranscriptPanel({ activeTranscript, emptyState, connectionError 
 				className="h-full"
 				aria-live="polite"
 			>
-				<ConversationContent className="gap-5 px-3 pt-4 pb-28 min-[861px]:gap-6 min-[861px]:px-6 min-[861px]:pt-6 min-[861px]:pb-32">
+				<ConversationContent className="gap-5 px-3 pt-4 pb-[calc(7rem+var(--composer-keyboard-inset,0px))] min-[861px]:gap-6 min-[861px]:px-6 min-[861px]:pt-6 min-[861px]:pb-[calc(8rem+var(--composer-keyboard-inset,0px))]">
 					{connectionError ? (
 						<div
 							role="alert"

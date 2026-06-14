@@ -705,9 +705,8 @@ export function App({ runtime }: AppProps) {
 			setPendingDraft(false);
 			setConnectionError(getErrorMessage(error));
 		});
-		focusPrompt();
 		return true;
-	}, [activeSessionId, chatTransportReady, focusPrompt, isBusy, sendClientMessage]);
+	}, [activeSessionId, chatTransportReady, isBusy, sendClientMessage]);
 
 	const handleDeleteSession = useCallback(async (sessionId: string) => {
 		const session = sessionsRef.current.find((entry) => entry.id === sessionId);

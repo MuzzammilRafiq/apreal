@@ -168,6 +168,7 @@ export const Composer = memo(function Composer({
 
 		if (onSend(trimmedPrompt)) {
 			setPrompt("");
+			promptInputRef.current?.blur();
 		}
 	}
 
@@ -195,6 +196,10 @@ export const Composer = memo(function Composer({
 					onFocus={() => setIsFocused(true)}
 					onBlur={() => setIsFocused(false)}
 					onKeyDown={(event) => {
+						if (event.nativeEvent.isComposing) {
+							return;
+						}
+
 						if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
 							event.preventDefault();
 							event.currentTarget.form?.requestSubmit();
@@ -203,6 +208,7 @@ export const Composer = memo(function Composer({
 
 						if (event.key === "Enter" && !event.shiftKey) {
 							event.preventDefault();
+							event.currentTarget.form?.requestSubmit();
 						}
 					}}
 					disabled={!serverReady || Boolean(blockedReason)}
@@ -218,7 +224,7 @@ export const Composer = memo(function Composer({
 										: `Opening the ${connectionLabel} stream...`
 									: ""
 					}
-					className="min-h-18 max-h-[calc(11.55em+1rem)] px-4 py-3 text-[0.98rem] leading-[1.6] text-slate-900 placeholder:text-slate-400"
+					className="min-h-[3.1rem] max-h-[calc(11.55em+1rem)] px-4 py-3 text-[0.98rem] leading-[1.6] text-slate-900 placeholder:text-slate-400"
 				/>
 			</PromptInputBody>
 			<PromptInputFooter className="px-3 pb-3 pt-0 min-[861px]:px-4">
