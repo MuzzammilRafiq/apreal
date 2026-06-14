@@ -391,7 +391,7 @@ export function SettingsPage({
 								onClick={() => setMobileMenuOpen(false)}
 								aria-label="Close settings menu"
 							/>
-							<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden bg-sidebar-panel text-ink shadow-[0_24px_60px_var(--color-brand-shadow)]">
+							<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden bg-white text-ink shadow-[0_24px_60px_var(--color-brand-shadow)]">
 								<ConnectionSidebarFooter
 									target={target}
 									clientConnected={connected}

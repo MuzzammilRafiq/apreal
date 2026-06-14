@@ -251,7 +251,7 @@ export const Sidebar = memo(function Sidebar({
 						onClick={() => setMobileMenuOpen(false)}
 						aria-label="Close chat menu"
 					/>
-					<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden border-r border-(--color-brand-line) bg-sidebar-panel text-ink shadow-[0_24px_60px_var(--color-brand-shadow)]">
+					<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden border-r border-(--color-brand-line) bg-white text-ink shadow-[0_24px_60px_var(--color-brand-shadow)]">
 						<SidebarContent
 							pendingDraft={pendingDraft}
 							sessions={sessions}
