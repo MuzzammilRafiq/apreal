@@ -54,6 +54,50 @@ export type SearchableModel = {
 	isDefault: boolean;
 };
 
+export function buildSearchableModels(providers: ProvidersResponse | null): SearchableModel[] {
+	if (!providers) {
+		return [];
+	}
+
+	const flattened = providers.providers.flatMap((provider) =>
+		provider.models.map((model) => ({
+			key: `${provider.id}:${model.id}`,
+			providerId: provider.id,
+			providerLabel: formatProviderId(provider.id),
+			authType: provider.authType,
+			modelId: model.id,
+			modelName: model.name,
+			isDefault: provider.id === providers.defaultProvider && model.id === providers.defaultModel,
+		})),
+	);
+	const duplicateNameCounts = new Map<string, number>();
+	for (const item of flattened) {
+		const key = normalizeSearchValue(item.modelName);
+		duplicateNameCounts.set(key, (duplicateNameCounts.get(key) ?? 0) + 1);
+	}
+
+	return flattened
+		.map((item) => {
+			const duplicateNameCount = duplicateNameCounts.get(normalizeSearchValue(item.modelName)) ?? 0;
+			const label = duplicateNameCount > 1
+				? `${item.modelName} (${item.providerLabel})`
+				: item.modelName;
+			return {
+				...item,
+				label,
+				searchText: normalizeSearchValue(
+					`${item.modelName} ${item.modelId} ${item.providerLabel} ${item.providerId}`,
+				),
+			};
+		})
+		.sort((left, right) =>
+			Number(right.isDefault) - Number(left.isDefault) ||
+			left.modelName.localeCompare(right.modelName) ||
+			left.providerLabel.localeCompare(right.providerLabel) ||
+			left.modelId.localeCompare(right.modelId),
+		);
+}
+
 export type SearchableProvider = {
 	id: string;
 	label: string;

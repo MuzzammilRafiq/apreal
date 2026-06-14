@@ -271,6 +271,7 @@ export function createHandlers(
 	async function handleSetDefaultModel(clientId: string, provider: string, modelId: string) {
 		try {
 			const payload = await setDefaultProviderModel(cwd, provider, modelId);
+			recycleIdleSessionControllers?.();
 			clientActions.broadcast({
 				type: "providers_snapshot",
 				...payload,

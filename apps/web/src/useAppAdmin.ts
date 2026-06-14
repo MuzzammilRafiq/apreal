@@ -515,7 +515,7 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 	}, [refreshMcpServers, route, runtime.capabilities.mcpServers]);
 
 	useEffect(() => {
-		if (route !== "settings") {
+		if (route === "jobs") {
 			return;
 		}
 		if (!runtime.capabilities.providers) {

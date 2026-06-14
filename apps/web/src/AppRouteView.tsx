@@ -9,7 +9,7 @@ import type { ScheduledJobDetails, SessionCacheEntry, SessionSummary, Transcript
 import type { AppRoute } from "./app-state";
 import type { WebCapabilities } from "./runtime";
 
-type EmptyState = { title: string; body: string } | null;
+type EmptyState = { title: string; body: string | null } | null;
 
 type AppRouteViewProps = {
 	route: AppRoute;
@@ -184,8 +184,11 @@ export function AppRouteView({
 						connectionLabel={connectionLabel}
 						activeSession={activeSession}
 						activeSessionId={activeSessionId}
+						providers={providers}
+						providersError={providersError}
 						aborting={aborting}
 						promptInputRef={promptInputRef}
+						onSetDefaultModel={onSetDefaultModel}
 						onSend={onSendPrompt}
 						onAbort={onAbort}
 					/>

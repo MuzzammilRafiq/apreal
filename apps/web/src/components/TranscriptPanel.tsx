@@ -75,7 +75,7 @@ function mergeConsecutiveAssistantMessages(transcript: TranscriptMessage[]): Tra
 
 type EmptyState = {
 	title: string;
-	body: string;
+	body: string | null;
 };
 
 type TranscriptPanelProps = {
@@ -188,7 +188,7 @@ function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 				<MessageContent
 					className={[
 						item.role === "user"
-							? "rounded-2xl rounded-tr-md bg-brand px-4 py-2.5 text-[0.95rem] leading-[1.6] text-white transition-colors duration-150 hover:bg-brand-strong max-[520px]:px-3.5 max-[520px]:py-2.5"
+							? "rounded-2xl rounded-tr-md bg-black px-4 py-2.5 text-[0.95rem] leading-[1.6] text-white transition-colors duration-150 hover:bg-black/90 max-[520px]:px-3.5 max-[520px]:py-2.5"
 							: "bg-transparent p-0 text-[0.9rem] font-medium leading-[1.65] text-muted",
 						item.pending ? "opacity-75" : "",
 					].join(" ")}
@@ -259,7 +259,7 @@ export function TranscriptPanel({ activeTranscript, emptyState, connectionError 
 							title={emptyState.title}
 							description={emptyState.body}
 							icon={
-								<svg viewBox="0 0 24 24" className="h-6 w-6 text-slate-700" fill="none" stroke="currentColor" strokeWidth="2.2">
+								<svg viewBox="0 0 24 24" className="h-8 w-8 text-black min-[861px]:h-10 min-[861px]:w-10" fill="none" stroke="currentColor" strokeWidth="2.2">
 									<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" strokeLinecap="round" strokeLinejoin="round" />
 								</svg>
 							}

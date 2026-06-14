@@ -17,4 +17,5 @@ This is a monorepo
 - The chat composer now uses a fuller AI Elements `PromptInput` layout with session status, active model, context usage, and shortcut guidance while remaining text-only until attachments are wired end-to-end.
 - Assistant transcript rendering now groups reasoning and tool activity into a cleaner collapsible chain-of-thought block, with bash commands shown in a more terminal-like presentation and tool status surfaced inline.
 - The web component layer has been pruned to remove unused AI Elements wrapper components, unreferenced shadcn/ui helpers, and orphaned SVG assets so the current UI surface matches what is actually rendered.
+- The chat composer now keeps the current model visible as an inline picker in the input footer, supports switching models without leaving chat, and uses a lighter thin-border treatment for a simpler chat surface.
 - Update this section after every major project change; skip minor changes.

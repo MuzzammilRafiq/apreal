@@ -752,7 +752,7 @@ export function App({ runtime }: AppProps) {
 				: !serverReady
 				? (adminStatusError ?? transportStatusMessage ?? runtime.transport.unavailableBody)
 				: connected
-				? "Start with a coding task, file request, or bug report. The first prompt creates a reusable session that stays available in the left rail."
+				? null
 				: !streamRequested
 					? `Opening the ${runtime.transport.label} event stream.`
 					: runtime.transport.connectingBody,

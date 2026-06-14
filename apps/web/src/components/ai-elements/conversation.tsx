@@ -35,7 +35,7 @@ export const ConversationContent = ({
 
 export type ConversationEmptyStateProps = ComponentProps<"div"> & {
   title?: string;
-  description?: string;
+  description?: string | null;
   icon?: React.ReactNode;
 };
 
@@ -49,18 +49,18 @@ export const ConversationEmptyState = ({
 }: ConversationEmptyStateProps) => (
   <div
     className={cn(
-      "flex size-full flex-col items-center justify-center gap-3 p-8 text-center",
+      "flex size-full flex-col items-center justify-center gap-4 p-8 text-center",
       className
     )}
     {...props}
   >
     {children ?? (
       <>
-        {icon && <div className="text-muted-foreground">{icon}</div>}
-        <div className="space-y-1">
-          <h3 className="font-medium text-sm">{title}</h3>
+        {icon && <div className="flex items-center justify-center text-foreground">{icon}</div>}
+        <div className="space-y-2">
+          <h3 className="font-semibold text-xl tracking-tight text-black min-[861px]:text-2xl">{title}</h3>
           {description && (
-            <p className="text-muted-foreground text-sm">{description}</p>
+            <p className="max-w-md text-base leading-7 text-slate-600">{description}</p>
           )}
         </div>
       </>

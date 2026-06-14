@@ -312,8 +312,15 @@ export function createWebRequestHandler(context: any) {
 				);
 			}
 			try {
+				const providersPayload = await setDefaultProviderModel(
+					cwd,
+					provider.trim(),
+					modelId.trim(),
+					readProviderLoginState,
+				);
+				recycleIdleSessionControllers();
 				return json(
-					await setDefaultProviderModel(cwd, provider.trim(), modelId.trim(), readProviderLoginState),
+					providersPayload,
 					{ headers: corsHeaders },
 				);
 			} catch (error) {
