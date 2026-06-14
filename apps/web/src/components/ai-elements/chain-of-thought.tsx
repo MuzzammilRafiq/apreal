@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Brain, ChevronDown, CircleDashed, LoaderCircle, type LucideIcon } from "lucide-react";
+import { Brain, ChevronRight, CircleDashed, LoaderCircle, type LucideIcon } from "lucide-react";
 import type { HTMLAttributes, ReactNode } from "react";
 import { createContext, useContext, useMemo, useState } from "react";
 
@@ -36,8 +36,7 @@ export function ChainOfThought({ children, className, defaultOpen = false, ...pr
 		<ChainOfThoughtContext.Provider value={value}>
 			<div
 				className={cn(
-					"w-full rounded-md  px-2 py-1 transition-colors duration-150",
-					value.open ? "bg-black/2" : "",
+					"w-full transition-colors duration-150",
 					className,
 				)}
 				{...props}
@@ -53,7 +52,7 @@ export type ChainOfThoughtHeaderProps = HTMLAttributes<HTMLButtonElement> & {
 };
 
 export function ChainOfThoughtHeader({
-	label = "Toggle chain of thought",
+	label = "Worked",
 	className,
 	...props
 }: ChainOfThoughtHeaderProps) {
@@ -63,17 +62,20 @@ export function ChainOfThoughtHeader({
 		<button
 			type="button"
 			className={cn(
-				"flex h-7 w-7 shrink-0 items-center justify-center text-[#4b5563] transition-colors duration-150 hover:text-(--color-ink)",
+				"flex w-full items-center gap-1.5 border-b border-(--color-thinking-border) px-0 py-1 text-left text-[0.95rem] leading-[1.7] text-[#4b5563] transition-colors duration-150 hover:text-(--color-ink)",
 				className,
 			)}
 			onClick={() => setOpen(!open)}
 			aria-expanded={open}
+			aria-label={`${open ? "Hide" : "Show"} work details`}
 			{...props}
 		>
-			<span className="flex h-6 w-6 shrink-0 items-center justify-center">
-				<ChevronDown className={cn("h-5 w-5 transform-gpu transition-transform duration-200", open ? "rotate-180" : "rotate-0")} />
+			<span className="font-normal lowercase text-current">
+				{label}
 			</span>
-			<span className="sr-only">{label}</span>
+			<span className="flex h-4 w-4 shrink-0 items-center justify-center">
+				<ChevronRight className={cn("h-3.5 w-3.5 transform-gpu transition-transform duration-200", open ? "rotate-90" : "rotate-0")} />
+			</span>
 		</button>
 	);
 }
