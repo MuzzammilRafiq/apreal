@@ -61,7 +61,7 @@ export function ConnectionSidebarFooter({
 	hostConnected,
 	onBackToChat,
 	placement = "bottom",
-	bordered = true,
+	bordered = false,
 	showConnectivity = true,
 	showBackToChat = true,
 }: ConnectionSidebarFooterProps) {

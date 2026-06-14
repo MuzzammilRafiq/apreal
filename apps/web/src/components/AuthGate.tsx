@@ -19,9 +19,7 @@ export function AuthGate({ pending }: { pending: boolean }) {
 
 					<div className="mx-auto mt-10 w-full max-w-md">
 						<AccountAuthButton
-							showSignedInDetails={false}
 							showAuthBaseUrl={false}
-							wrapperClassName=""
 							buttonClassName="flex w-full items-center justify-center rounded-md bg-black px-4 py-3 text-sm font-semibold text-white transition-colors duration-150 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
 						/>
 					</div>

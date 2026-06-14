@@ -1,357 +1,495 @@
-import { DEFAULT_VISIBLE_PROVIDER_COUNT, formatProviderId, StatusPill } from "./settings-helpers";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
+import { Check, ChevronDown, LoaderCircle } from "lucide-react";
+import { StatusPill, type SearchableModel, type SearchableProvider } from "./settings-helpers";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "./ui/command";
 
-type SettingsModelsSectionProps = Record<string, any>;
+type SettingsModelsSectionProps = {
+  active: boolean;
+  providers: { providers: unknown[] } | null;
+  providersError: string | null;
+  searchableModels: SearchableModel[];
+  searchableProviders: SearchableProvider[];
+  currentDefaultModel: SearchableModel | null;
+  modelUpdateMessage: string | null;
+  modelUpdateError: string | null;
+  providerAuthError: string | null;
+  savingModelKey: string | null;
+  handleSelectModel: (providerId: string, modelId: string) => void;
+  authActionProviderId: string | null;
+  handleStartLogin: (providerId: string) => void;
+  apiKeyEditorProviderId: string | null;
+  setApiKeyEditorProviderId: (updater: (current: string | null) => string | null) => void;
+  setProviderAuthError: (error: string | null) => void;
+  apiKeyDrafts: Record<string, string>;
+  setApiKeyDrafts: (updater: (previous: Record<string, string>) => Record<string, string>) => void;
+  handleSaveApiKey: (providerId: string) => void;
+};
+
+function getProviderAuthLabel(provider: Pick<SearchableProvider, "authType">): string {
+  return provider.authType === "oauth" ? "Subscription" : "API key";
+}
+
+function getProviderStatusLabel(provider: Pick<SearchableProvider, "loginState" | "models">): string {
+  if (provider.loginState.status === "pending") {
+    return "Login pending";
+  }
+
+  if (provider.loginState.status === "failed") {
+    return "Login failed";
+  }
+
+  if (provider.models.length > 0) {
+    return `${provider.models.length} model${provider.models.length === 1 ? "" : "s"} indexed`;
+  }
+
+  return "No models indexed";
+}
+
+function getProviderAuthMessage(provider: Pick<SearchableProvider, "loginState" | "models">): string {
+  if (provider.loginState.status === "pending") {
+    return "Browser login is waiting for completion.";
+  }
+
+  if (provider.loginState.status === "failed") {
+    return provider.loginState.error ?? "Provider login failed.";
+  }
+
+  if (provider.models.length > 0) {
+    return "Ready for model selection.";
+  }
+
+  return "Configure this provider to index available models.";
+}
+
+function stopPickerButtonEvent(event: ReactMouseEvent | ReactPointerEvent) {
+  event.preventDefault();
+  event.stopPropagation();
+}
 
 export function SettingsModelsSection({
-	activeSection,
-	providers,
-	providersError,
-	modelQuery,
-	setModelQuery,
-	normalizedModelQuery,
-	visibleModels,
-	currentDefaultModel,
-	providerQuery,
-	handleProviderQueryChange,
-	normalizedProviderQuery,
-	visibleProviders,
-	showAllProviders,
-	setShowAllProviders,
-	filteredProviders,
-	hiddenProviderCount,
-	modelUpdateMessage,
-	modelUpdateError,
-	providerAuthError,
-	savingModelKey,
-	handleSelectModel,
-	authActionProviderId,
-	handleStartLogin,
-	apiKeyEditorProviderId,
-	setApiKeyEditorProviderId,
-	setProviderAuthError,
-	apiKeyDrafts,
-	setApiKeyDrafts,
-	handleSaveApiKey,
+  active,
+  providers,
+  providersError,
+  searchableModels,
+  searchableProviders,
+  currentDefaultModel,
+  modelUpdateMessage,
+  modelUpdateError,
+  providerAuthError,
+  savingModelKey,
+  handleSelectModel,
+  authActionProviderId,
+  handleStartLogin,
+  apiKeyEditorProviderId,
+  setApiKeyEditorProviderId,
+  setProviderAuthError,
+  apiKeyDrafts,
+  setApiKeyDrafts,
+  handleSaveApiKey,
 }: SettingsModelsSectionProps) {
-	return (
-		<>
-						{/* ---------- MODELS SECTION ---------- */}
-						{activeSection === "models" && (
-							<div className="space-y-3">
-								<div className="border-t border-(--color-brand-line) pt-3">
-									<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Agent Provisioning</p>
-									<h2 className="mt-1 text-[1rem] font-bold text-slate-900">Set default intelligence model</h2>
+  const [providerPickerOpen, setProviderPickerOpen] = useState(false);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [providerQuery, setProviderQuery] = useState("");
+  const [modelQuery, setModelQuery] = useState("");
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
+  const pickerRootRef = useRef<HTMLDivElement | null>(null);
 
-									{providersError ? (
-										<p className="ui-feedback mt-3 px-3 py-2.5 text-[0.82rem] leading-normal font-medium">
-											{providersError}
-										</p>
-									) : null}
+  const selectedProvider = useMemo(() => {
+    return searchableProviders.find((provider) => provider.id === selectedProviderId) ?? null;
+  }, [selectedProviderId, searchableProviders]);
+  const resolvedProvider = selectedProvider ?? (
+    currentDefaultModel
+      ? searchableProviders.find((provider) => provider.id === currentDefaultModel.providerId) ?? null
+      : searchableProviders.find((provider) => provider.models.length > 0) ?? searchableProviders[0] ?? null
+  );
+  const providerModels = useMemo(() => {
+    if (!resolvedProvider) {
+      return [];
+    }
 
-									{providers && providers.providers.length === 0 ? (
-										<p className="mt-3 border border-dashed border-slate-300 py-4 text-sm font-semibold text-slate-500 text-center">
-											No active providers configured yet.
-										</p>
-									) : null}
+    return searchableModels.filter((model) => model.providerId === resolvedProvider.id);
+  }, [resolvedProvider, searchableModels]);
+  const normalizedProviderQuery = providerQuery.trim().toLowerCase();
+  const normalizedModelQuery = modelQuery.trim().toLowerCase();
+  const visibleProviderOptions = useMemo(() => {
+    if (!normalizedProviderQuery) {
+      return searchableProviders;
+    }
 
-									{providers && providers.providers.length > 0 ? (
-										<div className="mt-3 space-y-4">
-											<div className="grid gap-3 border-b border-(--color-brand-line) pb-3 min-[1180px]:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-												<div>
-													<label className="block">
-														<span className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">
-															Deep search models
-														</span>
-														<div className="relative mt-1.5">
-															<input
-																type="search"
-																value={modelQuery}
-																onChange={(event) => setModelQuery(event.target.value)}
-																placeholder="Type model id, name, or cloud provider..."
-																className="ui-field-line w-full border-b bg-transparent pl-8 pr-2 py-2.5 text-sm text-[#171717] placeholder:text-slate-400 outline-none"
-																autoComplete="off"
-																spellCheck={false}
-															/>
-															<span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-																<svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth="2.5">
-																	<circle cx="11" cy="11" r="8" />
-																	<path d="M21 21l-4.35-4.35" strokeLinecap="round" strokeLinejoin="round" />
-																</svg>
-															</span>
-														</div>
-													</label>
+    return searchableProviders.filter((provider) => provider.searchText.includes(normalizedProviderQuery));
+  }, [normalizedProviderQuery, searchableProviders]);
+  const visibleModelOptions = useMemo(() => {
+    if (!normalizedModelQuery) {
+      return providerModels;
+    }
 
-													<p className="mt-2 text-[0.75rem] leading-[1.4] text-slate-500 font-medium">
-														{normalizedModelQuery ? `Showing ${visibleModels.length} result${visibleModels.length === 1 ? "" : "s"}.` : currentDefaultModel ? "Default selected." : "Search models."}
-													</p>
-												</div>
+    return providerModels.filter((model) => model.searchText.includes(normalizedModelQuery));
+  }, [normalizedModelQuery, providerModels]);
 
-												<div>
-													<label className="block">
-														<span className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">
-															Search providers
-														</span>
-														<div className="relative mt-1.5">
-															<input
-																type="search"
-																value={providerQuery}
-																onChange={(event) => handleProviderQueryChange(event.target.value)}
-																placeholder="Type provider name, id, subscription, or api key..."
-																className="ui-field-line w-full border-b bg-transparent pl-8 pr-2 py-2.5 text-sm text-[#171717] placeholder:text-slate-400 outline-none"
-																autoComplete="off"
-																spellCheck={false}
-															/>
-															<span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-																<svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth="2.5">
-																	<circle cx="11" cy="11" r="8" />
-																	<path d="M21 21l-4.35-4.35" strokeLinecap="round" strokeLinejoin="round" />
-																</svg>
-															</span>
-														</div>
-													</label>
+  useEffect(() => {
+    if (selectedProviderId || !currentDefaultModel) {
+      return;
+    }
 
-													<div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[0.75rem] leading-[1.4] text-slate-500 font-medium">
-														<p>
-															{normalizedProviderQuery
-																? `Showing ${visibleProviders.length} provider match${visibleProviders.length === 1 ? "" : "es"}.`
-																: showAllProviders
-																	? `Showing all ${visibleProviders.length} providers.`
-																	: `Showing ${visibleProviders.length} of ${filteredProviders.length} providers.`}
-														</p>
-														{!normalizedProviderQuery && filteredProviders.length > DEFAULT_VISIBLE_PROVIDER_COUNT ? (
-															<button
-																type="button"
-																className="ui-button-secondary border px-2.5 py-1 text-[0.72rem] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer"
-																onClick={() => setShowAllProviders((current: boolean) => !current)}
-															>
-																{showAllProviders ? "Show Fewer" : `Show ${hiddenProviderCount} More`}
-															</button>
-														) : null}
-													</div>
-												</div>
-											</div>
+    setSelectedProviderId(currentDefaultModel.providerId);
+  }, [currentDefaultModel, selectedProviderId]);
 
-											{modelUpdateMessage ? (
-												<p className="ui-feedback-soft px-3 py-2.5 text-xs leading-normal font-medium">
-													{modelUpdateMessage}
-												</p>
-											) : null}
-											{modelUpdateError ? (
-												<p className="ui-feedback px-3 py-2.5 text-xs leading-normal font-medium">
-													{modelUpdateError}
-												</p>
-											) : null}
-											{providerAuthError ? (
-												<p className="ui-feedback px-3 py-2.5 text-xs leading-normal font-medium">
-													{providerAuthError}
-												</p>
-											) : null}
+  useEffect(() => {
+    if (!providerPickerOpen && !modelPickerOpen) {
+      return;
+    }
 
-											<div className="grid gap-4 min-[1280px]:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-												<section className="space-y-3">
-													<div className="flex items-center justify-between gap-3">
-														<div>
-															<p className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.14em] text-slate-400">Default model</p>
-															<h3 className="mt-1 text-[1rem] font-bold text-slate-900">Choose what new chats start with</h3>
-														</div>
-														{currentDefaultModel ? <StatusPill label="Configured" tone="success" /> : <StatusPill label="Unselected" tone="neutral" />}
-													</div>
+    function handlePointerDown(event: MouseEvent) {
+      if (!pickerRootRef.current?.contains(event.target as Node)) {
+        setProviderPickerOpen(false);
+        setModelPickerOpen(false);
+      }
+    }
 
-													{visibleModels.length > 0 ? (
-														<ul className="overflow-hidden border-t border-(--color-brand-line)">
-															{visibleModels.map((model: any, index: number) => {
-																const isSaving = savingModelKey === model.key;
-																return (
-																	<li
-																		key={model.key}
-																		className={`grid gap-2 px-0 py-2.5 min-[560px]:grid-cols-[minmax(0,1fr)_auto] min-[560px]:items-center ${
-																			index > 0 ? "border-t border-(--color-brand-line)" : ""
-																		}`}
-																	>
-																		<div className="min-w-0">
-																			<p className="text-[0.9rem] font-bold text-slate-900">{model.label}</p>
-																			<p className="mt-0.5 break-all text-[0.7rem] leading-tight font-mono text-slate-500 font-medium">
-																				ID: {model.modelId} · {model.providerLabel} · <span className="text-slate-600 font-bold">{model.authType === "oauth" ? "Subscription" : "Custom Key"}</span>
-																			</p>
-																		</div>
-																		<button
-																			type="button"
-																			className={`min-w-24 border px-3 py-1.5 text-[0.72rem] font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50 min-[560px]:justify-self-end cursor-pointer ${
-																				model.isDefault
-																					? "ui-button-primary"
-																					: "ui-button-secondary"
-																			}`}
-																			onClick={() => {
-																				void handleSelectModel(model.providerId, model.modelId);
-																			}}
-																			disabled={isSaving || model.isDefault || savingModelKey !== null}
-																		>
-																			{isSaving ? "Locking..." : model.isDefault ? "Active Default" : "Set Default"}
-																		</button>
-																	</li>
-																);
-															})}
-														</ul>
-													) : (
-														<p className="border border-dashed border-slate-300 py-5 text-center text-sm font-semibold text-slate-500">
-															{normalizedModelQuery
-																? `No available models match "${modelQuery.trim()}".`
-																: "Use search query to find models."}
-														</p>
-													)}
-												</section>
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setProviderPickerOpen(false);
+        setModelPickerOpen(false);
+      }
+    }
 
-												<section className="space-y-3">
-													<div>
-														<p className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.14em] text-slate-400">Providers</p>
-														<h3 className="mt-1 text-[1rem] font-bold text-slate-900">Manage logins and API keys</h3>
-													</div>
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [modelPickerOpen, providerPickerOpen]);
 
-													<ul className="space-y-2">
-											{visibleProviders.map((provider: any) => {
-												const isDefaultProvider = provider.id === providers.defaultProvider && provider.models.some((m: any) =>
-													m.id === providers.defaultModel
-												);
-												return (
-													<li
-														key={provider.id}
-													className={`border px-3 py-3 ${
-														isDefaultProvider ? "border-(--color-brand-line-strong) bg-white" : "border-(--color-brand-line) bg-[rgba(255,255,255,0.72)]"
-													}`}
-													>
-														<div className="flex flex-wrap items-start justify-between gap-2">
-															<div className="min-w-0">
-																<p className="text-[0.92rem] font-bold text-slate-900">{formatProviderId(provider.id)}</p>
-																<p className="mt-1 font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-slate-400">
-																	ID: {provider.id}
-																</p>
-															</div>
-														<div className="flex flex-wrap items-center gap-2">
-																{isDefaultProvider ? (
-															<span className="inline-flex border border-(--color-brand) bg-brand px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-widest text-white">
-																		Default provider
-																	</span>
-																) : null}
-															<span className="inline-flex border border-(--color-brand-line-strong) bg-white px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-widest text-slate-500">
-																	{provider.authType === "oauth" ? "Subscription" : "API key"}
-																</span>
-																{provider.supportsOAuth ? (
-																	<span className="inline-flex border border-(--color-brand-line-strong) bg-white px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-widest text-slate-500">
-																		Pi login
-																	</span>
-																) : null}
-																{provider.supportsApiKey ? (
-																	<span className="inline-flex border border-(--color-brand-line-strong) bg-white px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-widest text-slate-500">
-																		API key
-																	</span>
-																) : null}
-															</div>
-														</div>
-														<p className="mt-2 text-[0.76rem] text-slate-400 font-semibold">
-															{provider.models.length > 0
-																? `${provider.models.length} model${provider.models.length === 1 ? "" : "s"} indexed.`
-																: "No available models listed. Check your Apreal login status."}
-														</p>
-														{provider.supportsOAuth || provider.supportsApiKey ? (
-															<div className="mt-2 flex flex-wrap items-center gap-2">
-																<span className="text-[0.78rem] font-medium text-slate-500">
-																	{provider.loginState.status === "pending"
-																		? "Browser login is waiting for completion."
-																		: provider.loginState.status === "failed"
-																			? provider.loginState.error ?? "Provider login failed."
-																			: provider.loginState.status === "succeeded"
-																				? "Provider login completed. Your models are ready to refresh."
-																				: "Use Pi login to authorize this provider in the browser."}
-																</span>
-																<div className="flex flex-wrap items-center gap-2">
-																	{provider.supportsOAuth ? (
-																		<button
-																			type="button"
-																			className="ui-button-secondary border px-3 py-1.5 text-[0.72rem] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-																			onClick={() => {
-																				void handleStartLogin(provider.id);
-																			}}
-																			disabled={authActionProviderId !== null || provider.loginState.status === "pending"}
-																		>
-																			{authActionProviderId === provider.id && provider.loginState.status !== "pending"
-																				? "Opening..."
-																				: provider.loginState.status === "pending"
-																					? "Awaiting Browser"
-																					: "Login with Provider"}
-																		</button>
-																	) : null}
-																	{provider.supportsApiKey ? (
-																		<button
-																			type="button"
-																			className="ui-button-secondary border px-3 py-1.5 text-[0.72rem] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-																			onClick={() => {
-																				setApiKeyEditorProviderId((current: string | null) => current === provider.id ? null : provider.id);
-																				setProviderAuthError(null);
-																			}}
-																			disabled={authActionProviderId !== null}
-																		>
-																			{apiKeyEditorProviderId === provider.id ? "Hide API Key" : "Use API Key"}
-																		</button>
-																	) : null}
-																</div>
-															</div>
-														) : null}
-														{provider.supportsApiKey && apiKeyEditorProviderId === provider.id ? (
-															<div className="mt-2 border-t border-(--color-brand-line) pt-2.5">
-																<label className="block">
-																	<span className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">
-																		Stored API key
-																	</span>
-																	<input
-																		type="password"
-																		value={apiKeyDrafts[provider.id] ?? ""}
-																		onChange={(event) => {
-																			const nextValue = event.target.value;
-																			setApiKeyDrafts((previous: Record<string, string>) => ({ ...previous, [provider.id]: nextValue }));
-																		}}
-																		placeholder="Paste API key"
-																		className="ui-field-line mt-1.5 w-full border-b bg-transparent px-0 py-2 text-sm text-[#171717] placeholder:text-slate-400 outline-none"
-																		autoComplete="off"
-																		spellCheck={false}
-																	/>
-																</label>
-																<div className="mt-2.5 flex flex-wrap items-center gap-2">
-																	<button
-																		type="button"
-																		className="ui-button-primary border px-3 py-1.5 text-[0.72rem] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-																		onClick={() => {
-																			void handleSaveApiKey(provider.id);
-																		}}
-																		disabled={authActionProviderId !== null}
-																	>
-																		{authActionProviderId === provider.id ? "Saving..." : "Save API Key"}
-																	</button>
-																	<span className="text-[0.76rem] font-medium text-slate-500">
-																		Saved locally into your Apreal auth store for this machine.
-																	</span>
-																</div>
-															</div>
-														) : null}
-													</li>
-												);
-											})}
-													</ul>
-												</section>
-											</div>
-											{visibleProviders.length === 0 ? (
-												<p className="border border-dashed border-slate-300 py-4 text-sm font-semibold text-slate-500 text-center">
-													No providers match "{providerQuery.trim()}".
-												</p>
-											) : null}
-										</div>
-									) : null}
+  function handleProviderSelect(provider: SearchableProvider) {
+    setSelectedProviderId(provider.id);
+    setProviderPickerOpen(false);
+    setProviderQuery("");
+    setModelQuery("");
+  }
 
-									{!providers && !providersError ? (
-										<p className="mt-4 text-sm text-slate-400 font-semibold text-center">Reading system models...</p>
-									) : null}
-								</div>
-							</div>
-						)}
-		</>
-	);
+  function handleModelSelect(model: SearchableModel) {
+    if (model.isDefault || savingModelKey !== null) {
+      return;
+    }
+
+    handleSelectModel(model.providerId, model.modelId);
+    setModelPickerOpen(false);
+    setModelQuery("");
+  }
+
+  return (
+    <>
+      {active && (
+        <div className="space-y-3">
+          {providersError ? (
+            <p className="ui-feedback mt-3 px-3 py-2.5 text-[0.82rem] leading-normal font-medium">
+              {providersError}
+            </p>
+          ) : null}
+
+          {providers && providers.providers.length === 0 ? (
+            <p className="mt-3 border border-dashed border-slate-300 py-4 text-center text-sm font-semibold text-slate-500">
+              No active providers configured yet.
+            </p>
+          ) : null}
+
+          {providers && providers.providers.length > 0 ? (
+            <div className="mt-3 space-y-4">
+                <div ref={pickerRootRef} className="mt-3 max-w-3xl space-y-3">
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className="flex min-h-14 w-full items-center justify-between gap-3 rounded border border-black/10 bg-white px-3 py-2.5 text-left text-black transition-colors hover:border-black/20 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+                      onClick={() => {
+                        setProviderPickerOpen((open) => !open);
+                        setModelPickerOpen(false);
+                      }}
+                      aria-haspopup="dialog"
+                      aria-expanded={providerPickerOpen}
+                    >
+                      <span className="min-w-0">
+                        <span className="block text-[0.72rem] font-normal text-slate-500">
+                          Provider
+                        </span>
+                        <span className="mt-0.5 block truncate text-sm font-normal text-black">
+                          {resolvedProvider ? resolvedProvider.label : "Choose provider"}
+                        </span>
+                      </span>
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                    </button>
+
+                    {providerPickerOpen ? (
+                      <div className="absolute left-0 top-[calc(100%+0.5rem)] z-30 w-full overflow-hidden rounded border border-black/10 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
+                        <div className="border-b border-black/8 px-3 py-3">
+                          <p className="text-sm font-normal text-black">
+                            {searchableProviders.length} provider{searchableProviders.length === 1 ? "" : "s"} available
+                          </p>
+                          <p className="mt-1 text-[0.82rem] font-normal text-black">
+                            Current: {resolvedProvider ? resolvedProvider.label : "None"}
+                          </p>
+                          {providerAuthError ? (
+                            <p className="mt-2 text-[0.78rem] font-normal text-black">{providerAuthError}</p>
+                          ) : null}
+                        </div>
+                        <Command shouldFilter={false}>
+                          <CommandInput
+                            value={providerQuery}
+                            onValueChange={setProviderQuery}
+                            placeholder="Search providers..."
+                          />
+                          <CommandList className="max-h-110">
+                            <CommandEmpty>No providers match that search.</CommandEmpty>
+                            <CommandGroup heading="Providers">
+                              {visibleProviderOptions.map((provider) => {
+                                const isSelected = provider.id === resolvedProvider?.id;
+                                const isApiKeyOpen = apiKeyEditorProviderId === provider.id;
+                                const isAuthBusy = authActionProviderId === provider.id;
+                                return (
+                                  <CommandItem
+                                    key={provider.id}
+                                    value={`${provider.label} ${provider.id}`}
+                                    onSelect={() => handleProviderSelect(provider)}
+                                    className="items-start"
+                                  >
+                                    <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
+                                      {isSelected ? (
+                                        <Check className="h-3.5 w-3.5 text-black" />
+                                      ) : (
+                                        <span className="h-2 w-2 rounded bg-black/70" />
+                                      )}
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                      <span className="block truncate text-sm font-normal text-black">
+                                        {provider.label}
+                                      </span>
+                                      <span className="mt-0.5 block break-all text-[0.74rem] font-mono font-normal text-black">
+                                        {provider.id} · {getProviderAuthLabel(provider)} · {getProviderStatusLabel(provider)}
+                                      </span>
+                                      <span className="mt-1 block text-[0.76rem] font-normal text-slate-600">
+                                        {getProviderAuthMessage(provider)}
+                                      </span>
+                                      {provider.supportsOAuth || provider.supportsApiKey ? (
+                                        <span className="mt-2 flex flex-wrap items-center gap-2">
+                                          {provider.supportsOAuth ? (
+                                            <button
+                                              type="button"
+                                              className="ui-button-secondary border px-2.5 py-1.5 text-[0.72rem] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+                                              onPointerDown={stopPickerButtonEvent}
+                                              onMouseDown={stopPickerButtonEvent}
+                                              onClick={(event) => {
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                handleStartLogin(provider.id);
+                                              }}
+                                              disabled={authActionProviderId !== null || provider.loginState.status === "pending"}
+                                            >
+                                              {isAuthBusy && provider.loginState.status !== "pending"
+                                                ? "Opening..."
+                                                : provider.loginState.status === "pending"
+                                                  ? "Awaiting Browser"
+                                                  : "Login with Provider"}
+                                            </button>
+                                          ) : null}
+                                          {provider.supportsApiKey ? (
+                                            <button
+                                              type="button"
+                                              className="ui-button-secondary border px-2.5 py-1.5 text-[0.72rem] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+                                              onPointerDown={stopPickerButtonEvent}
+                                              onMouseDown={stopPickerButtonEvent}
+                                              onClick={(event) => {
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                setApiKeyEditorProviderId((current) => current === provider.id ? null : provider.id);
+                                                setProviderAuthError(null);
+                                              }}
+                                              disabled={authActionProviderId !== null}
+                                            >
+                                              {isApiKeyOpen ? "Hide API Key" : "Use API Key"}
+                                            </button>
+                                          ) : null}
+                                        </span>
+                                      ) : null}
+                                      {provider.supportsApiKey && isApiKeyOpen ? (
+                                        <span
+                                          className="mt-2 block border-t border-(--color-brand-line) pt-2"
+                                          onPointerDown={(event) => event.stopPropagation()}
+                                          onMouseDown={(event) => event.stopPropagation()}
+                                          onClick={(event) => event.stopPropagation()}
+                                        >
+                                          <input
+                                            type="password"
+                                            value={apiKeyDrafts[provider.id] ?? ""}
+                                            onChange={(event) => {
+                                              const nextValue = event.target.value;
+                                              setApiKeyDrafts((previous) => ({
+                                                ...previous,
+                                                [provider.id]: nextValue,
+                                              }));
+                                            }}
+                                            onKeyDown={(event) => event.stopPropagation()}
+                                            placeholder="Paste API key"
+                                            className="ui-field-line w-full border-b bg-transparent px-0 py-2 text-sm text-[#171717] placeholder:text-slate-400 outline-none"
+                                            autoComplete="off"
+                                            spellCheck={false}
+                                          />
+                                          <span className="mt-2 flex flex-wrap items-center gap-2">
+                                            <button
+                                              type="button"
+                                              className="ui-button-primary border px-2.5 py-1.5 text-[0.72rem] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+                                              onPointerDown={stopPickerButtonEvent}
+                                              onMouseDown={stopPickerButtonEvent}
+                                              onClick={(event) => {
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                handleSaveApiKey(provider.id);
+                                              }}
+                                              disabled={authActionProviderId !== null}
+                                            >
+                                              {isAuthBusy ? "Saving..." : "Save API Key"}
+                                            </button>
+                                            <span className="text-[0.74rem] font-normal text-slate-500">
+                                              Saved locally for this machine.
+                                            </span>
+                                          </span>
+                                        </span>
+                                      ) : null}
+                                    </span>
+                                  </CommandItem>
+                                );
+                              })}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className="flex min-h-14 w-full items-center justify-between gap-3 rounded border border-black/10 bg-white px-3 py-2.5 text-left text-black transition-colors hover:border-black/20 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={() => {
+                        setModelPickerOpen((open) => !open);
+                        setProviderPickerOpen(false);
+                      }}
+                      disabled={!resolvedProvider || savingModelKey !== null}
+                      aria-haspopup="dialog"
+                      aria-expanded={modelPickerOpen}
+                      title={currentDefaultModel ? `${currentDefaultModel.providerLabel} · ${currentDefaultModel.modelId}` : undefined}
+                    >
+                      <span className="min-w-0">
+                        <span className="block text-[0.72rem] font-normal text-slate-500">
+                          Model
+                        </span>
+                        <span className="mt-0.5 block truncate text-sm font-normal text-black">
+                          {currentDefaultModel && currentDefaultModel.providerId === resolvedProvider?.id
+                            ? currentDefaultModel.label
+                            : providerModels.length > 0
+                              ? "Choose model"
+                              : "No models indexed"}
+                        </span>
+                      </span>
+                      {savingModelKey ? (
+                        <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                      ) : (
+                        <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                      )}
+                    </button>
+
+                    {modelPickerOpen ? (
+                      <div className="absolute left-0 top-[calc(100%+0.5rem)] z-30 w-full overflow-hidden rounded border border-black/10 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
+                        <div className="border-b border-black/8 px-3 py-3">
+                          <p className="text-sm font-normal text-black">
+                            {resolvedProvider ? `${resolvedProvider.label} models` : "Model picker"}
+                          </p>
+                          <p className="mt-1 text-[0.82rem] font-normal text-black">
+                            {providerModels.length} model{providerModels.length === 1 ? "" : "s"} available
+                          </p>
+                          {modelUpdateError ? (
+                            <p className="mt-2 text-[0.78rem] font-normal text-black">{modelUpdateError}</p>
+                          ) : null}
+                        </div>
+                        <Command shouldFilter={false}>
+                          <CommandInput
+                            value={modelQuery}
+                            onValueChange={setModelQuery}
+                            placeholder="Search models..."
+                          />
+                          <CommandList>
+                            {providerModels.length === 0 ? (
+                              <div className="px-3 py-5 text-center text-sm font-normal text-black">
+                                No models are available for this provider yet.
+                              </div>
+                            ) : (
+                              <>
+                                <CommandEmpty>No models match that search.</CommandEmpty>
+                                <CommandGroup heading="Available models">
+                                  {visibleModelOptions.map((model) => {
+                                    const isSaving = savingModelKey === model.key;
+                                    return (
+                                      <CommandItem
+                                        key={model.key}
+                                        value={`${model.label} ${model.providerLabel} ${model.modelId}`}
+                                        onSelect={() => handleModelSelect(model)}
+                                        disabled={isSaving || savingModelKey !== null}
+                                      >
+                                        <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
+                                          {isSaving ? (
+                                            <LoaderCircle className="h-3.5 w-3.5 animate-spin text-black" />
+                                          ) : model.isDefault ? (
+                                            <Check className="h-3.5 w-3.5 text-black" />
+                                          ) : (
+                                            <span className="h-2 w-2 rounded bg-black/70" />
+                                          )}
+                                        </span>
+                                        <span className="min-w-0 flex-1">
+                                          <span className="block truncate text-sm font-normal text-black">
+                                            {model.label}
+                                          </span>
+                                          <span className="mt-0.5 block break-all text-[0.74rem] font-mono font-normal text-black">
+                                            {model.modelId} · {model.providerLabel} · {model.authType === "oauth" ? "Subscription" : "Custom key"}
+                                          </span>
+                                        </span>
+                                      </CommandItem>
+                                    );
+                                  })}
+                                </CommandGroup>
+                              </>
+                            )}
+                          </CommandList>
+                        </Command>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+              {modelUpdateMessage ? (
+                <p className="ui-feedback-soft px-3 py-2.5 text-xs leading-normal font-medium">
+                  {modelUpdateMessage}
+                </p>
+              ) : null}
+              {modelUpdateError ? (
+                <p className="ui-feedback px-3 py-2.5 text-xs leading-normal font-medium">
+                  {modelUpdateError}
+                </p>
+              ) : null}
+              {providerAuthError && !providerPickerOpen ? (
+                <p className="ui-feedback px-3 py-2.5 text-xs leading-normal font-medium">
+                  {providerAuthError}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {!providers && !providersError ? (
+            <p className="mt-4 text-center text-sm font-semibold text-slate-400">
+              Reading system models...
+            </p>
+          ) : null}
+        </div>
+      )}
+    </>
+  );
 }

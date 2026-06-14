@@ -96,9 +96,7 @@ function SidebarContent({
 				<div id="session-list" className="flex flex-col gap-px" aria-label="Chat sessions">
 					{sessions.length === 0 ? (
 						<div className="mx-1 w-full bg-white px-4 py-5 text-center">
-							<p className="text-[0.9375rem] leading-[1.6] text-muted">
-								No saved sessions yet. Start a new chat and your first prompt will turn into a thread here.
-							</p>
+							
 						</div>
 					) : (
 						sessions.map((session) => {

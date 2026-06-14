@@ -1,15 +1,15 @@
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
-import type { AvailableSkill, AvailableTool, CreateMcpServerRequest, LocalWebAdminStatus, McpServerConfig, McpServerTransport, ProvidersResponse, UpdateMcpServerRequest } from "@apreal/shared";
+import type { CreateMcpServerRequest, LocalWebAdminStatus, McpServerConfig, McpServerTransport, ProvidersResponse, UpdateMcpServerRequest } from "@apreal/shared";
 import type { ScheduledJobDetails } from "../chatTypes";
 import { ConnectionSidebarFooter } from "./ConnectionSidebarFooter";
-import { ScheduledJobList } from "./ScheduledJobList";
+import { SettingsJobsSection } from "./SettingsJobsSection";
 import { SettingsModelsSection } from "./SettingsModelsSection";
 import { SettingsInventorySections } from "./SettingsInventorySections";
 import { SettingsMcpSection } from "./SettingsMcpSection";
 import { SettingsAccountSection } from "./SettingsAccountSection";
 
-import { DEFAULT_VISIBLE_PROVIDER_COUNT, MCP_TRANSPORT_OPTIONS, SECTIONS, SECTION_TITLES, SectionIcon, buildSearchableModels, formatProviderId, getMcpRuntimeLabel, getMcpRuntimeTone, getSkillToneClassName, getToolKindLabel, getToolToneClassName, normalizeSearchValue, parseKeyValueText, parseLineSeparatedList, stringifyKeyValueRecord, type SearchableModel, type SearchableProvider, type SettingsSection } from "./settings-helpers";
+import { SECTIONS, SECTION_TITLES, SectionIcon, buildSearchableModels, formatProviderId, normalizeSearchValue, parseKeyValueText, parseLineSeparatedList, stringifyKeyValueRecord, type SearchableModel, type SearchableProvider, type SettingsSection } from "./settings-helpers";
 
 type SettingsPageProps = {
 	adminStatus: LocalWebAdminStatus | null;
@@ -44,6 +44,15 @@ type SettingsPageProps = {
 	visibleSections: SettingsSection[];
 };
 
+function mergeAccountSettingsSections(sections: SettingsSection[]): SettingsSection[] {
+	const mergedSections = sections.filter((section) => section !== "models");
+	if ((sections.includes("account") || sections.includes("models")) && !mergedSections.includes("account")) {
+		return ["account", ...mergedSections];
+	}
+
+	return mergedSections;
+}
+
 export function SettingsPage({
 	adminStatus,
 	statusError,
@@ -76,11 +85,9 @@ export function SettingsPage({
 	onDeleteAllSessions,
 	visibleSections,
 }: SettingsPageProps) {
-	const [activeSection, setActiveSection] = useState<SettingsSection>(visibleSections[0] ?? "account");
+	const mergedVisibleSections = useMemo(() => mergeAccountSettingsSections(visibleSections), [visibleSections]);
+	const [activeSection, setActiveSection] = useState<SettingsSection>(mergedVisibleSections[0] ?? "account");
 	const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-	const [modelQuery, setModelQuery] = useState("");
-	const [providerQuery, setProviderQuery] = useState("");
-	const [showAllProviders, setShowAllProviders] = useState(false);
 	const [modelUpdateError, setModelUpdateError] = useState<string | null>(null);
 	const [modelUpdateMessage, setModelUpdateMessage] = useState<string | null>(null);
 	const [savingModelKey, setSavingModelKey] = useState<string | null>(null);
@@ -113,10 +120,10 @@ export function SettingsPage({
 	}
 
 	useEffect(() => {
-		if (!visibleSections.includes(activeSection)) {
-			setActiveSection(visibleSections[0] ?? "account");
+		if (!mergedVisibleSections.includes(activeSection)) {
+			setActiveSection(mergedVisibleSections[0] ?? "account");
 		}
-	}, [activeSection, visibleSections]);
+	}, [activeSection, mergedVisibleSections]);
 
 	const resetMcpForm = () => {
 		setMcpEditingServerId(null);
@@ -136,15 +143,6 @@ export function SettingsPage({
 	};
 
 	const searchableModels = useMemo(() => buildSearchableModels(providers) as SearchableModel[], [providers]);
-
-	const normalizedModelQuery = normalizeSearchValue(modelQuery);
-	const visibleModels = useMemo(() => {
-		if (normalizedModelQuery) {
-			return searchableModels.filter((model) => model.searchText.includes(normalizedModelQuery));
-		}
-
-		return searchableModels.filter((model) => model.isDefault).slice(0, 1);
-	}, [normalizedModelQuery, searchableModels]);
 
 	const currentDefaultModel = useMemo(
 		() => searchableModels.find((model) => model.isDefault) ?? null,
@@ -180,25 +178,6 @@ export function SettingsPage({
 				left.id.localeCompare(right.id),
 			);
 	}, [providers]);
-
-	const normalizedProviderQuery = normalizeSearchValue(providerQuery);
-	const filteredProviders = useMemo(() => {
-		if (!normalizedProviderQuery) {
-			return searchableProviders;
-		}
-
-		return searchableProviders.filter((provider) => provider.searchText.includes(normalizedProviderQuery));
-	}, [normalizedProviderQuery, searchableProviders]);
-
-	const visibleProviders = useMemo(() => {
-		if (showAllProviders || normalizedProviderQuery) {
-			return filteredProviders;
-		}
-
-		return filteredProviders.slice(0, DEFAULT_VISIBLE_PROVIDER_COUNT);
-	}, [filteredProviders, normalizedProviderQuery, showAllProviders]);
-
-	const hiddenProviderCount = Math.max(0, filteredProviders.length - visibleProviders.length);
 
 	const handleSelectModel = async (providerId: string, modelId: string) => {
 		const key = `${providerId}:${modelId}`;
@@ -244,13 +223,6 @@ export function SettingsPage({
 			setProviderAuthError(error instanceof Error ? error.message : "Failed to save API key.");
 		} finally {
 			setAuthActionProviderId(null);
-		}
-	};
-
-	const handleProviderQueryChange = (value: string) => {
-		setProviderQuery(value);
-		if (value.trim()) {
-			setShowAllProviders(true);
 		}
 	};
 
@@ -357,7 +329,7 @@ export function SettingsPage({
 	const enabledMcpServerCount = mcpServers.filter((server) => server.enabled).length;
 	const readyMcpServerCount = mcpServers.filter((server) => server.runtime?.state === "ready").length;
 	const mcpToolCount = mcpServers.reduce((total, server) => total + (server.runtime?.toolCount ?? 0), 0);
-	const visibleSectionItems = SECTIONS.filter((section) => visibleSections.includes(section.id));
+	const visibleSectionItems = SECTIONS.filter((section) => mergedVisibleSections.includes(section.id));
 	const settingsNavItemClassName =
 		"flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[0.9375rem] font-medium text-[#171717] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring cursor-pointer";
 
@@ -393,7 +365,7 @@ export function SettingsPage({
 		<main className="min-h-svh bg-(--color-canvas) text-[#171717] selection:bg-black/10 selection:text-black">
 			<div className="flex min-h-svh w-full flex-col">
 				{/* ---- Main layout: sidebar + content ---- */}
-				<div className="grid flex-1 grid-rows-[auto_minmax(0,1fr)] content-start min-[961px]:grid-cols-[280px_minmax(0,1fr)] min-[961px]:grid-rows-1 min-[1320px]:grid-cols-[300px_minmax(0,1fr)]">
+				<div className="grid flex-1 grid-rows-[auto_minmax(0,1fr)] content-start min-[961px]:grid-cols-[240px_minmax(0,1fr)] min-[961px]:grid-rows-1 min-[1221px]:grid-cols-[280px_minmax(0,1fr)]">
 					<div className="z-30 flex items-center justify-between gap-3 border-b border-(--color-brand-line) bg-[rgba(255,255,255,0.88)] px-3 py-3 backdrop-blur-md min-[961px]:hidden">
 						<button
 							type="button"
@@ -420,21 +392,18 @@ export function SettingsPage({
 								aria-label="Close settings menu"
 							/>
 							<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden bg-sidebar-panel text-ink shadow-[0_24px_60px_var(--color-brand-shadow)]">
-								<div className="border-b border-line px-3 py-2">
-									<div className="flex items-center justify-between gap-3">
-										<div className="min-w-0 flex-1">
-											<ConnectionSidebarFooter
-												target={target}
-												clientConnected={connected}
-												hostConnected={serverReady}
-												placement="top"
-												bordered={false}
-												showBackToChat={false}
-											/>
-										</div>
+								<ConnectionSidebarFooter
+									target={target}
+									clientConnected={connected}
+									hostConnected={serverReady}
+									placement="top"
+									showBackToChat={false}
+								/>
+								<div className="shrink-0 px-2 pt-2 pb-1.5">
+									<div className="mb-0.5 flex justify-end px-1">
 										<button
 											type="button"
-											className="ui-icon-button flex h-10 w-10 items-center justify-center rounded-full text-slate-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+											className="ui-icon-button flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors duration-150 hover:bg-ink-soft hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
 											onClick={() => setMobileMenuOpen(false)}
 											aria-label="Close settings menu"
 										>
@@ -483,14 +452,14 @@ export function SettingsPage({
 					<nav className="hidden flex-col border-b border-line bg-sidebar-bg min-[961px]:sticky min-[961px]:top-0 min-[961px]:flex min-[961px]:min-h-svh min-[961px]:self-start min-[961px]:border-r min-[961px]:border-b-0">
 						{/* Desktop: vertical sidebar */}
 						<div className="text-ink min-[961px]:flex min-[961px]:min-h-svh min-[961px]:flex-col">
+							<ConnectionSidebarFooter
+								target={target}
+								clientConnected={connected}
+								hostConnected={serverReady}
+								placement="top"
+								showBackToChat={false}
+							/>
 							<div className="flex flex-1 flex-col px-2 py-2">
-								<ConnectionSidebarFooter
-									target={target}
-									clientConnected={connected}
-									hostConnected={serverReady}
-									placement="top"
-									showBackToChat={false}
-								/>
 								{visibleSectionItems.map((section) => (
 									<button
 										key={section.id}
@@ -522,13 +491,8 @@ export function SettingsPage({
 					</nav>
 
 					{/* ======== CONTENT ======== */}
-					<div className="min-w-0 bg-[rgba(255,255,255,0.72)] px-3 py-3 backdrop-blur-[2px] min-[961px]:min-h-svh min-[961px]:px-6 min-[961px]:py-5">
-						<header className="flex flex-col gap-2 border-b border-(--color-brand-line) pb-2 min-[961px]:flex-row min-[961px]:items-start min-[961px]:justify-between min-[961px]:gap-4">
-							<div>
-								<h1 className="text-[1.28rem] font-bold tracking-tight leading-none text-slate-900 min-[961px]:text-[1.55rem]">
-									{activeSectionTitle}
-								</h1>
-							</div>
+					<div className="min-w-0  min-[961px]:min-h-svh p-2">
+						<header className="flex flex-col gap-2  pb-2 min-[961px]:flex-row min-[961px]:items-start min-[961px]:justify-between min-[961px]:gap-4">
 							<div className="flex w-full shrink-0 flex-wrap items-center gap-2.5 min-[961px]:w-auto">
 								{activeSection === "jobs" ? (
 									<button
@@ -570,38 +534,29 @@ export function SettingsPage({
 							deletingAllSessions={deletingAllSessions}
 							deleteSessionsMessage={deleteSessionsMessage}
 							deleteSessionsError={deleteSessionsError}
-						/>
-
-						<SettingsModelsSection
-							activeSection={activeSection}
-							providers={providers}
-							providersError={providersError}
-							modelQuery={modelQuery}
-							setModelQuery={setModelQuery}
-							normalizedModelQuery={normalizedModelQuery}
-							visibleModels={visibleModels}
-							currentDefaultModel={currentDefaultModel}
-							providerQuery={providerQuery}
-							handleProviderQueryChange={handleProviderQueryChange}
-							normalizedProviderQuery={normalizedProviderQuery}
-							visibleProviders={visibleProviders}
-							showAllProviders={showAllProviders}
-							setShowAllProviders={setShowAllProviders}
-							filteredProviders={filteredProviders}
-							hiddenProviderCount={hiddenProviderCount}
-							modelUpdateMessage={modelUpdateMessage}
-							modelUpdateError={modelUpdateError}
-							providerAuthError={providerAuthError}
-							savingModelKey={savingModelKey}
-							handleSelectModel={handleSelectModel}
-							authActionProviderId={authActionProviderId}
-							handleStartLogin={handleStartLogin}
-							apiKeyEditorProviderId={apiKeyEditorProviderId}
-							setApiKeyEditorProviderId={setApiKeyEditorProviderId}
-							setProviderAuthError={setProviderAuthError}
-							apiKeyDrafts={apiKeyDrafts}
-							setApiKeyDrafts={setApiKeyDrafts}
-							handleSaveApiKey={handleSaveApiKey}
+							modelControl={
+								<SettingsModelsSection
+									active={visibleSections.includes("models")}
+									providers={providers}
+									providersError={providersError}
+									searchableModels={searchableModels}
+									searchableProviders={searchableProviders}
+									currentDefaultModel={currentDefaultModel}
+									modelUpdateMessage={modelUpdateMessage}
+									modelUpdateError={modelUpdateError}
+									providerAuthError={providerAuthError}
+									savingModelKey={savingModelKey}
+									handleSelectModel={handleSelectModel}
+									authActionProviderId={authActionProviderId}
+									handleStartLogin={handleStartLogin}
+									apiKeyEditorProviderId={apiKeyEditorProviderId}
+									setApiKeyEditorProviderId={setApiKeyEditorProviderId}
+									setProviderAuthError={setProviderAuthError}
+									apiKeyDrafts={apiKeyDrafts}
+									setApiKeyDrafts={setApiKeyDrafts}
+									handleSaveApiKey={handleSaveApiKey}
+								/>
+							}
 						/>
 
 						<SettingsInventorySections activeSection={activeSection} availableSkills={availableSkills} availableTools={availableTools} adminStatus={adminStatus} />
@@ -646,23 +601,14 @@ export function SettingsPage({
 
 
 						{/* ---------- JOBS SECTION ---------- */}
-						{activeSection === "jobs" && (
-							<div className="space-y-3">
-								<div className="border-t border-black/8 pt-3">
-									<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Jobs</p>
-									<h2 className="mt-1 text-[1rem] font-bold text-slate-950">Recurring job list</h2>
-									<p className="mt-1 max-w-2xl text-[0.88rem] font-medium leading-[1.55] text-slate-500">
-										Browse active recurring schedules here. Open any job to inspect its full configuration, run history, and transcript on the dedicated jobs page.
-									</p>
-								</div>
-								<ScheduledJobList
-									jobs={jobs}
-									jobsError={jobsError}
-									isLoadingJobs={isLoadingJobs}
-									onSelectJob={onOpenJob}
-								/>
-							</div>
-						)}
+						<SettingsJobsSection
+							activeSection={activeSection}
+							jobs={jobs}
+							jobsError={jobsError}
+							isLoadingJobs={isLoadingJobs}
+							onRefreshJobs={onRefreshJobs}
+							onOpenJob={onOpenJob}
+						/>
 					</div>
 						</div>
 					</div>

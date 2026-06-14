@@ -4,6 +4,7 @@ import { RemoteWebApp } from "./remote/RemoteWebApp";
 import { TooltipProvider } from "./components/ui/tooltip";
 import "./styles.css";
 import { scan } from "react-scan";
+import { Toaster } from "@/components/ui/sonner";
 
 declare const __APREAL_WEB_TARGET__: "local" | "remote";
 
@@ -24,5 +25,6 @@ const App = __APREAL_WEB_TARGET__ === "remote" ? RemoteWebApp : LocalWebApp;
 createRoot(container).render(
 	<TooltipProvider>
 		<App />
+		<Toaster />
 	</TooltipProvider>,
 );

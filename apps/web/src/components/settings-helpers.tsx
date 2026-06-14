@@ -130,7 +130,7 @@ export function StatusPill({ label, tone }: StatusPillProps) {
 			: "border-slate-300 bg-black/3 text-slate-600 font-semibold";
 
 	return (
-		<span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[0.63rem] uppercase tracking-[0.12em] ${toneClassName}`}>
+		<span className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 font-mono text-[0.63rem] uppercase tracking-[0.12em] ${toneClassName}`}>
 			{tone === "success" && <span className="h-1.5 w-1.5 rounded-full bg-slate-800" />}
 			{label}
 		</span>
@@ -141,7 +141,6 @@ export type SettingsSection = SettingsSectionId;
 
 export const SECTIONS: { id: SettingsSection; label: string }[] = [
 	{ id: "account", label: "Account" },
-	{ id: "models", label: "Model control" },
 	{ id: "skills", label: "Skills" },
 	{ id: "mcp", label: "MCP" },
 	{ id: "tools", label: "Tools" },
