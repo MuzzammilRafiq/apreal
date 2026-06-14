@@ -375,7 +375,7 @@ export function SettingsPage({
 
 	const refreshIcon = (isSpinning: boolean) => (
 		<svg
-			className={`h-4 w-4 ${isSpinning ? "animate-spin text-slate-700" : "text-[#525252]"}`}
+			className={`h-4 w-4 ${isSpinning ? "animate-spin text-slate-700" : "text-thinking-body"}`}
 			fill="none"
 			viewBox="0 0 24 24"
 			stroke="currentColor"
@@ -390,11 +390,11 @@ export function SettingsPage({
 	);
 
 	return (
-		<main className="min-h-svh bg-[var(--color-canvas)] text-[#171717] selection:bg-black/10 selection:text-black">
+		<main className="min-h-svh bg-(--color-canvas) text-[#171717] selection:bg-black/10 selection:text-black">
 			<div className="flex min-h-svh w-full flex-col">
 				{/* ---- Main layout: sidebar + content ---- */}
 				<div className="grid flex-1 grid-rows-[auto_minmax(0,1fr)] content-start min-[961px]:grid-cols-[280px_minmax(0,1fr)] min-[961px]:grid-rows-1 min-[1320px]:grid-cols-[300px_minmax(0,1fr)]">
-					<div className="z-30 flex items-center justify-between gap-3 border-b border-[var(--color-brand-line)] bg-[rgba(255,255,255,0.88)] px-3 py-3 backdrop-blur-md min-[961px]:hidden">
+					<div className="z-30 flex items-center justify-between gap-3 border-b border-(--color-brand-line) bg-[rgba(255,255,255,0.88)] px-3 py-3 backdrop-blur-md min-[961px]:hidden">
 						<button
 							type="button"
 							className="ui-icon-button flex h-11 w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
@@ -459,7 +459,7 @@ export function SettingsPage({
 													: "ui-nav-item"
 											}`}
 										>
-											<span className={`mt-0.5 shrink-0 ${activeSection === section.id ? "text-[#171717]" : "text-[#525252]"}`}>
+											<span className={`mt-0.5 shrink-0 ${activeSection === section.id ? "text-[#171717]" : "text-thinking-body"}`}>
 												<SectionIcon section={section.id} />
 											</span>
 											<span className="leading-tight text-[#171717]">
@@ -502,7 +502,7 @@ export function SettingsPage({
 												: "ui-nav-item"
 										}`}
 									>
-										<span className={`mt-0.5 shrink-0 ${activeSection === section.id ? "text-[#171717]" : "text-[#525252]"}`}>
+										<span className={`mt-0.5 shrink-0 ${activeSection === section.id ? "text-[#171717]" : "text-thinking-body"}`}>
 											<SectionIcon section={section.id} />
 										</span>
 										<span className="leading-tight text-[#171717]">
@@ -523,7 +523,7 @@ export function SettingsPage({
 
 					{/* ======== CONTENT ======== */}
 					<div className="min-w-0 bg-[rgba(255,255,255,0.72)] px-3 py-3 backdrop-blur-[2px] min-[961px]:min-h-svh min-[961px]:px-6 min-[961px]:py-5">
-						<header className="flex flex-col gap-2 border-b border-[var(--color-brand-line)] pb-2 min-[961px]:flex-row min-[961px]:items-start min-[961px]:justify-between min-[961px]:gap-4">
+						<header className="flex flex-col gap-2 border-b border-(--color-brand-line) pb-2 min-[961px]:flex-row min-[961px]:items-start min-[961px]:justify-between min-[961px]:gap-4">
 							<div>
 								<h1 className="text-[1.28rem] font-bold tracking-tight leading-none text-slate-900 min-[961px]:text-[1.55rem]">
 									{activeSectionTitle}

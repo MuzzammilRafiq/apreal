@@ -127,7 +127,7 @@ export function StatusPill({ label, tone }: StatusPillProps) {
 		? "border-slate-300 bg-white text-slate-800 font-semibold"
 		: tone === "danger"
 			? "border-slate-400 bg-slate-100 text-slate-800 font-semibold"
-			: "border-slate-300 bg-black/[0.03] text-slate-600 font-semibold";
+			: "border-slate-300 bg-black/3 text-slate-600 font-semibold";
 
 	return (
 		<span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[0.63rem] uppercase tracking-[0.12em] ${toneClassName}`}>

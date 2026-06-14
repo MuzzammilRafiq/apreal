@@ -52,7 +52,7 @@ const STATUS_BADGE_COLORS: Record<StatusBadgeProps["tone"], string> = {
 
 function StatusBadge({ label, tone }: StatusBadgeProps) {
 	return (
-		<span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-[0.64rem] font-bold uppercase tracking-[0.1em] ${STATUS_BADGE_COLORS[tone]}`}>
+		<span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-[0.64rem] font-bold uppercase tracking-widest ${STATUS_BADGE_COLORS[tone]}`}>
 			{label}
 		</span>
 	);
@@ -84,14 +84,14 @@ export function ScheduledJobList({
 			</div>
 
 			{jobsError ? (
-				<div className="mb-3 border-l-2 border-black/25 bg-black/[0.03] px-3 py-2.5 text-xs font-semibold leading-5 text-slate-800">
+				<div className="mb-3 border-l-2 border-black/25 bg-black/3 px-3 py-2.5 text-xs font-semibold leading-5 text-slate-800">
 					{jobsError}
 				</div>
 			) : null}
 
 			<div className="flex-1 overflow-y-auto py-1 scrollbar-thin">
 				{jobs.length === 0 && !isLoadingJobs ? (
-					<div className="border border-dashed border-slate-300 px-4 py-5 text-center text-sm leading-[1.5]">
+					<div className="border border-dashed border-slate-300 px-4 py-5 text-center text-sm leading-normal">
 						<p className="font-bold text-slate-800">No scheduled jobs</p>
 						<p className="mt-1 font-medium text-slate-400">Ask Pi inside chat to create a recurring scheduled job to monitor anything.</p>
 					</div>

@@ -137,7 +137,7 @@ function SidebarContent({
 											!
 										</span>
 									) : null}
-									<div className="relative flex items-center justify-end shrink-0 min-w-[3.5rem] h-7">
+									<div className="relative flex items-center justify-end shrink-0 min-w-14 h-7">
 										<span
 											className={[
 												"text-[0.8125rem] tabular-nums transition-opacity duration-150 group-hover:opacity-0 group-focus-within:opacity-0",
@@ -217,7 +217,7 @@ export const Sidebar = memo(function Sidebar({
 
 	return (
 		<>
-			<div className="z-30 flex items-center justify-between gap-3 border-b border-[var(--color-brand-line)] bg-[rgba(255,255,255,0.88)] px-3 py-2 text-[#171717] backdrop-blur-md min-[721px]:hidden">
+			<div className="z-30 flex items-center justify-between gap-3 border-b border-(--color-brand-line) bg-[rgba(255,255,255,0.88)] px-3 py-2 text-[#171717] backdrop-blur-md min-[721px]:hidden">
 				<button
 					type="button"
 					className="ui-icon-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
@@ -253,7 +253,7 @@ export const Sidebar = memo(function Sidebar({
 						onClick={() => setMobileMenuOpen(false)}
 						aria-label="Close chat menu"
 					/>
-					<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden border-r border-[var(--color-brand-line)] bg-sidebar-panel text-ink shadow-[0_24px_60px_var(--color-brand-shadow)]">
+					<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden border-r border-(--color-brand-line) bg-sidebar-panel text-ink shadow-[0_24px_60px_var(--color-brand-shadow)]">
 						<SidebarContent
 							pendingDraft={pendingDraft}
 							sessions={sessions}

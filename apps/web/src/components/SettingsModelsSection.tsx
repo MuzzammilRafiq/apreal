@@ -38,12 +38,12 @@ export function SettingsModelsSection({
 						{/* ---------- MODELS SECTION ---------- */}
 						{activeSection === "models" && (
 							<div className="space-y-3">
-								<div className="border-t border-[var(--color-brand-line)] pt-3">
+								<div className="border-t border-(--color-brand-line) pt-3">
 									<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Agent Provisioning</p>
 									<h2 className="mt-1 text-[1rem] font-bold text-slate-900">Set default intelligence model</h2>
 
 									{providersError ? (
-										<p className="ui-feedback mt-3 px-3 py-2.5 text-[0.82rem] leading-[1.5] font-medium">
+										<p className="ui-feedback mt-3 px-3 py-2.5 text-[0.82rem] leading-normal font-medium">
 											{providersError}
 										</p>
 									) : null}
@@ -56,7 +56,7 @@ export function SettingsModelsSection({
 
 									{providers && providers.providers.length > 0 ? (
 										<div className="mt-3 space-y-4">
-											<div className="grid gap-3 border-b border-[var(--color-brand-line)] pb-3 min-[1180px]:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+											<div className="grid gap-3 border-b border-(--color-brand-line) pb-3 min-[1180px]:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
 												<div>
 													<label className="block">
 														<span className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">
@@ -132,17 +132,17 @@ export function SettingsModelsSection({
 											</div>
 
 											{modelUpdateMessage ? (
-												<p className="ui-feedback-soft px-3 py-2.5 text-xs leading-[1.5] font-medium">
+												<p className="ui-feedback-soft px-3 py-2.5 text-xs leading-normal font-medium">
 													{modelUpdateMessage}
 												</p>
 											) : null}
 											{modelUpdateError ? (
-												<p className="ui-feedback px-3 py-2.5 text-xs leading-[1.5] font-medium">
+												<p className="ui-feedback px-3 py-2.5 text-xs leading-normal font-medium">
 													{modelUpdateError}
 												</p>
 											) : null}
 											{providerAuthError ? (
-												<p className="ui-feedback px-3 py-2.5 text-xs leading-[1.5] font-medium">
+												<p className="ui-feedback px-3 py-2.5 text-xs leading-normal font-medium">
 													{providerAuthError}
 												</p>
 											) : null}
@@ -158,14 +158,14 @@ export function SettingsModelsSection({
 													</div>
 
 													{visibleModels.length > 0 ? (
-														<ul className="overflow-hidden border-t border-[var(--color-brand-line)]">
+														<ul className="overflow-hidden border-t border-(--color-brand-line)">
 															{visibleModels.map((model: any, index: number) => {
 																const isSaving = savingModelKey === model.key;
 																return (
 																	<li
 																		key={model.key}
 																		className={`grid gap-2 px-0 py-2.5 min-[560px]:grid-cols-[minmax(0,1fr)_auto] min-[560px]:items-center ${
-																			index > 0 ? "border-t border-[var(--color-brand-line)]" : ""
+																			index > 0 ? "border-t border-(--color-brand-line)" : ""
 																		}`}
 																	>
 																		<div className="min-w-0">
@@ -216,7 +216,7 @@ export function SettingsModelsSection({
 													<li
 														key={provider.id}
 													className={`border px-3 py-3 ${
-														isDefaultProvider ? "border-[var(--color-brand-line-strong)] bg-white" : "border-[var(--color-brand-line)] bg-[rgba(255,255,255,0.72)]"
+														isDefaultProvider ? "border-(--color-brand-line-strong) bg-white" : "border-(--color-brand-line) bg-[rgba(255,255,255,0.72)]"
 													}`}
 													>
 														<div className="flex flex-wrap items-start justify-between gap-2">
@@ -228,20 +228,20 @@ export function SettingsModelsSection({
 															</div>
 														<div className="flex flex-wrap items-center gap-2">
 																{isDefaultProvider ? (
-															<span className="inline-flex border border-[var(--color-brand)] bg-brand px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-[0.1em] text-white">
+															<span className="inline-flex border border-(--color-brand) bg-brand px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-widest text-white">
 																		Default provider
 																	</span>
 																) : null}
-															<span className="inline-flex border border-[var(--color-brand-line-strong)] bg-white px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-[0.1em] text-slate-500">
+															<span className="inline-flex border border-(--color-brand-line-strong) bg-white px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-widest text-slate-500">
 																	{provider.authType === "oauth" ? "Subscription" : "API key"}
 																</span>
 																{provider.supportsOAuth ? (
-																	<span className="inline-flex border border-[var(--color-brand-line-strong)] bg-white px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-[0.1em] text-slate-500">
+																	<span className="inline-flex border border-(--color-brand-line-strong) bg-white px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-widest text-slate-500">
 																		Pi login
 																	</span>
 																) : null}
 																{provider.supportsApiKey ? (
-																	<span className="inline-flex border border-[var(--color-brand-line-strong)] bg-white px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-[0.1em] text-slate-500">
+																	<span className="inline-flex border border-(--color-brand-line-strong) bg-white px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-widest text-slate-500">
 																		API key
 																	</span>
 																) : null}
@@ -297,7 +297,7 @@ export function SettingsModelsSection({
 															</div>
 														) : null}
 														{provider.supportsApiKey && apiKeyEditorProviderId === provider.id ? (
-															<div className="mt-2 border-t border-[var(--color-brand-line)] pt-2.5">
+															<div className="mt-2 border-t border-(--color-brand-line) pt-2.5">
 																<label className="block">
 																	<span className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">
 																		Stored API key

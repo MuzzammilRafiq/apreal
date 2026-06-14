@@ -175,13 +175,13 @@ export const Composer = memo(function Composer({
 		<PromptInput
 			onSubmit={handleSubmit}
 			className={[
-				"pointer-events-auto mx-auto w-full max-w-[54rem] rounded-xl bg-white transition-colors duration-150 [&_[data-slot=input-group]]:h-auto [&_[data-slot=input-group]]:rounded-[1.15rem] [&_[data-slot=input-group]]:border [&_[data-slot=input-group]]:bg-white [&_[data-slot=input-group]:has(:disabled)]:opacity-100 [&_[data-slot=input-group-addon]]:opacity-100",
+				"pointer-events-auto mx-auto w-full max-w-216 rounded-xl bg-white transition-colors duration-150 **:data-[slot=input-group]:h-auto **:data-[slot=input-group]:rounded-[1.15rem] **:data-[slot=input-group]:border **:data-[slot=input-group]:bg-white [&_[data-slot=input-group]:has(:disabled)]:opacity-100 **:data-[slot=input-group-addon]:opacity-100",
 				modelPickerOpen
-					? "[&_[data-slot=input-group]]:overflow-visible"
-					: "[&_[data-slot=input-group]]:overflow-hidden",
+					? "**:data-[slot=input-group]:overflow-visible"
+					: "**:data-[slot=input-group]:overflow-hidden",
 				isFocused
-					? "[&_[data-slot=input-group]]:border-black/18"
-					: "[&_[data-slot=input-group]]:border-black/8",
+					? "**:data-[slot=input-group]:border-black/18"
+					: "**:data-[slot=input-group]:border-black/8",
 			].join(" ")}
 		>
 			<PromptInputBody>
@@ -218,7 +218,7 @@ export const Composer = memo(function Composer({
 										: `Opening the ${connectionLabel} stream...`
 									: ""
 					}
-					className="min-h-[4.5rem] max-h-[calc(11.55em+1rem)] px-4 py-3 text-[0.98rem] leading-[1.6] text-slate-900 placeholder:text-slate-400"
+					className="min-h-18 max-h-[calc(11.55em+1rem)] px-4 py-3 text-[0.98rem] leading-[1.6] text-slate-900 placeholder:text-slate-400"
 				/>
 			</PromptInputBody>
 			<PromptInputFooter className="px-3 pb-3 pt-0 min-[861px]:px-4">

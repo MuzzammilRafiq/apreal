@@ -42,7 +42,7 @@ export function ScheduledJobsPage({
 }: ScheduledJobsPageProps) {
 	const refreshIcon = (
 		<svg
-			className={`h-4 w-4 ${isLoadingJobs ? "animate-spin text-slate-700" : "text-[#525252]"}`}
+			className={`h-4 w-4 ${isLoadingJobs ? "animate-spin text-slate-700" : "text-thinking-body"}`}
 			fill="none"
 			viewBox="0 0 24 24"
 			stroke="currentColor"
@@ -57,7 +57,7 @@ export function ScheduledJobsPage({
 	);
 
 	return (
-		<main className="min-h-svh bg-[var(--color-canvas)] text-[#171717] selection:bg-black/10 selection:text-black">
+		<main className="min-h-svh bg-(--color-canvas) text-[#171717] selection:bg-black/10 selection:text-black">
 			<div className="mx-auto flex min-h-svh w-full max-w-7xl flex-col px-3 py-4 min-[860px]:px-5 min-[860px]:py-6 min-[1180px]:px-6">
 				{/* ---- Header ---- */}
 				<header className="flex flex-col gap-3 border-b border-slate-200 pb-3 min-[860px]:flex-row min-[860px]:items-center min-[860px]:justify-between min-[860px]:gap-4">
@@ -71,7 +71,7 @@ export function ScheduledJobsPage({
 							) : null}
 						</div>
 						<h1 className="mt-1.5 text-[1.6rem] font-bold tracking-tight leading-none text-slate-900">Scheduled automated tasks</h1>
-						<p className="mt-2 max-w-xl text-[0.84rem] leading-[1.55] text-[#525252] font-medium">
+						<p className="mt-2 max-w-xl text-[0.84rem] leading-[1.55] text-thinking-body font-medium">
 							Manage recurring background schedules, inspect active run logs, and review deep history execution transcripts.
 						</p>
 					</div>

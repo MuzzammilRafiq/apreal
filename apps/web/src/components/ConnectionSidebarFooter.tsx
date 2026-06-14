@@ -35,8 +35,8 @@ function StatusDot({
 				className={[
 					"relative flex h-3 w-3 items-center justify-center rounded-full transition-all duration-300 group-hover:scale-110",
 					connected 
-						? "bg-gradient-to-br from-emerald-400 to-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] ring-1 ring-emerald-500/20" 
-						: "bg-gradient-to-br from-amber-400 to-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.35)] ring-1 ring-amber-500/20",
+						? "bg-linear-to-br from-emerald-400 to-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] ring-1 ring-emerald-500/20" 
+						: "bg-linear-to-br from-amber-400 to-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.35)] ring-1 ring-amber-500/20",
 				].join(" ")}
 				aria-hidden="true"
 			>
@@ -47,7 +47,7 @@ function StatusDot({
 			<span className={`pointer-events-none absolute left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-md border border-black/8 bg-white px-2.5 py-1.5 font-mono text-[0.62rem] font-bold uppercase tracking-[0.12em] text-[#171717] opacity-0 shadow-[0_8px_20px_rgba(0,0,0,0.06)] transition-all duration-150 group-hover:opacity-100 ${tooltipClassName} flex items-center gap-1.5`}>
 				<span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-emerald-500" : "bg-amber-500"}`} />
 				<span>{label}</span>
-				<span className="font-sans font-medium lowercase text-[#525252]/60">•</span>
+				<span className="font-sans font-medium lowercase text-thinking-body/60">•</span>
 				<span className={connected ? "text-emerald-600" : "text-amber-600"}>{connected ? "Connected" : "Disconnected"}</span>
 			</span>
 			<span className="sr-only">{label}</span>
@@ -94,7 +94,7 @@ export function ConnectionSidebarFooter({
 							height="6"
 							viewBox="0 0 20 6"
 							fill="none"
-							className={`absolute bottom-0.5 transition-all duration-300 group-hover/face:scale-y-125 group-hover/face:translate-y-[1px] ${mouthColorClass}`}
+							className={`absolute bottom-0.5 transition-all duration-300 group-hover/face:scale-y-125 group-hover/face:translate-y-px ${mouthColorClass}`}
 						>
 							<path d="M2 1C5.5 4.5 14.5 4.5 18 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
 						</svg>
@@ -104,7 +104,7 @@ export function ConnectionSidebarFooter({
 			{showBackToChat && onBackToChat ? (
 				<button
 					type="button"
-					className="mt-3 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[0.9375rem] font-medium text-slate-900 transition-colors duration-150 hover:bg-black/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 cursor-pointer"
+					className="mt-3 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[0.9375rem] font-medium text-slate-900 transition-colors duration-150 hover:bg-black/3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 cursor-pointer"
 					onClick={onBackToChat}
 				>
 					<svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>

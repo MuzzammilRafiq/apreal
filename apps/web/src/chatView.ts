@@ -32,7 +32,7 @@ export function getSessionCardClassName(isActive: boolean): string {
 	return [
 		"group relative flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-1.5 text-left transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring",
 		isActive
-			? "ui-nav-item-active text-[var(--color-brand-ink)]"
+			? "ui-nav-item-active text-(--color-brand-ink)"
 			: "ui-nav-item text-slate-600",
 	].join(" ");
 }
@@ -72,15 +72,15 @@ export function getMessageBodyClassName(role: TranscriptMessage["role"], pending
 
 	switch (role) {
 		case "user":
-			return `w-fit max-w-full whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-brand px-4 py-2.5 text-[0.95rem] leading-[1.6] text-white transition-colors duration-150 hover:bg-brand-strong max-[520px]:px-3.5 max-[520px]:py-2.5${pendingClassName}`;
+			return `w-fit max-w-full whitespace-pre-wrap wrap-break-word rounded-2xl rounded-tr-md bg-brand px-4 py-2.5 text-[0.95rem] leading-[1.6] text-white transition-colors duration-150 hover:bg-brand-strong max-[520px]:px-3.5 max-[520px]:py-2.5${pendingClassName}`;
 		case "system":
-			return `whitespace-pre-wrap break-words text-[0.84rem] font-medium text-muted${pendingClassName}`;
+			return `whitespace-pre-wrap wrap-break-word text-[0.84rem] font-medium text-muted${pendingClassName}`;
 		case "assistant":
-			return `w-full break-words text-[0.95rem] leading-[1.7] text-ink${pendingClassName}`;
+			return `w-full wrap-break-word text-[0.95rem] leading-[1.7] text-ink${pendingClassName}`;
 		case "error":
-			return `whitespace-pre-wrap break-words text-[0.92rem] leading-[1.65] font-medium text-slate-800${pendingClassName}`;
+			return `whitespace-pre-wrap wrap-break-word text-[0.92rem] leading-[1.65] font-medium text-slate-800${pendingClassName}`;
 		default:
-			return `whitespace-pre-wrap break-words text-[0.95rem] leading-[1.65]${pendingClassName}`;
+			return `whitespace-pre-wrap wrap-break-word text-[0.95rem] leading-[1.65]${pendingClassName}`;
 	}
 }
 

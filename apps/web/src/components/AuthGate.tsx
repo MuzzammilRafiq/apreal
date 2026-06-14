@@ -3,8 +3,8 @@ import { AccountAuthButton } from "./AccountAuthButton";
 export function AuthGate({ pending }: { pending: boolean }) {
 	return (
 		<main className="auth-gate-grid relative flex min-h-svh items-center justify-center overflow-hidden bg-[#f4f4f1] px-6 py-10 text-[#171717]">
-			<div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/[0.04] to-transparent" />
-			<div className="pointer-events-none absolute left-1/2 top-1/2 h-[34rem] w-[34rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-black/[0.05]" />
+			<div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-linear-to-b from-black/4 to-transparent" />
+			<div className="pointer-events-none absolute left-1/2 top-1/2 h-136 w-136 -translate-x-1/2 -translate-y-1/2 rounded-full border border-black/5" />
 			{pending ? (
 				<p className="font-mono text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-slate-500">
 					Checking account...

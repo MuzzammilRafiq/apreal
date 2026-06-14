@@ -46,7 +46,7 @@ const STATUS_BADGE_COLORS: Record<StatusBadgeProps["tone"], string> = {
 
 function StatusBadge({ label, tone }: StatusBadgeProps) {
 	return (
-		<span className={`inline-flex items-center gap-1.5 border rounded-md px-2 py-0.5 font-mono text-[0.64rem] font-bold uppercase tracking-[0.1em] ${STATUS_BADGE_COLORS[tone]}`}>
+		<span className={`inline-flex items-center gap-1.5 border rounded-md px-2 py-0.5 font-mono text-[0.64rem] font-bold uppercase tracking-widest ${STATUS_BADGE_COLORS[tone]}`}>
 			{tone === "running" ? <span className="inline-block h-1.5 w-1.5 rounded-full bg-white" /> : null}
 			{label}
 		</span>
@@ -248,7 +248,7 @@ export function JobsPanel({
 
 								<div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3.5">
 									<p className="font-mono text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate-400">Target Prompt Directive</p>
-									<p className="mt-2 whitespace-pre-wrap break-words text-sm leading-[1.6] font-medium text-slate-800">{selectedJob.prompt}</p>
+									<p className="mt-2 whitespace-pre-wrap wrap-break-word text-sm leading-[1.6] font-medium text-slate-800">{selectedJob.prompt}</p>
 								</div>
 
 								<form className="mt-3 flex flex-col gap-2.5 min-[640px]:flex-row min-[640px]:items-end" onSubmit={handleSaveInterval}>
@@ -296,7 +296,7 @@ export function JobsPanel({
 								</div>
 
 								{selectedJob.lastError ? (
-									<div className="ui-feedback mt-3 rounded-md p-3.5 text-[0.84rem] leading-[1.5]">
+									<div className="ui-feedback mt-3 rounded-md p-3.5 text-[0.84rem] leading-normal">
 										<p className="font-mono text-[0.64rem] font-bold uppercase tracking-[0.14em] text-slate-700">Last Execution Error</p>
 										<p className="mt-2 break-all text-slate-800 font-semibold">{selectedJob.lastError}</p>
 									</div>
@@ -311,7 +311,7 @@ export function JobsPanel({
 								</div>
 							</div>
 						) : (
-							<div className="px-4 py-6 text-center text-sm leading-[1.5] text-slate-500 font-semibold border-t border-slate-200">
+							<div className="px-4 py-6 text-center text-sm leading-normal text-slate-500 font-semibold border-t border-slate-200">
 								<p className="text-slate-800">No recurring job selected</p>
 								<p className="mt-1 font-medium">Select a job from the lists to inspect settings and state logs.</p>
 							</div>
@@ -352,9 +352,9 @@ export function JobsPanel({
 							<div className="m-3 rounded-md border border-slate-300 bg-slate-100 px-3 py-2.5 text-xs font-semibold leading-5 text-slate-800">{jobRunsError}</div>
 						) : null}
 
-						<div className="max-h-[20rem] overflow-y-auto px-3 py-3.5 scrollbar-thin">
+						<div className="max-h-80 overflow-y-auto px-3 py-3.5 scrollbar-thin">
 							{jobRuns.length === 0 && !isLoadingJobRuns ? (
-								<div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-sm leading-[1.5] text-slate-500 font-semibold">
+								<div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-sm leading-normal text-slate-500 font-semibold">
 									<p className="text-slate-800">No recorded executions</p>
 									<p className="mt-1 font-medium">{selectedJob ? "This scheduled job has not run yet." : "Select a recurring job to view recorded transcripts."}</p>
 								</div>
@@ -371,7 +371,7 @@ export function JobsPanel({
 										className={`flex w-full items-center gap-2.5 rounded-md border px-3 py-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer ${
 											isSelected
 												? "border-slate-900 bg-[#171717] text-white"
-												: "border-slate-150 bg-[#f8fafc]/60 text-[#0f172a] hover:border-slate-200 hover:bg-slate-50"
+												: "border-slate-150 bg-code-surface/60 text-[#0f172a] hover:border-slate-200 hover:bg-slate-50"
 										}`}
 												onClick={() => handleSelectRun(run.id)}
 											>
@@ -396,7 +396,7 @@ export function JobsPanel({
 					</div>
 
 					{/* ---- Transcript Viewer ---- */}
-					<div className="flex min-h-[24rem] flex-1 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white">
+					<div className="flex min-h-96 flex-1 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white">
 						<div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
 							<div>
 								<h2 className="text-[0.95rem] font-bold text-slate-950">Execution Transcript Log</h2>

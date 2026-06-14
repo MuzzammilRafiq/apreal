@@ -63,7 +63,7 @@ export function ChainOfThoughtHeader({
 		<button
 			type="button"
 			className={cn(
-				"flex h-7 w-7 shrink-0 items-center justify-center text-[#4b5563] transition-colors duration-150 hover:text-[var(--color-ink)]",
+				"flex h-7 w-7 shrink-0 items-center justify-center text-[#4b5563] transition-colors duration-150 hover:text-(--color-ink)",
 				className,
 			)}
 			onClick={() => setOpen(!open)}
@@ -98,7 +98,7 @@ function getStepStatusClasses(status: StepStatus) {
 	switch (status) {
 		case "active":
 			return {
-				badge: "text-[var(--color-brand-ink)]",
+				badge: "text-(--color-brand-ink)",
 				label: "In Progress",
 				icon: LoaderCircle,
 				iconClassName: "animate-spin",

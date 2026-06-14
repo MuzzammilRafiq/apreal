@@ -35,7 +35,7 @@ export function SettingsInventorySections({ activeSection, availableSkills, avai
 																{skill.description}
 															</p>
 														</div>
-														<span className={`shrink-0 border px-2 py-0.5 font-mono text-[0.63rem] font-semibold uppercase tracking-[0.1em] ${getSkillToneClassName(skill.source)}`}>
+														<span className={`shrink-0 border px-2 py-0.5 font-mono text-[0.63rem] font-semibold uppercase tracking-widest ${getSkillToneClassName(skill.source)}`}>
 															{skill.sourceLabel}
 														</span>
 													</div>
@@ -106,7 +106,7 @@ export function SettingsInventorySections({ activeSection, availableSkills, avai
 															{tool.description}
 														</p>
 													</div>
-													<span className={`shrink-0 border px-2 py-0.5 font-mono text-[0.63rem] font-semibold uppercase tracking-[0.1em] ${getToolToneClassName(tool.kind)}`}>
+													<span className={`shrink-0 border px-2 py-0.5 font-mono text-[0.63rem] font-semibold uppercase tracking-widest ${getToolToneClassName(tool.kind)}`}>
 														{getToolKindLabel(tool.kind)}
 													</span>
 												</div>

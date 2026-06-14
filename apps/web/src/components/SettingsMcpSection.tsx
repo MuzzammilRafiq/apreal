@@ -44,7 +44,7 @@ export function SettingsMcpSection({
 		<>
 						{activeSection === "mcp" && (
 							<div className="space-y-3">
-								<div className="border-t border-[var(--color-brand-line)] pt-3">
+								<div className="border-t border-(--color-brand-line) pt-3">
 									<div className="flex flex-wrap items-start justify-between gap-3">
 										<div>
 											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">Model Context Protocol</p>
@@ -68,15 +68,15 @@ export function SettingsMcpSection({
 									</p>
 
 									<div className="mt-3 grid gap-2 min-[720px]:grid-cols-3">
-										<div className="border-t border-[var(--color-brand-line)] py-2.5">
+										<div className="border-t border-(--color-brand-line) py-2.5">
 											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Configured servers</p>
 											<p className="mt-1 text-base font-bold text-slate-900">{mcpServers.length}</p>
 										</div>
-										<div className="border-t border-[var(--color-brand-line)] py-2.5">
+										<div className="border-t border-(--color-brand-line) py-2.5">
 											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Healthy connections</p>
 											<p className="mt-1 text-base font-bold text-slate-900">{readyMcpServerCount}</p>
 										</div>
-										<div className="border-t border-[var(--color-brand-line)] py-2.5">
+										<div className="border-t border-(--color-brand-line) py-2.5">
 											<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[#64748b]">Discovered tools</p>
 											<p className="mt-1 text-base font-bold text-slate-900">{mcpToolCount}</p>
 										</div>
@@ -87,23 +87,23 @@ export function SettingsMcpSection({
 									</p>
 
 									{mcpServersError ? (
-										<p className="ui-feedback mt-3 px-3 py-2.5 text-[0.82rem] leading-[1.5] font-medium">
+										<p className="ui-feedback mt-3 px-3 py-2.5 text-[0.82rem] leading-normal font-medium">
 											{mcpServersError}
 										</p>
 									) : null}
 									{mcpFormMessage ? (
-										<p className="ui-feedback-soft mt-3 px-3 py-2.5 text-[0.82rem] leading-[1.5] font-medium">
+										<p className="ui-feedback-soft mt-3 px-3 py-2.5 text-[0.82rem] leading-normal font-medium">
 											{mcpFormMessage}
 										</p>
 									) : null}
 									{mcpFormError ? (
-										<p className="ui-feedback mt-3 px-3 py-2.5 text-[0.82rem] leading-[1.5] font-medium">
+										<p className="ui-feedback mt-3 px-3 py-2.5 text-[0.82rem] leading-normal font-medium">
 											{mcpFormError}
 										</p>
 									) : null}
 
 									<div className="mt-3 grid gap-4 min-[1180px]:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-										<form className="space-y-3 border-t border-[var(--color-brand-line)] pt-3" onSubmit={handleSubmitMcpServer}>
+										<form className="space-y-3 border-t border-(--color-brand-line) pt-3" onSubmit={handleSubmitMcpServer}>
 											<div className="flex items-center justify-between gap-3">
 												<div>
 													<p className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.14em] text-slate-400">Editor</p>
@@ -189,13 +189,13 @@ export function SettingsMcpSection({
 													{mcpServers.map((server: any) => {
 														const isBusy = mcpActionServerId === server.id;
 														return (
-															<li key={server.id} className={`border px-3 py-3 ${server.enabled ? "border-[var(--color-brand-line-strong)] bg-white" : "border-[var(--color-brand-line)] bg-[rgba(255,255,255,0.72)]"}`}>
+															<li key={server.id} className={`border px-3 py-3 ${server.enabled ? "border-(--color-brand-line-strong) bg-white" : "border-(--color-brand-line) bg-[rgba(255,255,255,0.72)]"}`}>
 																<div className="flex flex-wrap items-start justify-between gap-3">
 																	<div className="min-w-0">
 																		<div className="flex flex-wrap items-center gap-2">
 																			<p className="text-[0.94rem] font-bold text-slate-900">{server.name}</p>
-																			<span className={`border px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-[0.1em] ${server.enabled ? "border-[var(--color-brand)] bg-brand text-white" : "border-[var(--color-brand-line-strong)] bg-white text-slate-500"}`}>{server.enabled ? "Enabled" : "Disabled"}</span>
-																			<span className="border border-slate-300 bg-white px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-[0.1em] text-slate-500">{server.transport}</span>
+																			<span className={`border px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-widest ${server.enabled ? "border-(--color-brand) bg-brand text-white" : "border-(--color-brand-line-strong) bg-white text-slate-500"}`}>{server.enabled ? "Enabled" : "Disabled"}</span>
+																			<span className="border border-slate-300 bg-white px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-widest text-slate-500">{server.transport}</span>
 																			<StatusPill label={getMcpRuntimeLabel(server)} tone={getMcpRuntimeTone(server)} />
 																		</div>
 																		<p className="mt-1.5 break-all font-mono text-[0.72rem] text-slate-500">

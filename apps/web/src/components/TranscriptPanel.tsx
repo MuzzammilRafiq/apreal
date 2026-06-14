@@ -89,7 +89,7 @@ function AssistantMarkdownMessage({ content, pending }: { content: string; pendi
 	return (
 		<MessageResponse
 			className={[
-				"markdown-content w-full break-words text-[0.95rem] leading-[1.7] text-ink selection:bg-black/10 selection:text-black",
+				"markdown-content w-full wrap-break-word text-[0.95rem] leading-[1.7] text-ink selection:bg-black/10 selection:text-black",
 				pending ? "opacity-75" : "",
 			].join(" ")}
 		>
@@ -137,7 +137,7 @@ function AssistantReasoningBlock({ item, segments }: { item: TranscriptMessage; 
 								label={isLiveThinking ? "Thinking live" : "Thinking"}
 								status={isLiveThinking ? "active" : "complete"}
 							>
-								<pre className="overflow-x-auto font-mono text-[0.78rem] leading-5 whitespace-pre-wrap break-words text-[#3f3f46]">
+								<pre className="overflow-x-auto font-mono text-[0.78rem] leading-5 whitespace-pre-wrap wrap-break-word text-[#3f3f46]">
 									{segment.content}
 								</pre>
 							</ChainOfThoughtStep>
@@ -155,7 +155,7 @@ function AssistantReasoningBlock({ item, segments }: { item: TranscriptMessage; 
 							showStatus={segment.status !== "completed"}
 						>
 							{segment.summary ? (
-								<pre className="overflow-x-auto font-mono text-[0.78rem] leading-5 whitespace-pre-wrap break-words text-[#3f3f46]">
+								<pre className="overflow-x-auto font-mono text-[0.78rem] leading-5 whitespace-pre-wrap wrap-break-word text-[#3f3f46]">
 									{segment.summary}
 								</pre>
 							) : null}
@@ -193,7 +193,7 @@ function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 						item.pending ? "opacity-75" : "",
 					].join(" ")}
 				>
-					<p className="whitespace-pre-wrap break-words">{item.body || "Thinking..."}</p>
+					<p className="whitespace-pre-wrap wrap-break-word">{item.body || "Thinking..."}</p>
 				</MessageContent>
 			)}
 			{item.role === "assistant" && shouldShowPlaceholder && (
@@ -268,7 +268,7 @@ export function TranscriptPanel({ activeTranscript, emptyState, connectionError 
 						renderedTranscript.map((item) => <TranscriptMessageCard key={item.id} item={item} />)
 					)}
 				</ConversationContent>
-				<ConversationScrollButton className="bottom-24 border-[var(--color-brand-line)] bg-white text-[var(--color-brand-ink)] hover:bg-[var(--color-brand-hover)] min-[861px]:bottom-28" />
+				<ConversationScrollButton className="bottom-24 border-(--color-brand-line) bg-white text-(--color-brand-ink) hover:bg-(--color-brand-hover) min-[861px]:bottom-28" />
 			</Conversation>
 		</div>
 	);
