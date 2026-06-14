@@ -217,7 +217,7 @@ export const Sidebar = memo(function Sidebar({
 
 	return (
 		<>
-			<div className="z-30 flex items-center justify-between gap-3 border-b border-[var(--color-brand-line)] bg-[rgba(255,248,250,0.88)] px-3 py-2 text-[#171717] backdrop-blur-md min-[721px]:hidden">
+			<div className="z-30 flex items-center justify-between gap-3 border-b border-[var(--color-brand-line)] bg-[rgba(255,255,255,0.88)] px-3 py-2 text-[#171717] backdrop-blur-md min-[721px]:hidden">
 				<button
 					type="button"
 					className="ui-icon-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
@@ -246,7 +246,7 @@ export const Sidebar = memo(function Sidebar({
 			</div>
 
 			{mobileMenuOpen ? (
-				<div className="fixed inset-0 z-50 bg-[rgba(79,62,69,0.28)] min-[721px]:hidden" aria-hidden="true">
+				<div className="fixed inset-0 z-50 bg-black/25 min-[721px]:hidden" aria-hidden="true">
 					<button
 						type="button"
 						className="absolute inset-0 h-full w-full cursor-default"

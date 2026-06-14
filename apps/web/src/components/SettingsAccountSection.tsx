@@ -73,7 +73,7 @@ export function SettingsAccountSection({
 			<section className="ui-panel rounded-xl px-4 py-4">
 				<div className="flex flex-col gap-4 min-[760px]:flex-row min-[760px]:items-start min-[760px]:justify-between">
 					<div className="flex min-w-0 items-start gap-4">
-						<div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.4rem] bg-[linear-gradient(180deg,#fff8fa,var(--color-brand-soft))] text-lg font-bold text-[var(--color-brand-ink)] shadow-[0_10px_24px_var(--color-brand-shadow)]">
+						<div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.4rem] bg-[linear-gradient(180deg,#ffffff,var(--color-brand-soft))] text-lg font-bold text-[var(--color-brand-ink)] shadow-[0_10px_24px_var(--color-brand-shadow)]">
 							{userImage ? (
 								<img
 									src={userImage}
@@ -136,7 +136,7 @@ export function SettingsAccountSection({
 						}}
 						rows={10}
 						placeholder={"Example:\n- Always explain tradeoffs before editing infra code.\n- Prefer existing project patterns over introducing new abstractions."}
-						className="ui-field-line mt-2 min-h-[14rem] w-full resize-y border-b bg-[rgba(255,194,212,0.14)] px-0 py-3 text-[0.95rem] leading-[1.6] text-[#171717] placeholder:text-slate-400 outline-none"
+						className="ui-field-line mt-2 min-h-[14rem] w-full resize-y border-b bg-[rgba(0,0,0,0.02)] px-0 py-3 text-[0.95rem] leading-[1.6] text-[#171717] placeholder:text-slate-400 outline-none"
 						spellCheck={false}
 					/>
 				</label>

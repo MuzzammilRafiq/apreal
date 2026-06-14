@@ -57,7 +57,7 @@ export function ScheduledJobsPage({
 	);
 
 	return (
-		<main className="min-h-svh bg-[linear-gradient(180deg,var(--color-brand-bg)_0%,#fff1f5_40%,#fff8fa_100%)] text-[#171717] selection:bg-[rgba(244,172,183,0.3)] selection:text-[var(--color-brand-ink)]">
+		<main className="min-h-svh bg-[var(--color-canvas)] text-[#171717] selection:bg-black/10 selection:text-black">
 			<div className="mx-auto flex min-h-svh w-full max-w-7xl flex-col px-3 py-4 min-[860px]:px-5 min-[860px]:py-6 min-[1180px]:px-6">
 				{/* ---- Header ---- */}
 				<header className="flex flex-col gap-3 border-b border-slate-200 pb-3 min-[860px]:flex-row min-[860px]:items-center min-[860px]:justify-between min-[860px]:gap-4">

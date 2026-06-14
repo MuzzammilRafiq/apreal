@@ -1,34 +1,22 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useState, type RefObject } from "react";
 import type { SessionSummary } from "../chatTypes";
+import {
+	PromptInput,
+	PromptInputBody,
+	PromptInputFooter,
+	PromptInputSubmit,
+	PromptInputTextarea,
+	PromptInputTools,
+	type PromptInputMessage,
+} from "./ai-elements/prompt-input";
 
-function formatContextCount(value: number): string {
-  if (value >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
-  }
+function formatModelLabel(model: string | null): string | null {
+	if (!model) {
+		return null;
+	}
 
-  if (value >= 1_000) {
-    return `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}k`;
-  }
-
-  return value.toString();
-}
-
-function formatCurrentContext(session: SessionSummary | null): string | null {
-  if (!session) {
-    return null;
-  }
-
-  const usage = session.contextUsage;
-  if (!usage) {
-    return session.model ? "Unavailable until next response" : "Waiting for first response";
-  }
-
-  if (usage.tokens === null) {
-    return `Unknown / ${formatContextCount(usage.contextWindow)} tokens`;
-  }
-
-  const percentLabel = usage.percent === null ? "" : ` (${usage.percent.toFixed(1)}%)`;
-  return `${formatContextCount(usage.tokens)} / ${formatContextCount(usage.contextWindow)} tokens${percentLabel}`;
+	const condensed = model.split("/").at(-1) ?? model;
+	return condensed.replaceAll(/[-_]/g, " ");
 }
 
 type ComposerProps = {
@@ -61,7 +49,7 @@ export const Composer = memo(function Composer({
   const [prompt, setPrompt] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const canSend = serverReady && !blockedReason && !activeSession?.busy && prompt.trim().length > 0;
-  const currentContextLabel = formatCurrentContext(activeSession);
+  const currentModelLabel = formatModelLabel(activeSession?.model ?? null);
 
   const resizePromptInput = useCallback(() => {
     const node = promptInputRef.current;
@@ -95,118 +83,86 @@ export const Composer = memo(function Composer({
     });
   }, [activeSessionId, blockedReason, promptInputRef, serverReady]);
 
-  function submitPrompt() {
-    const trimmedPrompt = prompt.trim();
-    if (!trimmedPrompt) {
-      return;
-    }
+	function handleSubmit(message: PromptInputMessage) {
+		const trimmedPrompt = message.text.trim();
+		if (!trimmedPrompt) {
+			return;
+		}
 
-    if (onSend(trimmedPrompt)) {
-      setPrompt("");
-    }
-  }
+		if (onSend(trimmedPrompt)) {
+			setPrompt("");
+		}
+	}
 
 	return (
-		<div
+		<PromptInput
+			onSubmit={handleSubmit}
 			className={[
-				"pointer-events-auto mx-auto flex w-full max-w-[54rem] flex-col gap-1.5 border bg-[rgba(255,248,250,0.92)] px-3 py-2.5 shadow-[0_-12px_40px_var(--color-brand-shadow)] transition-colors duration-150 min-[861px]:px-4",
+				"pointer-events-auto mx-auto w-full max-w-[54rem] rounded-xl bg-white shadow-[0_-12px_40px_rgba(15,23,42,0.08)] transition-colors duration-150 [&_[data-slot=input-group]]:h-auto [&_[data-slot=input-group]]:overflow-hidden [&_[data-slot=input-group]]:rounded-xl [&_[data-slot=input-group]]:border [&_[data-slot=input-group]]:bg-white",
 				isFocused
-					? "border-[var(--color-brand-line-strong)] bg-white"
-					: "border-[var(--color-brand-line)]",
+					? "[&_[data-slot=input-group]]:border-[rgba(15,23,42,0.16)]"
+					: "[&_[data-slot=input-group]]:border-black/10",
 			].join(" ")}
 		>
-			{currentContextLabel ? (
-				<div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-brand-line)] px-1 pb-1.5">
-					<span className="flex items-center gap-1.5 font-mono text-[0.66rem] font-semibold uppercase tracking-[0.12em] text-slate-500">
-						<svg viewBox="0 0 24 24" className="h-3 w-3 text-slate-500" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-            </svg>
-            Current Context
-          </span>
-					<span className="px-1.5 py-0.5 text-right font-mono text-[0.68rem] font-medium text-slate-600">
-            {currentContextLabel}
-          </span>
-        </div>
-      ) : null}
-			<div className="flex items-end gap-2">
-        <textarea
-          ref={promptInputRef}
-          id="prompt-input"
-          name="prompt"
-          aria-label="Prompt input"
-          rows={1}
-          value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          onKeyDown={(event) => {
-            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-              event.preventDefault();
-              submitPrompt();
-            }
-          }}
-          disabled={!serverReady || Boolean(blockedReason)}
-          onInput={resizePromptInput}
-          placeholder={
-            blockedReason
-              ? blockedReason
-              : !serverReady
-              ? "Start the local server to begin chatting..."
-              : !connected
-                ? streamRequested
-                  ? `Connecting to the ${connectionLabel}...`
-                  : `Opening the ${connectionLabel} stream...`
-                : activeSessionId
-                  ? "Continue this session with the next task, follow-up, or code request..."
-                  : "Describe what you want Pi to inspect, fix, or build..."
-          }
-				className="min-h-[calc(1.65em+1rem)] max-h-[calc(11.55em+1rem)] flex-1 resize-none overflow-hidden border-none bg-transparent px-1 py-1.5 text-[0.94rem] leading-[1.6] text-slate-900 outline-none placeholder:text-slate-400 focus-visible:outline-none min-[861px]:px-1.5"
-			/>
-			<button
-				type="button"
-				id={activeSession?.busy ? "abort-button" : "send-button"}
-				className={[
-					"flex h-9 w-9 shrink-0 items-center justify-center rounded-md border transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-30",
-					activeSession?.busy
-						? "border-[var(--color-brand-strong)] bg-[var(--color-brand-strong)] text-white hover:bg-[var(--color-brand-ink)] hover:border-[var(--color-brand-ink)]"
-						: "ui-button-primary",
-				].join(" ")}
-          disabled={!serverReady || Boolean(blockedReason) || aborting || (!canSend && !activeSession?.busy)}
-          aria-label={activeSession?.busy ? "Stop run" : "Send prompt"}
-          title={activeSession?.busy ? (aborting ? "Stopping stream" : "Stop stream") : "Send prompt"}
-          onClick={() => {
-            if (activeSession?.busy) {
-              void onAbort();
-              return;
-            }
+			<PromptInputBody>
+				<PromptInputTextarea
+					ref={promptInputRef}
+					id="prompt-input"
+					name="message"
+					aria-label="Prompt input"
+					value={prompt}
+					onChange={(event) => setPrompt(event.target.value)}
+					onFocus={() => setIsFocused(true)}
+					onBlur={() => setIsFocused(false)}
+					onKeyDown={(event) => {
+						if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+							event.preventDefault();
+							event.currentTarget.form?.requestSubmit();
+							return;
+						}
 
-            submitPrompt();
-          }}
-        >
-          {activeSession?.busy ? (
-            <span
-              aria-hidden="true"
-					className={aborting ? "h-3 w-3 animate-pulse rounded-[2px] border-2 border-white" : "h-3 w-3 rounded-[2px] border-2 border-white"}
-            />
-          ) : (
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 20 20"
-					className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-            >
-              <path d="M10 3.5V16.5" strokeLinecap="round" strokeLinejoin="round" />
-              <path
-                d="M5 8.5L10 3.5L15 8.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          )}
-        </button>
-      </div>
-    </div>
+						if (event.key === "Enter" && !event.shiftKey) {
+							event.preventDefault();
+						}
+					}}
+					disabled={!serverReady || Boolean(blockedReason)}
+					onInput={resizePromptInput}
+					placeholder={
+						blockedReason
+							? blockedReason
+							: !serverReady
+								? "Start the local server to begin chatting..."
+								: !connected
+									? streamRequested
+										? `Connecting to the ${connectionLabel}...`
+										: `Opening the ${connectionLabel} stream...`
+									: ""
+					}
+					className="min-h-[4.5rem] max-h-[calc(11.55em+1rem)] px-4 py-3 text-[0.98rem] leading-[1.6] text-slate-900 placeholder:text-slate-400"
+				/>
+			</PromptInputBody>
+			<PromptInputFooter className="px-3 pb-3 pt-0 min-[861px]:px-4">
+				<PromptInputTools className="min-w-0 flex-1">
+					{currentModelLabel ? (
+						<span className="inline-flex max-w-full items-center rounded-md border border-black/10 bg-slate-50 px-2.5 py-1.5 text-[0.78rem] font-medium text-slate-600">
+							<span className="truncate">{currentModelLabel}</span>
+						</span>
+					) : null}
+				</PromptInputTools>
+				<PromptInputSubmit
+					id={activeSession?.busy ? "abort-button" : "send-button"}
+					status={activeSession?.busy ? "streaming" : "ready"}
+					onStop={() => {
+						void onAbort();
+					}}
+					variant="default"
+					size="icon-sm"
+					className="ml-auto h-9 w-9 shrink-0 rounded-md border border-slate-900 bg-slate-900 text-white transition-colors duration-150 hover:border-slate-800 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-30"
+					disabled={!serverReady || Boolean(blockedReason) || aborting || (!canSend && !activeSession?.busy)}
+					aria-label={activeSession?.busy ? "Stop run" : "Send prompt"}
+					title={activeSession?.busy ? (aborting ? "Stopping stream" : "Stop stream") : "Send prompt"}
+				/>
+			</PromptInputFooter>
+		</PromptInput>
   );
 });

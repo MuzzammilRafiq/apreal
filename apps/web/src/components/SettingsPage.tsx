@@ -430,11 +430,11 @@ export function SettingsPage({
 	);
 
 	return (
-		<main className="min-h-svh bg-[linear-gradient(180deg,var(--color-brand-bg)_0%,#fff1f5_38%,#fff8fa_100%)] text-[#171717] selection:bg-[rgba(244,172,183,0.3)] selection:text-[var(--color-brand-ink)]">
+		<main className="min-h-svh bg-[var(--color-canvas)] text-[#171717] selection:bg-black/10 selection:text-black">
 			<div className="flex min-h-svh w-full flex-col">
 				{/* ---- Main layout: sidebar + content ---- */}
 				<div className="grid flex-1 grid-rows-[auto_minmax(0,1fr)] content-start min-[961px]:grid-cols-[280px_minmax(0,1fr)] min-[961px]:grid-rows-1 min-[1320px]:grid-cols-[300px_minmax(0,1fr)]">
-					<div className="z-30 flex items-center justify-between gap-3 border-b border-[var(--color-brand-line)] bg-[rgba(255,248,250,0.88)] px-3 py-3 backdrop-blur-md min-[961px]:hidden">
+					<div className="z-30 flex items-center justify-between gap-3 border-b border-[var(--color-brand-line)] bg-[rgba(255,255,255,0.88)] px-3 py-3 backdrop-blur-md min-[961px]:hidden">
 						<button
 							type="button"
 							className="ui-icon-button flex h-11 w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
@@ -452,7 +452,7 @@ export function SettingsPage({
 					</div>
 
 					{mobileMenuOpen ? (
-						<div className="fixed inset-0 z-50 bg-[rgba(79,62,69,0.28)] min-[961px]:hidden" aria-hidden="true">
+						<div className="fixed inset-0 z-50 bg-black/25 min-[961px]:hidden" aria-hidden="true">
 							<button
 								type="button"
 								className="absolute inset-0 h-full w-full cursor-default"
@@ -552,7 +552,7 @@ export function SettingsPage({
 					</nav>
 
 					{/* ======== CONTENT ======== */}
-					<div className="min-w-0 bg-[rgba(255,248,250,0.68)] px-3 py-3 backdrop-blur-[2px] min-[961px]:min-h-svh min-[961px]:px-6 min-[961px]:py-5">
+					<div className="min-w-0 bg-[rgba(255,255,255,0.72)] px-3 py-3 backdrop-blur-[2px] min-[961px]:min-h-svh min-[961px]:px-6 min-[961px]:py-5">
 						<header className="flex flex-col gap-2 border-b border-[var(--color-brand-line)] pb-2 min-[961px]:flex-row min-[961px]:items-start min-[961px]:justify-between min-[961px]:gap-4">
 							<div>
 								<h1 className="text-[1.28rem] font-bold tracking-tight leading-none text-slate-900 min-[961px]:text-[1.55rem]">
