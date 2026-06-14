@@ -9,6 +9,7 @@ import {
 	deleteCachedSession,
 	readCachedSessionSnapshot,
 	readCachedSessionSummaries,
+	readCachedTranscriptRevisions,
 	writeSessionSnapshot,
 	writeSessionSummaries,
 	writeSessionSummary,
@@ -92,6 +93,7 @@ export function App({ runtime }: AppProps) {
 	const [pendingPrompt, setPendingPrompt] = useState<PendingPrompt | null>(null);
 	const [sessions, setSessions] = useState<SessionSummary[]>([]);
 	const [sessionCache, setSessionCache] = useState<Map<string, SessionCacheEntry>>(() => new Map());
+	const [cachedTranscriptRevisions, setCachedTranscriptRevisions] = useState<Map<string, number>>(() => new Map());
 	const [visibleSessionLimit, setVisibleSessionLimit] = useState(SESSION_PAGE_SIZE);
 	const [totalSessionCount, setTotalSessionCount] = useState<number | null>(null);
 	const [loadingMoreSessions, setLoadingMoreSessions] = useState(false);
@@ -165,12 +167,16 @@ export function App({ runtime }: AppProps) {
 		const ids = new Set<string>();
 		for (const session of sessions) {
 			const cached = sessionCache.get(session.id);
-			if (!cached?.transcriptLoaded || (cached.transcriptRevision ?? -1) < session.revision) {
+			const cachedRevision = Math.max(
+				cached?.transcriptRevision ?? -1,
+				cachedTranscriptRevisions.get(session.id) ?? -1,
+			);
+			if (cachedRevision < session.revision) {
 				ids.add(session.id);
 			}
 		}
 		return ids;
-	}, [sessionCache, sessions]);
+	}, [cachedTranscriptRevisions, sessionCache, sessions]);
 	const serverReady = transportReady;
 	const effectiveCapabilities = useMemo(() => ({
 		...runtime.capabilities,
@@ -367,10 +373,12 @@ export function App({ runtime }: AppProps) {
 		void (async () => {
 			try {
 				const cachedSessions = await readCachedSessionSummaries();
+				const cachedTranscriptRevisions = await readCachedTranscriptRevisions();
 				if (cancelled) {
 					return;
 				}
 
+				setCachedTranscriptRevisions(cachedTranscriptRevisions);
 				setSessions(cachedSessions.filter((session) => !isScheduledSessionSummary(session)));
 				setTotalSessionCount((current) => current ?? cachedSessions.filter((session) => !isScheduledSessionSummary(session)).length);
 				setSessionCache((previous) => {
@@ -454,6 +462,11 @@ export function App({ runtime }: AppProps) {
 			});
 		}
 		if (options.persist ?? true) {
+			setCachedTranscriptRevisions((previous) => {
+				const next = new Map(previous);
+				next.set(session.id, session.revision);
+				return next;
+			});
 			void writeSessionSnapshot(session, transcript);
 		}
 	}, []);
@@ -523,13 +536,14 @@ export function App({ runtime }: AppProps) {
 				}
 				case "sessions_page": {
 					setLoadingMoreSessions(false);
-						serverLoadedSessionCountRef.current = message.offset === 0
-							? message.sessions.length
-							: Math.max(serverLoadedSessionCountRef.current, message.offset + message.sessions.length);
-						setTotalSessionCount(message.total);
+					serverLoadedSessionCountRef.current = message.offset === 0
+						? message.sessions.length
+						: Math.max(serverLoadedSessionCountRef.current, message.offset + message.sessions.length);
+					setTotalSessionCount(message.total);
 					if (message.offset === 0 && message.total === 0) {
 						setSessions([]);
 						setSessionCache(new Map());
+						setCachedTranscriptRevisions(new Map());
 						activateSessionRef.current(null, { load: false });
 						void clearCachedSessions();
 						break;
@@ -607,6 +621,15 @@ export function App({ runtime }: AppProps) {
 				case "session_deleted": {
 					setSessions((previous) => previous.filter((session) => session.id !== message.sessionId));
 					setSessionCache((previous) => {
+						if (!previous.has(message.sessionId)) {
+							return previous;
+						}
+
+						const next = new Map(previous);
+						next.delete(message.sessionId);
+						return next;
+					});
+					setCachedTranscriptRevisions((previous) => {
 						if (!previous.has(message.sessionId)) {
 							return previous;
 						}

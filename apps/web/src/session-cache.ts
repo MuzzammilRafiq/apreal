@@ -1,9 +1,10 @@
 import type { SessionSummary, TranscriptMessage } from "./chatTypes";
 
 const DATABASE_NAME = "apreal-chat-cache";
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const SESSION_SUMMARIES_STORE = "session_summaries";
 const SESSION_TRANSCRIPTS_STORE = "session_transcripts";
+const SESSION_TRANSCRIPT_METADATA_STORE = "session_transcript_metadata";
 
 type SessionTranscriptRecord = {
 	sessionId: string;
@@ -11,6 +12,20 @@ type SessionTranscriptRecord = {
 	transcript: TranscriptMessage[];
 	cachedAt: number;
 };
+
+type SessionTranscriptMetadataRecord = {
+	sessionId: string;
+	revision: number;
+	cachedAt: number;
+};
+
+function buildTranscriptMetadata(record: SessionTranscriptRecord): SessionTranscriptMetadataRecord {
+	return {
+		sessionId: record.sessionId,
+		revision: record.session.revision,
+		cachedAt: record.cachedAt,
+	};
+}
 
 function hasIndexedDb(): boolean {
 	return typeof indexedDB !== "undefined";
@@ -33,6 +48,21 @@ function openDatabase(): Promise<IDBDatabase | null> {
 			}
 			if (!database.objectStoreNames.contains(SESSION_TRANSCRIPTS_STORE)) {
 				database.createObjectStore(SESSION_TRANSCRIPTS_STORE, { keyPath: "sessionId" });
+			}
+			if (!database.objectStoreNames.contains(SESSION_TRANSCRIPT_METADATA_STORE)) {
+				const metadataStore = database.createObjectStore(SESSION_TRANSCRIPT_METADATA_STORE, { keyPath: "sessionId" });
+				if (request.transaction?.objectStoreNames.contains(SESSION_TRANSCRIPTS_STORE)) {
+					const transcriptsStore = request.transaction.objectStore(SESSION_TRANSCRIPTS_STORE);
+					transcriptsStore.openCursor().onsuccess = (event) => {
+						const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result;
+						if (!cursor) {
+							return;
+						}
+
+						metadataStore.put(buildTranscriptMetadata(cursor.value as SessionTranscriptRecord));
+						cursor.continue();
+					};
+				}
 			}
 		};
 		request.onsuccess = () => {
@@ -123,6 +153,29 @@ export async function readCachedSessionSnapshot(
 	};
 }
 
+export async function readCachedTranscriptRevisions(): Promise<Map<string, number>> {
+	const database = await openDatabase();
+	if (!database) {
+		return new Map();
+	}
+
+	const records = await runReadonlyTransaction<SessionTranscriptMetadataRecord[]>(
+		database,
+		SESSION_TRANSCRIPT_METADATA_STORE,
+		(store, resolve, reject) => {
+			const request = store.getAll();
+			request.onerror = () => {
+				reject(request.error ?? new Error("Failed to read cached transcript metadata."));
+			};
+			request.onsuccess = () => {
+				resolve(request.result as SessionTranscriptMetadataRecord[]);
+			};
+		},
+	);
+	database.close();
+	return new Map(records.map((record) => [record.sessionId, record.revision]));
+}
+
 export async function writeSessionSummaries(sessions: SessionSummary[]): Promise<void> {
 	if (sessions.length === 0) {
 		return;
@@ -152,14 +205,20 @@ export async function writeSessionSnapshot(session: SessionSummary, transcript: 
 		return;
 	}
 
-	await runReadwriteTransaction(database, [SESSION_SUMMARIES_STORE, SESSION_TRANSCRIPTS_STORE], (transaction) => {
+	await runReadwriteTransaction(database, [SESSION_SUMMARIES_STORE, SESSION_TRANSCRIPTS_STORE, SESSION_TRANSCRIPT_METADATA_STORE], (transaction) => {
+		const cachedAt = Date.now();
 		transaction.objectStore(SESSION_SUMMARIES_STORE).put(session);
 		transaction.objectStore(SESSION_TRANSCRIPTS_STORE).put({
 			sessionId: session.id,
 			session,
 			transcript,
-			cachedAt: Date.now(),
+			cachedAt,
 		} satisfies SessionTranscriptRecord);
+		transaction.objectStore(SESSION_TRANSCRIPT_METADATA_STORE).put({
+			sessionId: session.id,
+			revision: session.revision,
+			cachedAt,
+		} satisfies SessionTranscriptMetadataRecord);
 	});
 	database.close();
 }
@@ -170,9 +229,10 @@ export async function deleteCachedSession(sessionId: string): Promise<void> {
 		return;
 	}
 
-	await runReadwriteTransaction(database, [SESSION_SUMMARIES_STORE, SESSION_TRANSCRIPTS_STORE], (transaction) => {
+	await runReadwriteTransaction(database, [SESSION_SUMMARIES_STORE, SESSION_TRANSCRIPTS_STORE, SESSION_TRANSCRIPT_METADATA_STORE], (transaction) => {
 		transaction.objectStore(SESSION_SUMMARIES_STORE).delete(sessionId);
 		transaction.objectStore(SESSION_TRANSCRIPTS_STORE).delete(sessionId);
+		transaction.objectStore(SESSION_TRANSCRIPT_METADATA_STORE).delete(sessionId);
 	});
 	database.close();
 }
@@ -183,9 +243,10 @@ export async function clearCachedSessions(): Promise<void> {
 		return;
 	}
 
-	await runReadwriteTransaction(database, [SESSION_SUMMARIES_STORE, SESSION_TRANSCRIPTS_STORE], (transaction) => {
+	await runReadwriteTransaction(database, [SESSION_SUMMARIES_STORE, SESSION_TRANSCRIPTS_STORE, SESSION_TRANSCRIPT_METADATA_STORE], (transaction) => {
 		transaction.objectStore(SESSION_SUMMARIES_STORE).clear();
 		transaction.objectStore(SESSION_TRANSCRIPTS_STORE).clear();
+		transaction.objectStore(SESSION_TRANSCRIPT_METADATA_STORE).clear();
 	});
 	database.close();
 }
