@@ -4,6 +4,9 @@ type ConnectionSidebarFooterProps = {
 	hostConnected: boolean;
 	onBackToChat?: () => void;
 	placement?: "top" | "bottom";
+	bordered?: boolean;
+	showConnectivity?: boolean;
+	showBackToChat?: boolean;
 };
 
 function StatusDot({
@@ -44,7 +47,7 @@ function StatusDot({
 			<span className={`pointer-events-none absolute left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-md border border-black/8 bg-white px-2.5 py-1.5 font-mono text-[0.62rem] font-bold uppercase tracking-[0.12em] text-[#171717] opacity-0 shadow-[0_8px_20px_rgba(0,0,0,0.06)] transition-all duration-150 group-hover:opacity-100 ${tooltipClassName} flex items-center gap-1.5`}>
 				<span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-emerald-500" : "bg-amber-500"}`} />
 				<span>{label}</span>
-				<span className="text-muted/60 font-medium font-sans lowercase">•</span>
+				<span className="font-sans font-medium lowercase text-[#525252]/60">•</span>
 				<span className={connected ? "text-emerald-600" : "text-amber-600"}>{connected ? "Connected" : "Disconnected"}</span>
 			</span>
 			<span className="sr-only">{label}</span>
@@ -58,9 +61,15 @@ export function ConnectionSidebarFooter({
 	hostConnected,
 	onBackToChat,
 	placement = "bottom",
+	bordered = true,
+	showConnectivity = true,
+	showBackToChat = true,
 }: ConnectionSidebarFooterProps) {
 	const clientLabel = target === "remote" ? "Relay server" : "Server";
 	const isTopPlacement = placement === "top";
+	const containerClassName = isTopPlacement
+		? `${bordered ? "border-b border-line " : ""}px-2 pt-1.5 pb-1.5`
+		: `${bordered ? "border-t border-line " : ""}mt-auto px-2 pt-3 pb-2`;
 
 	const bothConnected = clientConnected && hostConnected;
 	const someConnected = clientConnected || hostConnected;
@@ -72,25 +81,27 @@ export function ConnectionSidebarFooter({
 			: "text-red-400/30 group-hover/face:text-red-400/60";
 
 	return (
-		<div className={isTopPlacement ? "border-b border-line px-2 pt-1.5 pb-1.5" : "mt-auto border-t border-line px-2 pt-3 pb-2"}>
-			<div className={`flex items-center ${isTopPlacement ? "justify-center" : "justify-end"} px-1 py-1`}>
-				<div className="group/face relative flex flex-col items-center pt-1 pb-1">
-					<div className="flex items-center gap-4.5 pb-2.5">
-						<StatusDot label={clientLabel} connected={clientConnected} tooltipPosition={isTopPlacement ? "bottom" : "top"} />
-						<StatusDot label="Agent host" connected={hostConnected} tooltipPosition={isTopPlacement ? "bottom" : "top"} />
+		<div className={containerClassName}>
+			{showConnectivity ? (
+				<div className={`flex items-center ${isTopPlacement ? "justify-center" : "justify-end"} px-1 py-1`}>
+					<div className="group/face relative flex flex-col items-center pt-1 pb-1">
+						<div className="flex items-center gap-4.5 pb-2.5">
+							<StatusDot label={clientLabel} connected={clientConnected} tooltipPosition={isTopPlacement ? "bottom" : "top"} />
+							<StatusDot label="Agent host" connected={hostConnected} tooltipPosition={isTopPlacement ? "bottom" : "top"} />
+						</div>
+						<svg
+							width="20"
+							height="6"
+							viewBox="0 0 20 6"
+							fill="none"
+							className={`absolute bottom-0.5 transition-all duration-300 group-hover/face:scale-y-125 group-hover/face:translate-y-[1px] ${mouthColorClass}`}
+						>
+							<path d="M2 1C5.5 4.5 14.5 4.5 18 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+						</svg>
 					</div>
-					<svg 
-						width="20" 
-						height="6" 
-						viewBox="0 0 20 6" 
-						fill="none" 
-						className={`absolute bottom-0.5 transition-all duration-300 group-hover/face:scale-y-125 group-hover/face:translate-y-[1px] ${mouthColorClass}`}
-					>
-						<path d="M2 1C5.5 4.5 14.5 4.5 18 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-					</svg>
 				</div>
-			</div>
-			{onBackToChat ? (
+			) : null}
+			{showBackToChat && onBackToChat ? (
 				<button
 					type="button"
 					className="mt-3 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[0.9375rem] font-medium text-slate-900 transition-colors duration-150 hover:bg-black/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 cursor-pointer"

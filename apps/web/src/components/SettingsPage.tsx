@@ -358,6 +358,8 @@ export function SettingsPage({
 	const readyMcpServerCount = mcpServers.filter((server) => server.runtime?.state === "ready").length;
 	const mcpToolCount = mcpServers.reduce((total, server) => total + (server.runtime?.toolCount ?? 0), 0);
 	const visibleSectionItems = SECTIONS.filter((section) => visibleSections.includes(section.id));
+	const settingsNavItemClassName =
+		"flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[0.9375rem] font-medium text-[#171717] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring cursor-pointer";
 
 	useEffect(() => {
 		if (!mobileMenuOpen) {
@@ -418,11 +420,17 @@ export function SettingsPage({
 								aria-label="Close settings menu"
 							/>
 							<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden bg-sidebar-panel text-ink shadow-[0_24px_60px_var(--color-brand-shadow)]">
-								<div className="border-b border-line px-4 py-4">
+								<div className="border-b border-line px-3 py-2">
 									<div className="flex items-center justify-between gap-3">
-										<div>
-											<p className="font-mono text-[0.66rem] font-semibold uppercase tracking-[0.14em] text-slate-500">Navigation</p>
-											<h2 className="mt-1 text-lg font-semibold tracking-tight text-slate-900">Settings</h2>
+										<div className="min-w-0 flex-1">
+											<ConnectionSidebarFooter
+												target={target}
+												clientConnected={connected}
+												hostConnected={serverReady}
+												placement="top"
+												bordered={false}
+												showBackToChat={false}
+											/>
 										</div>
 										<button
 											type="button"
@@ -445,16 +453,16 @@ export function SettingsPage({
 												setActiveSection(section.id);
 												setMobileMenuOpen(false);
 											}}
-											className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[0.9375rem] font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring cursor-pointer ${
+											className={`${settingsNavItemClassName} ${
 												activeSection === section.id
-													? "ui-nav-item-active text-ink"
-													: "ui-nav-item text-muted"
+													? "ui-nav-item-active"
+													: "ui-nav-item"
 											}`}
 										>
-											<span className={`mt-0.5 shrink-0 ${activeSection === section.id ? "text-ink" : "text-faint"}`}>
+											<span className={`mt-0.5 shrink-0 ${activeSection === section.id ? "text-[#171717]" : "text-[#525252]"}`}>
 												<SectionIcon section={section.id} />
 											</span>
-											<span className={`leading-tight ${activeSection === section.id ? "text-ink" : "text-muted"}`}>
+											<span className="leading-tight text-[#171717]">
 												{section.label}
 											</span>
 										</button>
@@ -464,6 +472,7 @@ export function SettingsPage({
 										clientConnected={connected}
 										hostConnected={serverReady}
 										onBackToChat={onBack}
+										showConnectivity={false}
 									/>
 								</div>
 							</aside>
@@ -474,27 +483,29 @@ export function SettingsPage({
 					<nav className="hidden flex-col border-b border-line bg-sidebar-bg min-[961px]:sticky min-[961px]:top-0 min-[961px]:flex min-[961px]:min-h-svh min-[961px]:self-start min-[961px]:border-r min-[961px]:border-b-0">
 						{/* Desktop: vertical sidebar */}
 						<div className="text-ink min-[961px]:flex min-[961px]:min-h-svh min-[961px]:flex-col">
-							<div className="border-b border-line px-5 py-4">
-								<h2 className="text-[1rem] font-semibold tracking-tight text-slate-900">
-									Settings
-								</h2>
-							</div>
 							<div className="flex flex-1 flex-col px-2 py-2">
+								<ConnectionSidebarFooter
+									target={target}
+									clientConnected={connected}
+									hostConnected={serverReady}
+									placement="top"
+									showBackToChat={false}
+								/>
 								{visibleSectionItems.map((section) => (
 									<button
 										key={section.id}
 										type="button"
 										onClick={() => setActiveSection(section.id)}
-										className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[0.9375rem] font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring cursor-pointer ${
+										className={`${settingsNavItemClassName} ${
 											activeSection === section.id
-												? "ui-nav-item-active text-ink"
-												: "ui-nav-item text-muted"
+												? "ui-nav-item-active"
+												: "ui-nav-item"
 										}`}
 									>
-										<span className={`mt-0.5 shrink-0 ${activeSection === section.id ? "text-ink" : "text-faint"}`}>
+										<span className={`mt-0.5 shrink-0 ${activeSection === section.id ? "text-[#171717]" : "text-[#525252]"}`}>
 											<SectionIcon section={section.id} />
 										</span>
-										<span className={`leading-tight ${activeSection === section.id ? "text-ink" : "text-muted"}`}>
+										<span className="leading-tight text-[#171717]">
 											{section.label}
 										</span>
 									</button>
@@ -504,6 +515,7 @@ export function SettingsPage({
 									clientConnected={connected}
 									hostConnected={serverReady}
 									onBackToChat={onBack}
+									showConnectivity={false}
 								/>
 							</div>
 						</div>
