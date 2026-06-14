@@ -52,7 +52,7 @@ export type ChainOfThoughtHeaderProps = HTMLAttributes<HTMLButtonElement> & {
 };
 
 export function ChainOfThoughtHeader({
-	label = "Worked",
+	label = "Inner Monologue",
 	className,
 	...props
 }: ChainOfThoughtHeaderProps) {
@@ -70,7 +70,7 @@ export function ChainOfThoughtHeader({
 			aria-label={`${open ? "Hide" : "Show"} work details`}
 			{...props}
 		>
-			<span className="font-normal lowercase text-current">
+			<span className="font-normal text-current">
 				{label}
 			</span>
 			<span className="flex h-4 w-4 shrink-0 items-center justify-center">

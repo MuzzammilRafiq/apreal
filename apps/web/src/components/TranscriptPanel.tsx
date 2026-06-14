@@ -115,9 +115,6 @@ function getReasoningStepStatus(segment: TranscriptReasoningSegment): "complete"
 
 function AssistantReasoningBlock({ item, segments }: { item: TranscriptMessage; segments: TranscriptReasoningSegment[] }) {
 	const mergedSegments = mergeConsecutiveThinkingSegments(segments);
-	const liveThinkingSegmentId = item.pending
-		? [...mergedSegments].reverse().find((segment) => segment.type === "thinking")?.id ?? null
-		: null;
 
 	return (
 		<ChainOfThought
@@ -128,14 +125,12 @@ function AssistantReasoningBlock({ item, segments }: { item: TranscriptMessage; 
 			<ChainOfThoughtContent>
 				{mergedSegments.map((segment) => {
 					if (segment.type === "thinking") {
-						const isLiveThinking = segment.id === liveThinkingSegmentId;
-
 						return (
 							<ChainOfThoughtStep
 								key={segment.id}
 								icon={Brain}
-								label={isLiveThinking ? "Thinking live" : "Thinking"}
-								status={isLiveThinking ? "active" : "complete"}
+								label="Thinking"
+								status="complete"
 							>
 								<pre className="overflow-x-auto font-mono text-[0.78rem] leading-5 whitespace-pre-wrap wrap-break-word text-[#3f3f46]">
 									{segment.content}

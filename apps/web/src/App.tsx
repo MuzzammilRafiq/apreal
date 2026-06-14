@@ -3,6 +3,7 @@ import { AppRouteView } from "./AppRouteView";
 import { authClient } from "./auth/auth-client";
 import { AuthGate } from "./components/AuthGate";
 import type { ScheduledJobDetails, SessionCacheEntry, SessionSummary, TranscriptMessage } from "./chatTypes";
+import { createBrowserUuid } from "./local-client";
 import {
 	clearCachedSessions,
 	deleteCachedSession,
@@ -38,11 +39,57 @@ type AppProps = {
 	runtime: WebRuntime;
 };
 
+type PendingPrompt = {
+	id: string;
+	prompt: string;
+	sessionId: string | null;
+};
+
+function createOptimisticTranscript(transcript: TranscriptMessage[], pendingPrompt: PendingPrompt | null): TranscriptMessage[] {
+	if (!pendingPrompt) {
+		return transcript;
+	}
+
+	const now = Date.now();
+	return [
+		...transcript,
+		{
+			id: `${pendingPrompt.id}:user`,
+			role: "user",
+			body: pendingPrompt.prompt,
+			thinking: "",
+			modelLabel: null,
+			modelSource: null,
+			toolCalls: [],
+			segments: [],
+			pending: true,
+			createdAt: now,
+		},
+		{
+			id: `${pendingPrompt.id}:assistant`,
+			role: "assistant",
+			body: "",
+			thinking: "",
+			modelLabel: null,
+			modelSource: null,
+			toolCalls: [],
+			segments: [],
+			pending: true,
+			createdAt: now,
+		},
+	];
+}
+
+function transcriptContainsPrompt(transcript: TranscriptMessage[], prompt: string): boolean {
+	return transcript.some((message) => message.role === "user" && message.body.trim() === prompt);
+}
+
 export function App({ runtime }: AppProps) {
 	const { data: authSession, isPending: authSessionPending } = authClient.useSession();
 	const [route, setRoute] = useState<AppRoute>(() => coerceRouteForCapabilities(readCurrentRoute(), runtime.capabilities));
 	const [connected, setConnected] = useState(false);
 	const [pendingDraft, setPendingDraft] = useState(false);
+	const [pendingPrompt, setPendingPrompt] = useState<PendingPrompt | null>(null);
 	const [sessions, setSessions] = useState<SessionSummary[]>([]);
 	const [sessionCache, setSessionCache] = useState<Map<string, SessionCacheEntry>>(() => new Map());
 	const [visibleSessionLimit, setVisibleSessionLimit] = useState(SESSION_PAGE_SIZE);
@@ -75,7 +122,7 @@ export function App({ runtime }: AppProps) {
 	const resolvePendingConnectionsRef = useRef<() => void>(() => {});
 	const ensureSessionLoadedRef = useRef<(sessionId: string | null) => void>(() => {});
 	const requestSessionPageRef = useRef<(offset?: number, limit?: number) => void>(() => {});
-	const activateSessionRef = useRef<(sessionId: string | null, options?: { load?: boolean }) => void>(() => {});
+	const activateSessionRef = useRef<(sessionId: string | null, options?: { load?: boolean; focus?: boolean }) => void>(() => {});
 	const upsertSessionSnapshotRef = useRef<(
 		session: SessionSummary,
 		transcript: TranscriptMessage[],
@@ -109,6 +156,11 @@ export function App({ runtime }: AppProps) {
 		(!activeSession || (activeSessionCacheEntry.transcriptRevision ?? -1) >= activeSession.revision),
 	);
 	const activeTranscript = activeTranscriptLoaded ? activeSessionCacheEntry?.transcript ?? [] : [];
+	const activePendingPrompt =
+		pendingPrompt && pendingPrompt.sessionId === activeSessionId && (activeTranscriptLoaded || !activeSessionId)
+			? pendingPrompt
+			: null;
+	const displayedActiveTranscript = createOptimisticTranscript(activeTranscript, activePendingPrompt);
 	const sessionIdsNeedingSync = useMemo(() => {
 		const ids = new Set<string>();
 		for (const session of sessions) {
@@ -356,8 +408,8 @@ export function App({ runtime }: AppProps) {
 		};
 	}, []);
 
-	const activateSession = useCallback((sessionId: string | null, options: { load?: boolean } = {}) => {
-		const { load = true } = options;
+	const activateSession = useCallback((sessionId: string | null, options: { load?: boolean; focus?: boolean } = {}) => {
+		const { load = true, focus = true } = options;
 		activeSessionIdRef.current = sessionId;
 		setActiveSessionId(sessionId);
 		setPendingDraft(false);
@@ -365,7 +417,9 @@ export function App({ runtime }: AppProps) {
 		if (load && sessionId) {
 			ensureSessionLoaded(sessionId);
 		}
-		focusPrompt();
+		if (focus) {
+			focusPrompt();
+		}
 	}, [ensureSessionLoaded, focusPrompt]);
 
 	useEffect(() => {
@@ -380,9 +434,12 @@ export function App({ runtime }: AppProps) {
 		setSessionCache((previous) => {
 			const next = new Map(previous);
 			const cached = next.get(session.id);
-			const latestSession = cached && cached.session.revision > session.revision ? cached.session : session;
+			if (cached?.transcriptLoaded && cached.session.revision > session.revision) {
+				return previous;
+			}
+
 			next.set(session.id, {
-				session: latestSession,
+				session,
 				transcript: cloneTranscript(transcript),
 				transcriptLoaded: true,
 				transcriptRevision: session.revision,
@@ -481,7 +538,8 @@ export function App({ runtime }: AppProps) {
 						let next = previous;
 						for (const session of message.sessions) {
 							if (!isScheduledSessionSummary(session)) {
-								next = upsertSessionInList(next, session);
+								const existing = next.find((entry) => entry.id === session.id);
+								next = upsertSessionInList(next, existing && existing.revision > session.revision ? existing : session);
 							}
 						}
 						return next;
@@ -490,10 +548,11 @@ export function App({ runtime }: AppProps) {
 						const next = new Map(previous);
 						for (const session of message.sessions) {
 							const cached = next.get(session.id);
+							const latestSession = cached && cached.session.revision > session.revision ? cached.session : session;
 							next.set(session.id, cached
 								? {
 									...cached,
-									session,
+									session: latestSession,
 								}
 								: createSummaryOnlyCacheEntry(session));
 						}
@@ -509,15 +568,22 @@ export function App({ runtime }: AppProps) {
 				}
 				case "session_summary_updated": {
 					if (!isScheduledSessionSummary(message.session)) {
-						setSessions((previous) => upsertSessionInList(previous, message.session));
+						setSessions((previous) => {
+							const existing = previous.find((entry) => entry.id === message.session.id);
+							return upsertSessionInList(
+								previous,
+								existing && existing.revision > message.session.revision ? existing : message.session,
+							);
+						});
 					}
 					setSessionCache((previous) => {
 						const next = new Map(previous);
 						const cached = next.get(message.session.id);
+						const latestSession = cached && cached.session.revision > message.session.revision ? cached.session : message.session;
 						next.set(message.session.id, cached
 							? {
 								...cached,
-								session: message.session,
+								session: latestSession,
 							}
 							: createSummaryOnlyCacheEntry(message.session));
 						return next;
@@ -558,6 +624,7 @@ export function App({ runtime }: AppProps) {
 				}
 				case "session_created": {
 					setConnectionError(null);
+					setPendingPrompt(null);
 					upsertSessionSnapshotRef.current(message.session, message.transcript);
 					if (!isScheduledSessionSummary(message.session)) {
 						setTotalSessionCount((previous) => {
@@ -568,12 +635,17 @@ export function App({ runtime }: AppProps) {
 							return exists ? previous : previous + 1;
 						});
 						setPendingDraft(false);
-						activateSessionRef.current(message.session.id, { load: false });
+						activateSessionRef.current(message.session.id, { load: false, focus: false });
 					}
 					break;
 				}
 				case "session_snapshot": {
 					setConnectionError(null);
+					setPendingPrompt((current) =>
+						current?.sessionId === message.session.id && transcriptContainsPrompt(message.transcript, current.prompt)
+							? null
+							: current,
+					);
 					upsertSessionSnapshotRef.current(message.session, message.transcript);
 					break;
 				}
@@ -647,6 +719,7 @@ export function App({ runtime }: AppProps) {
 				}
 				case "error": {
 					setPendingDraft(false);
+					setPendingPrompt(null);
 					setConnectionError(message.message);
 					break;
 				}
@@ -696,6 +769,12 @@ export function App({ runtime }: AppProps) {
 		}
 
 		setConnectionError(null);
+		const nextPendingPrompt = {
+			id: createBrowserUuid(),
+			prompt: trimmedPrompt,
+			sessionId: activeSessionId,
+		};
+		setPendingPrompt(nextPendingPrompt);
 		setPendingDraft(!activeSessionId);
 		void sendClientMessage({
 			type: "prompt",
@@ -703,6 +782,7 @@ export function App({ runtime }: AppProps) {
 			sessionId: activeSessionId,
 		}).catch((error) => {
 			setPendingDraft(false);
+			setPendingPrompt((current) => current?.id === nextPendingPrompt.id ? null : current);
 			setConnectionError(getErrorMessage(error));
 		});
 		return true;
@@ -744,7 +824,7 @@ export function App({ runtime }: AppProps) {
 				: !serverReady
 				? runtime.transport.unavailableTitle
 				: connected
-						? (pendingDraft ? "Creating session..." : "Ready when you are")
+						? (pendingDraft && !activePendingPrompt ? "Creating session..." : "Ready when you are")
 						: streamRequested ? "Connecting..." : "Ready when you are",
 			body: composerBlockedReason
 				? composerBlockedReason
@@ -795,9 +875,9 @@ export function App({ runtime }: AppProps) {
 			connectionError={connectionError} pendingDraft={pendingDraft} visibleSessions={visibleSessions}
 			sessionIdsNeedingSync={sessionIdsNeedingSync}
 			loadingMoreSessions={loadingMoreSessions} canLoadMoreSessions={canLoadMoreSessions}
-			activeSessionId={activeSessionId} activeSession={activeSession} activeTranscript={activeTranscript}
+			activeSessionId={activeSessionId} activeSession={activeSession} activeTranscript={displayedActiveTranscript}
 			aborting={aborting}
-			emptyState={emptyState} connected={connected} serverReady={serverReady} streamRequested={streamRequested} target={runtime.target}
+			emptyState={activePendingPrompt ? null : emptyState} connected={connected} serverReady={serverReady} streamRequested={streamRequested} target={runtime.target}
 			composerBlockedReason={composerBlockedReason}
 			capabilities={effectiveCapabilities}
 			connectionLabel={runtime.transport.label}

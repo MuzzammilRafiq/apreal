@@ -35,7 +35,6 @@ type ComposerProps = {
 	blockedReason: string | null;
 	connectionLabel: string;
 	activeSession: SessionSummary | null;
-	activeSessionId: string | null;
 	providers: ProvidersResponse | null;
 	providersError: string | null;
 	aborting: boolean;
@@ -52,7 +51,6 @@ export const Composer = memo(function Composer({
 	blockedReason,
 	connectionLabel,
 	activeSession,
-	activeSessionId,
 	providers,
 	providersError,
 	aborting,
@@ -108,16 +106,6 @@ export const Composer = memo(function Composer({
 	useLayoutEffect(() => {
 		resizePromptInput();
 	}, [prompt, resizePromptInput]);
-
-	useEffect(() => {
-		if (!serverReady || blockedReason) {
-			return;
-		}
-
-		window.requestAnimationFrame(() => {
-			promptInputRef.current?.focus();
-		});
-	}, [activeSessionId, blockedReason, promptInputRef, serverReady]);
 
 	useEffect(() => {
 		if (!modelPickerOpen) {

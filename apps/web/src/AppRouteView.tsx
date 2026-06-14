@@ -208,7 +208,6 @@ export function AppRouteView({
 						blockedReason={composerBlockedReason}
 						connectionLabel={connectionLabel}
 						activeSession={activeSession}
-						activeSessionId={activeSessionId}
 						providers={providers}
 						providersError={providersError}
 						aborting={aborting}
