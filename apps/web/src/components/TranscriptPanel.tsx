@@ -15,13 +15,27 @@ import { Brain, TerminalSquare, Wrench } from "lucide-react";
 
 type TranscriptTextOnlySegment = Extract<TranscriptMessageSegment, { type: "text" }>;
 type TranscriptReasoningSegment = Exclude<TranscriptMessageSegment, { type: "text" }>;
+type AssistantSegmentGroup =
+	| { type: "text"; segment: TranscriptTextOnlySegment }
+	| { type: "reasoning"; id: string; segments: TranscriptReasoningSegment[] };
 
 function isTextSegment(segment: TranscriptMessageSegment): segment is TranscriptTextOnlySegment {
 	return segment.type === "text";
 }
 
-function isReasoningSegment(segment: TranscriptMessageSegment): segment is TranscriptReasoningSegment {
-	return segment.type !== "text";
+function getSegmentOrder(segment: TranscriptMessageSegment): number {
+	return segment.contentIndex ?? Number.MAX_SAFE_INTEGER;
+}
+
+function getOrderedSegments(segments: TranscriptMessageSegment[]): TranscriptMessageSegment[] {
+	return [...segments].sort((left, right) => {
+		const orderDelta = getSegmentOrder(left) - getSegmentOrder(right);
+		if (orderDelta !== 0) {
+			return orderDelta;
+		}
+
+		return left.createdAt - right.createdAt;
+	});
 }
 
 function mergeConsecutiveThinkingSegments(segments: TranscriptReasoningSegment[]): TranscriptReasoningSegment[] {
@@ -63,13 +77,78 @@ function mergeConsecutiveAssistantMessages(transcript: TranscriptMessage[]): Tra
 			modelLabel: item.modelLabel ?? previous.modelLabel,
 			modelSource: item.modelSource ?? previous.modelSource,
 			toolCalls: [...previous.toolCalls, ...item.toolCalls],
-			segments: [...previous.segments, ...item.segments],
+			segments: getOrderedSegments([...previous.segments, ...item.segments]),
 			pending: previous.pending || item.pending,
 			createdAt: Math.min(previous.createdAt, item.createdAt),
 		};
 	}
 
 	return merged;
+}
+
+function keepFinalTextAtBottom(groups: AssistantSegmentGroup[]): AssistantSegmentGroup[] {
+	const lastTextIndex = groups.findLastIndex((group) => group.type === "text");
+	if (lastTextIndex === -1 || lastTextIndex === groups.length - 1) {
+		return groups;
+	}
+
+	const beforeFinalText = groups.slice(0, lastTextIndex);
+	const finalText = groups[lastTextIndex];
+	const afterFinalText = groups.slice(lastTextIndex + 1);
+	const trailingReasoningSegments = afterFinalText.flatMap((group) =>
+		group.type === "reasoning" ? group.segments : [],
+	);
+
+	if (!finalText || finalText.type !== "text" || trailingReasoningSegments.length === 0) {
+		return groups;
+	}
+
+	const previousReasoning = beforeFinalText.at(-1);
+	if (previousReasoning?.type === "reasoning") {
+		return [
+			...beforeFinalText.slice(0, -1),
+			{
+				...previousReasoning,
+				segments: [...previousReasoning.segments, ...trailingReasoningSegments],
+			},
+			finalText,
+		];
+	}
+
+	return [
+		...beforeFinalText,
+		{
+			type: "reasoning",
+			id: trailingReasoningSegments[0]?.id ?? finalText.segment.id,
+			segments: trailingReasoningSegments,
+		},
+		finalText,
+	];
+}
+
+function groupAssistantSegments(segments: TranscriptMessageSegment[]): AssistantSegmentGroup[] {
+	const groups: AssistantSegmentGroup[] = [];
+
+	for (const segment of getOrderedSegments(segments)) {
+		if (isTextSegment(segment)) {
+			groups.push({ type: "text", segment });
+			continue;
+		}
+
+		const previous = groups.at(-1);
+		if (previous?.type === "reasoning") {
+			previous.segments.push(segment);
+			continue;
+		}
+
+		groups.push({
+			type: "reasoning",
+			id: segment.id,
+			segments: [segment],
+		});
+	}
+
+	return keepFinalTextAtBottom(groups);
 }
 
 type EmptyState = {
@@ -164,7 +243,7 @@ function AssistantReasoningBlock({ item, segments }: { item: TranscriptMessage; 
 function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 	const assistantSegments = item.role === "assistant" ? item.segments : [];
 	const assistantTextSegments = assistantSegments.filter(isTextSegment);
-	const assistantReasoningSegments = assistantSegments.filter(isReasoningSegment);
+	const assistantSegmentGroups = groupAssistantSegments(assistantSegments);
 	const shouldShowPlaceholder = item.pending && !item.body && assistantSegments.length === 0;
 	const shouldShowStandaloneBody = item.role !== "assistant" && (item.body || shouldShowPlaceholder);
 	const shouldShowAssistantBodyFallback = item.role === "assistant" && assistantTextSegments.length === 0 && Boolean(item.body);
@@ -211,11 +290,10 @@ function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 			{item.role === "assistant" && assistantSegments.length > 0 && (
 				<MessageContent className="w-full bg-transparent p-0">
 					<div className="flex w-full flex-col gap-3">
-						{assistantReasoningSegments.length > 0 ? (
-							<AssistantReasoningBlock item={item} segments={assistantReasoningSegments} />
-						) : null}
-						{assistantTextSegments.map((segment) => (
-							<AssistantMarkdownMessage key={segment.id} content={segment.content} pending={item.pending} />
+						{assistantSegmentGroups.map((group) => group.type === "reasoning" ? (
+							<AssistantReasoningBlock key={group.id} item={item} segments={group.segments} />
+						) : (
+							<AssistantMarkdownMessage key={group.segment.id} content={group.segment.content} pending={item.pending} />
 						))}
 					</div>
 				</MessageContent>

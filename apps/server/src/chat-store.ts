@@ -237,7 +237,14 @@ function decodeSegments(raw: string, messageId: string): TranscriptMessageSegmen
 		logger.warn("skipping persisted segment with unknown type", { messageId, type: entry.type });
 	}
 
-	return segments;
+	return segments.sort((left, right) => {
+		const orderDelta = (left.contentIndex ?? Number.MAX_SAFE_INTEGER) - (right.contentIndex ?? Number.MAX_SAFE_INTEGER);
+		if (orderDelta !== 0) {
+			return orderDelta;
+		}
+
+		return left.createdAt - right.createdAt;
+	});
 }
 
 function runInTransaction(database: import("node:sqlite").DatabaseSync, callback: () => void) {

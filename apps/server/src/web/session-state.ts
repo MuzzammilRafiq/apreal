@@ -135,7 +135,10 @@ export function buildSessionSummary(session: SharedSessionState): SessionSummary
 export function buildSessionPayload(session: SharedSessionState) {
 	return {
 		session: buildSessionSummary(session),
-		transcript: cloneTranscript(session.transcript),
+		transcript: cloneTranscript(session.transcript).map((message) => ({
+			...message,
+			segments: getOrderedSegments(message.segments),
+		})),
 	};
 }
 
@@ -281,6 +284,17 @@ function findTranscriptMessage(session: SharedSessionState, messageId: string): 
 
 function getSegmentSortValue(segment: TranscriptMessageSegment): number {
 	return segment.contentIndex ?? Number.MAX_SAFE_INTEGER;
+}
+
+function getOrderedSegments(segments: TranscriptMessageSegment[]): TranscriptMessageSegment[] {
+	return [...segments].sort((left, right) => {
+		const orderDelta = getSegmentSortValue(left) - getSegmentSortValue(right);
+		if (orderDelta !== 0) {
+			return orderDelta;
+		}
+
+		return left.createdAt - right.createdAt;
+	});
 }
 
 function insertAssistantSegment(message: TranscriptMessage, segment: TranscriptMessageSegment) {
@@ -493,7 +507,7 @@ export function applyAssistantMessageSnapshot(
 				.map((segment) => [segment.id, segment]),
 		);
 
-		message.segments = snapshot.segments.map((segment) => {
+		message.segments = getOrderedSegments(snapshot.segments.map((segment) => {
 			switch (segment.type) {
 				case "text": {
 					const existingSegment = existingTextSegments.get(segment.contentIndex);
@@ -531,7 +545,7 @@ export function applyAssistantMessageSnapshot(
 					};
 				}
 			}
-		});
+		}));
 	}
 
 	for (const toolCall of message.toolCalls) {
