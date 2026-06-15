@@ -32,6 +32,7 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 	const [adminStatus, setAdminStatus] = useState<LocalWebAdminStatus | null>(null);
 	const [adminStatusError, setAdminStatusError] = useState<string | null>(null);
 	const [transportStatusMessage, setTransportStatusMessage] = useState<string | null>(null);
+	const [serverReady, setServerReady] = useState(false);
 	const [transportReady, setTransportReady] = useState(false);
 	const [authorizedSettingsSections, setAuthorizedSettingsSections] = useState(runtime.capabilities.settingsSections);
 	const [providers, setProviders] = useState<ProvidersResponse | null>(null);
@@ -148,6 +149,7 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		setAdminStatus(nextStatus.adminStatus);
 		setAdminStatusError(null);
 		setTransportStatusMessage(nextStatus.message);
+		setServerReady(nextStatus.serverReady);
 		setTransportReady(nextStatus.transportReady);
 		setAuthorizedSettingsSections(nextStatus.settingsSections);
 		if (runtime.target === "remote") {
@@ -169,6 +171,7 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 			setAdminStatus(null);
 			setAdminStatusError(null);
 			setTransportStatusMessage(null);
+			setServerReady(false);
 			setTransportReady(false);
 			setAuthorizedSettingsSections(runtime.capabilities.settingsSections);
 			setConnected(false);
@@ -194,10 +197,13 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 
 				setAdminStatus(null);
 				setAdminStatusError(getErrorMessage(error));
-				setTransportStatusMessage(null);
-				setTransportReady(false);
-				setAuthorizedSettingsSections(runtime.capabilities.settingsSections);
-				setConnected(false);
+				if (runtime.target === "local") {
+					setTransportStatusMessage(null);
+					setServerReady(false);
+					setTransportReady(false);
+					setAuthorizedSettingsSections(runtime.capabilities.settingsSections);
+					setConnected(false);
+				}
 			} finally {
 				if (!cancelled) {
 					refreshTimer = window.setTimeout(pollAdminStatus, ADMIN_STATUS_REFRESH_INTERVAL_MS);
@@ -552,7 +558,7 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 	}, [providers, refreshProviders, route, runtime.capabilities.providers]);
 
 	return {
-		adminStatus, adminStatusError, transportStatusMessage, transportReady, authorizedSettingsSections,
+		adminStatus, adminStatusError, transportStatusMessage, serverReady, transportReady, authorizedSettingsSections,
 		providers, providersError, mcpServers, mcpServersError, loadingMcpServers,
 		scheduledJobs, scheduledJobsError, loadingScheduledJobs, scheduledJobRuns, scheduledJobRunsError, loadingScheduledJobRuns,
 		appendPromptMessage, appendPromptError, savingAppendPrompt,

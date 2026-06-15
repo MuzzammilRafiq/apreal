@@ -519,6 +519,28 @@ test("replaces the active owner agent when the same owner signs in elsewhere", a
 	});
 });
 
+test("keeps the browser stream open while the paired agent reconnects", async (t) => {
+	const { baseUrl } = await startRelayTestServer(t);
+	const { client, agent, clientStream, agentStream } = await createPair(t, baseUrl, "agent-reconnect");
+
+	await agentStream.close();
+	assert.equal(await clientStream.next(250), null);
+
+	const replacementAgentStream = await openSseStream(`${baseUrl}${RELAY_AGENT_STREAM_PATH}`, {
+		headers: {
+			authorization: `Bearer ${agent.token}`,
+		},
+	});
+	t.after(async () => {
+		await replacementAgentStream.close();
+	});
+
+	assert.deepEqual(await replacementAgentStream.next<RelayAgentCommand>(), {
+		type: "client_connect",
+		clientId: client.clientId,
+	});
+});
+
 test("replaces the active owner browser client with a clear disconnect message", async (t) => {
 	const { baseUrl } = await startRelayTestServer(t);
 	const ownerGrant = generateOwnerAgentGrant("owner-client-singleton").ownerGrant;

@@ -105,7 +105,7 @@ export function App({ runtime }: AppProps) {
 	const signedIn = Boolean(authSession?.user);
 	const signInRequired = !authSessionPending && !signedIn;
 	const {
-		adminStatus, adminStatusError, transportStatusMessage, transportReady, providers, providersError, mcpServers, mcpServersError, loadingMcpServers,
+		adminStatus, adminStatusError, transportStatusMessage, serverReady: relayReady, transportReady, providers, providersError, mcpServers, mcpServersError, loadingMcpServers,
 		authorizedSettingsSections,
 		scheduledJobs, scheduledJobsError, loadingScheduledJobs, scheduledJobRuns, scheduledJobRunsError, loadingScheduledJobRuns,
 		appendPromptMessage, appendPromptError, savingAppendPrompt,
@@ -181,10 +181,8 @@ export function App({ runtime }: AppProps) {
 		settingsSections: authorizedSettingsSections,
 	}), [authorizedSettingsSections, runtime.capabilities]);
 	const composerBlockedReason = authSessionPending ? "Checking your sign-in status..." : null;
-	const chatTransportReady = serverReady && !composerBlockedReason;
+	const chatTransportReady = relayReady && !composerBlockedReason;
 	const previousChatTransportReadyRef = useRef(chatTransportReady);
-	const relayReady = Boolean(adminStatus?.relayReady);
-	const relayTransportConnected = Boolean(adminStatus?.relayTransportConnected);
 	const isBusy = pendingDraft || Boolean(activeSession?.busy);
 	const aborting = Boolean(activeSessionId && activeSessionId === abortingSessionId);
 
@@ -841,15 +839,19 @@ export function App({ runtime }: AppProps) {
 		? {
 			title: composerBlockedReason
 				? "Sign in required"
-				: !serverReady
+				: !relayReady
 				? runtime.transport.unavailableTitle
+				: !serverReady
+				? "Reconnecting..."
 				: connected
 						? (pendingDraft && !activePendingPrompt ? "Creating session..." : "Ready when you are")
 						: streamRequested ? "Connecting..." : "Ready when you are",
 			body: composerBlockedReason
 				? composerBlockedReason
-				: !serverReady
+				: !relayReady
 				? (adminStatusError ?? transportStatusMessage ?? runtime.transport.unavailableBody)
+				: !serverReady
+				? (transportStatusMessage ?? runtime.transport.connectingBody)
 				: connected
 				? null
 				: !streamRequested

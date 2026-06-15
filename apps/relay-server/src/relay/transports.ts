@@ -278,8 +278,10 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 				state.agentConnections.delete(principal.id);
 			}
 
-			for (const client of listBrowserClientsForAgent(principal.id)) {
-				client.close(reason);
+			if (reason === "agent_owner_session_replaced") {
+				for (const client of listBrowserClientsForAgent(principal.id)) {
+					client.close(reason);
+				}
 			}
 
 			if (!response.writableEnded) {
