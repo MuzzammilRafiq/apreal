@@ -196,7 +196,7 @@ function AssistantReasoningBlock({ item, segments }: { item: TranscriptMessage; 
 
 	return (
 		<ChainOfThought
-			defaultOpen={item.pending}
+			defaultOpen
 			className="w-full "
 		>
 			<ChainOfThoughtHeader />

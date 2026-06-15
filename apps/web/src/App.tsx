@@ -153,13 +153,10 @@ export function App({ runtime }: AppProps) {
 		sessions.find((session) => session.id === activeSessionId) ??
 		(cachedActiveSession && !isScheduledSessionSummary(cachedActiveSession) ? cachedActiveSession : null);
 	const activeSessionCacheEntry = activeSessionId ? sessionCache.get(activeSessionId) ?? null : null;
-	const activeTranscriptLoaded = Boolean(
-		activeSessionCacheEntry?.transcriptLoaded &&
-		(!activeSession || (activeSessionCacheEntry.transcriptRevision ?? -1) >= activeSession.revision),
-	);
-	const activeTranscript = activeTranscriptLoaded ? activeSessionCacheEntry?.transcript ?? [] : [];
+	const activeTranscriptAvailable = Boolean(activeSessionCacheEntry?.transcriptLoaded);
+	const activeTranscript = activeTranscriptAvailable ? activeSessionCacheEntry?.transcript ?? [] : [];
 	const activePendingPrompt =
-		pendingPrompt && pendingPrompt.sessionId === activeSessionId && (activeTranscriptLoaded || !activeSessionId)
+		pendingPrompt && pendingPrompt.sessionId === activeSessionId && (activeTranscriptAvailable || !activeSessionId)
 			? pendingPrompt
 			: null;
 	const displayedActiveTranscript = createOptimisticTranscript(activeTranscript, activePendingPrompt);
@@ -859,7 +856,7 @@ export function App({ runtime }: AppProps) {
 					? `Opening the ${runtime.transport.label} event stream.`
 					: runtime.transport.connectingBody,
 		}
-		: !activeTranscriptLoaded
+		: !activeTranscriptAvailable
 			? {
 				title: "Loading session...",
 				body: `Fetching the latest transcript from the ${runtime.transport.label}.`,

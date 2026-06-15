@@ -14,6 +14,7 @@ import {
 import { createBrowserUuid } from "./local-client";
 
 const RELAY_CLIENT_AUTH_STORAGE_KEY = "pi-browser-relay-auth";
+const RELAY_AUTH_REFRESH_WINDOW_MS = 60_000;
 
 export type StoredRelayClientAuth = {
 	relayUrl: string;
@@ -106,6 +107,54 @@ function writeStoredRelayClientIdentity(identity: StoredRelayClientIdentity) {
 	window.localStorage.setItem(RELAY_CLIENT_AUTH_STORAGE_KEY, JSON.stringify(identity));
 }
 
+function readStoredRelayClientAuth(relayUrl: string): StoredRelayClientAuth | null {
+	try {
+		const rawValue = window.localStorage.getItem(RELAY_CLIENT_AUTH_STORAGE_KEY);
+		if (!rawValue) {
+			return null;
+		}
+
+		const parsed: unknown = JSON.parse(rawValue);
+		if (!isObjectRecord(parsed)) {
+			return null;
+		}
+
+		const identity = readStoredRelayClientIdentity(relayUrl);
+		const token = typeof parsed.token === "string" ? parsed.token.trim() : "";
+		const expiresAt = typeof parsed.expiresAt === "number" ? parsed.expiresAt : 0;
+		if (!identity || !token || !Number.isFinite(expiresAt)) {
+			return null;
+		}
+
+		return {
+			...identity,
+			token,
+			expiresAt,
+			target: parsed.target === null ? null : parseStoredTarget(parsed.target),
+			updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : identity.updatedAt,
+		};
+	} catch {
+		return null;
+	}
+}
+
+function writeStoredRelayClientAuth(auth: StoredRelayClientAuth) {
+	window.localStorage.setItem(RELAY_CLIENT_AUTH_STORAGE_KEY, JSON.stringify(auth));
+}
+
+function isUsableRelayClientAuth(auth: StoredRelayClientAuth | null): auth is StoredRelayClientAuth {
+	return Boolean(auth?.target && auth.token && auth.expiresAt > Date.now() + RELAY_AUTH_REFRESH_WINDOW_MS);
+}
+
+function getIdentityFromAuth(auth: StoredRelayClientAuth): StoredRelayClientIdentity {
+	return {
+		relayUrl: auth.relayUrl,
+		clientId: auth.clientId,
+		clientKey: auth.clientKey,
+		updatedAt: auth.updatedAt,
+	};
+}
+
 function createClientIdentity(relayUrl: string): StoredRelayClientIdentity {
 	const existing = readStoredRelayClientIdentity(relayUrl);
 	return {
@@ -190,7 +239,12 @@ function parseClientHeartbeatResponse(payload: unknown): RelayClientHeartbeatRes
 }
 
 export async function ensureRelayClientAuth(relayUrl: string): Promise<StoredRelayClientAuth> {
-	const identity = createClientIdentity(relayUrl);
+	const cachedAuth = readStoredRelayClientAuth(relayUrl);
+	if (isUsableRelayClientAuth(cachedAuth)) {
+		return cachedAuth;
+	}
+
+	const identity = cachedAuth ? getIdentityFromAuth(cachedAuth) : createClientIdentity(relayUrl);
 	writeStoredRelayClientIdentity(identity);
 
 	const requestBody: RelayClientAuthRequest = {
@@ -222,7 +276,7 @@ export async function ensureRelayClientAuth(relayUrl: string): Promise<StoredRel
 	}
 
 	const issuedAuth = parseClientAuthResponse(payload);
-	return {
+	const nextAuth: StoredRelayClientAuth = {
 		relayUrl,
 		clientId: issuedAuth.clientId,
 		clientKey: issuedAuth.clientKey,
@@ -231,6 +285,8 @@ export async function ensureRelayClientAuth(relayUrl: string): Promise<StoredRel
 		target: issuedAuth.target,
 		updatedAt: Date.now(),
 	};
+	writeStoredRelayClientAuth(nextAuth);
+	return nextAuth;
 }
 
 export async function requestRelayAgentOwnerGrant(relayUrl: string): Promise<RelayAgentOwnerGrantResponse> {
@@ -260,7 +316,8 @@ export async function requestRelayAgentOwnerGrant(relayUrl: string): Promise<Rel
 }
 
 export async function readRelayClientHeartbeat(relayUrl: string): Promise<RelayClientHeartbeatStatus> {
-	const identity = createClientIdentity(relayUrl);
+	const cachedAuth = readStoredRelayClientAuth(relayUrl);
+	const identity = cachedAuth ? getIdentityFromAuth(cachedAuth) : createClientIdentity(relayUrl);
 	writeStoredRelayClientIdentity(identity);
 
 	const requestBody: RelayClientHeartbeatRequest = {
@@ -301,6 +358,7 @@ export async function readRelayClientHeartbeat(relayUrl: string): Promise<RelayC
 		target: heartbeat.target,
 		updatedAt: Date.now(),
 	};
+	writeStoredRelayClientAuth(nextAuth);
 	return {
 		auth: nextAuth,
 		serverReady: heartbeat.serverReady,
