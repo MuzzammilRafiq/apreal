@@ -29,7 +29,7 @@ function getLastCommitDate() {
 }
 
 const lastCommitDate = getLastCommitDate();
-const fileContents = `export const BUILD_VERSION = "Version ${lastCommitDate}" as const;\n`;
+const fileContents = `export const BUILD_VERSION = "Updated ${lastCommitDate}" as const;\n`;
 
 mkdirSync(outputDir, { recursive: true });
 writeFileSync(outputFile, fileContents, "utf8");
