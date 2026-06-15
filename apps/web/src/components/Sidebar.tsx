@@ -18,6 +18,7 @@ type SidebarProps = {
 	onLoadMoreSessions: () => void;
 	target: "local" | "remote";
 	clientConnected: boolean;
+	clientConnecting?: boolean;
 	hostConnected: boolean;
 };
 
@@ -38,6 +39,7 @@ function SidebarContent({
 	onLoadMoreSessions,
 	target,
 	clientConnected,
+	clientConnecting,
 	hostConnected,
 	onClose,
 }: SidebarProps & { onClose?: () => void }) {
@@ -46,6 +48,7 @@ function SidebarContent({
 			<ConnectionSidebarFooter
 				target={target}
 				clientConnected={clientConnected}
+				clientConnecting={clientConnecting}
 				hostConnected={hostConnected}
 				placement="top"
 			/>
@@ -197,6 +200,7 @@ export const Sidebar = memo(function Sidebar({
 	onLoadMoreSessions,
 	target,
 	clientConnected,
+	clientConnecting,
 	hostConnected,
 }: SidebarProps) {
 	const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -266,6 +270,7 @@ export const Sidebar = memo(function Sidebar({
 							onLoadMoreSessions={onLoadMoreSessions}
 							target={target}
 							clientConnected={clientConnected}
+							clientConnecting={clientConnecting}
 							hostConnected={hostConnected}
 							onClose={() => setMobileMenuOpen(false)}
 						/>
@@ -288,6 +293,7 @@ export const Sidebar = memo(function Sidebar({
 					onLoadMoreSessions={onLoadMoreSessions}
 					target={target}
 					clientConnected={clientConnected}
+					clientConnecting={clientConnecting}
 					hostConnected={hostConnected}
 				/>
 			</aside>

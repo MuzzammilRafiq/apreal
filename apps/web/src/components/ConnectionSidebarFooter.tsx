@@ -1,6 +1,7 @@
 type ConnectionSidebarFooterProps = {
 	target: "local" | "remote";
 	clientConnected: boolean;
+	clientConnecting?: boolean;
 	hostConnected: boolean;
 	onBackToChat?: () => void;
 	placement?: "top" | "bottom";
@@ -11,22 +12,27 @@ type ConnectionSidebarFooterProps = {
 
 function StatusDot({
 	label,
-	connected,
+	status,
 	tooltipPosition = "top",
 }: {
 	label: string;
-	connected: boolean;
+	status: "connected" | "connecting" | "disconnected";
 	tooltipPosition?: "top" | "bottom";
 }) {
 	const tooltipClassName = tooltipPosition === "bottom"
 		? "top-full mt-2"
 		: "bottom-full mb-2";
+	const connected = status === "connected";
+	const connecting = status === "connecting";
+	const statusLabel = connected ? "Connected" : connecting ? "Connecting" : "Disconnected";
 
 	return (
-		<div className="group relative flex items-center justify-center cursor-pointer" title={`${label}: ${connected ? "Connected" : "Disconnected"}`} aria-label={`${label}: ${connected ? "Connected" : "Disconnected"}`}>
+		<div className="group relative flex items-center justify-center cursor-pointer" title={`${label}: ${statusLabel}`} aria-label={`${label}: ${statusLabel}`}>
 			{/* Ambient Pulse Ring */}
 			{connected ? (
 				<span className="absolute inline-flex h-3 w-3 animate-status-ping rounded-full bg-emerald-400/50" />
+			) : connecting ? (
+				<span className="absolute inline-flex h-3 w-3 animate-status-ping rounded-full bg-amber-400/45" style={{ animationDuration: "1.8s" }} />
 			) : (
 				<span className="absolute inline-flex h-3 w-3 animate-status-ping rounded-full bg-amber-400/35" style={{ animationDuration: "3.5s" }} />
 			)}
@@ -36,6 +42,8 @@ function StatusDot({
 					"relative flex h-3 w-3 items-center justify-center rounded-full transition-all duration-300 group-hover:scale-110",
 					connected 
 						? "bg-linear-to-br from-emerald-400 to-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] ring-1 ring-emerald-500/20" 
+						: connecting
+							? "bg-linear-to-br from-amber-300 to-amber-500 shadow-[0_0_9px_rgba(245,158,11,0.45)] ring-1 ring-amber-500/20"
 						: "bg-linear-to-br from-amber-400 to-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.35)] ring-1 ring-amber-500/20",
 				].join(" ")}
 				aria-hidden="true"
@@ -48,7 +56,7 @@ function StatusDot({
 				<span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-emerald-500" : "bg-amber-500"}`} />
 				<span>{label}</span>
 				<span className="font-sans font-medium lowercase text-thinking-body/60">•</span>
-				<span className={connected ? "text-emerald-600" : "text-amber-600"}>{connected ? "Connected" : "Disconnected"}</span>
+				<span className={connected ? "text-emerald-600" : "text-amber-600"}>{statusLabel}</span>
 			</span>
 			<span className="sr-only">{label}</span>
 		</div>
@@ -58,6 +66,7 @@ function StatusDot({
 export function ConnectionSidebarFooter({
 	target,
 	clientConnected,
+	clientConnecting = false,
 	hostConnected,
 	onBackToChat,
 	placement = "bottom",
@@ -66,6 +75,7 @@ export function ConnectionSidebarFooter({
 	showBackToChat = true,
 }: ConnectionSidebarFooterProps) {
 	const clientLabel = target === "remote" ? "Relay server" : "Server";
+	const clientStatus = clientConnected ? "connected" : clientConnecting ? "connecting" : "disconnected";
 	const isTopPlacement = placement === "top";
 	const containerClassName = isTopPlacement
 		? `${bordered ? "border-b border-line " : ""}px-2 pt-1.5 pb-1.5`
@@ -86,8 +96,8 @@ export function ConnectionSidebarFooter({
 				<div className={`flex items-center ${isTopPlacement ? "justify-center" : "justify-end"} px-1 py-1`}>
 					<div className="group/face relative flex flex-col items-center pt-1 pb-1">
 						<div className="flex items-center gap-4.5 pb-2.5">
-							<StatusDot label={clientLabel} connected={clientConnected} tooltipPosition={isTopPlacement ? "bottom" : "top"} />
-							<StatusDot label="Agent host" connected={hostConnected} tooltipPosition={isTopPlacement ? "bottom" : "top"} />
+							<StatusDot label={clientLabel} status={clientStatus} tooltipPosition={isTopPlacement ? "bottom" : "top"} />
+							<StatusDot label="Agent host" status={hostConnected ? "connected" : "disconnected"} tooltipPosition={isTopPlacement ? "bottom" : "top"} />
 						</div>
 						<svg
 							width="20"

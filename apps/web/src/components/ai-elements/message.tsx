@@ -58,6 +58,7 @@ export const MessageResponse = memo(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         className
       )}
+      animated={false}
       controls={streamdownControls}
       plugins={streamdownPlugins}
       {...props}

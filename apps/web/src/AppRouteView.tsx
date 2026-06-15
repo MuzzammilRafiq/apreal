@@ -12,6 +12,47 @@ import type { WebCapabilities } from "./runtime";
 
 type EmptyState = { title: string; body: string | null } | null;
 
+function isRoutineTransportNotice(message: string | null): boolean {
+	if (!message) {
+		return false;
+	}
+
+	const normalized = message.toLowerCase();
+	return (
+		normalized.includes("reconnecting") ||
+		normalized.includes("event stream") ||
+		normalized.includes("stream is not connected") ||
+		normalized.includes("server stream")
+	);
+}
+
+function getChatEmptyState({
+	emptyState,
+	target,
+	activeSession,
+	serverReady,
+}: {
+	emptyState: EmptyState;
+	target: "local" | "remote";
+	activeSession: SessionSummary | null;
+	serverReady: boolean;
+}): EmptyState {
+	if (
+		target === "remote" &&
+		!activeSession &&
+		serverReady &&
+		emptyState &&
+		(emptyState.title === "Connecting..." || isRoutineTransportNotice(emptyState.body))
+	) {
+		return {
+			title: "Ready when you are",
+			body: null,
+		};
+	}
+
+	return emptyState;
+}
+
 type AppRouteViewProps = {
 	route: AppRoute;
 	adminStatus: LocalWebAdminStatus | null;
@@ -87,6 +128,11 @@ export function AppRouteView({
 	onStartProviderLogin, onSaveProviderApiKey, onCreateMcpServer, onUpdateMcpServer, onDeleteMcpServer, onRefreshMcpServers,
 	onSaveAppendSystemPrompt, onDeleteAllSessions, onStartNewChat, onActivateSession, onDeleteSession, onLoadMoreSessions, onSendPrompt, onAbort,
 }: AppRouteViewProps) {
+	const chatConnectionError = target === "remote" && isRoutineTransportNotice(connectionError)
+		? null
+		: connectionError;
+	const chatEmptyState = getChatEmptyState({ emptyState, target, activeSession, serverReady });
+
 	useEffect(() => {
 		const visualViewport = window.visualViewport;
 		if (!visualViewport) {
@@ -187,6 +233,7 @@ export function AppRouteView({
 				onLoadMoreSessions={onLoadMoreSessions}
 				target={target}
 				clientConnected={connected}
+				clientConnecting={streamRequested && !connected}
 				hostConnected={serverReady}
 			/>
 
@@ -194,8 +241,8 @@ export function AppRouteView({
 				<TranscriptPanel
 					activeSession={activeSession}
 					activeTranscript={activeTranscript}
-					emptyState={emptyState}
-					connectionError={connectionError}
+					emptyState={chatEmptyState}
+					connectionError={chatConnectionError}
 				/>
 				<div
 					className="pointer-events-none absolute inset-x-0 z-20 flex justify-center px-3 pb-3 max-[860px]:px-2 max-[860px]:pb-2"

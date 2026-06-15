@@ -9,7 +9,6 @@ import {
 	Conversation,
 	ConversationContent,
 	ConversationEmptyState,
-	ConversationScrollButton,
 } from "./ai-elements/conversation";
 import { Message, MessageContent, MessageResponse } from "./ai-elements/message";
 import { Brain, TerminalSquare, Wrench } from "lucide-react";
@@ -263,7 +262,6 @@ export function TranscriptPanel({ activeTranscript, emptyState, connectionError 
 						renderedTranscript.map((item) => <TranscriptMessageCard key={item.id} item={item} />)
 					)}
 				</ConversationContent>
-				<ConversationScrollButton className="bottom-24 border-(--color-brand-line) bg-white text-(--color-brand-ink) hover:bg-(--color-brand-hover) min-[861px]:bottom-28" />
 			</Conversation>
 		</div>
 	);
