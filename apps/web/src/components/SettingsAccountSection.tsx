@@ -1,6 +1,7 @@
 import type { FormEvent, ReactNode } from "react";
 import type { LocalWebAdminStatus } from "@apreal/shared";
 import { authClient } from "../auth/auth-client";
+import { BUILD_VERSION } from "../generated/build-version";
 import { AccountAuthButton } from "./AccountAuthButton";
 
 type SettingsAccountSectionProps = {
@@ -198,6 +199,9 @@ export function SettingsAccountSection({
             {deleteSessionsError}
           </p>
         ) : null}
+        <p className="mt-3 text-[0.68rem] leading-normal text-slate-400">
+          {BUILD_VERSION}
+        </p>
       </section>
     </div>
   );
