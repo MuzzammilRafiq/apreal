@@ -46,6 +46,15 @@ type PendingPrompt = {
 	sessionId: string | null;
 };
 
+type BufferedAssistantDelta = {
+	messageId: string;
+	delta: string;
+	field: "body" | "thinking";
+	contentIndex: number;
+};
+
+const STREAM_RENDER_INTERVAL_MS = 50;
+
 function createOptimisticTranscript(transcript: TranscriptMessage[], pendingPrompt: PendingPrompt | null): TranscriptMessage[] {
 	if (!pendingPrompt) {
 		return transcript;
@@ -85,6 +94,30 @@ function transcriptContainsPrompt(transcript: TranscriptMessage[], prompt: strin
 	return transcript.some((message) => message.role === "user" && message.body.trim() === prompt);
 }
 
+function applyBufferedAssistantDelta(
+	transcript: TranscriptMessage[],
+	bufferedDelta: BufferedAssistantDelta,
+): TranscriptMessage[] {
+	const messageIndex = transcript.findIndex((entry) => entry.id === bufferedDelta.messageId);
+	if (messageIndex === -1) {
+		return transcript;
+	}
+
+	const existingMessage = transcript[messageIndex];
+	if (!existingMessage) {
+		return transcript;
+	}
+
+	const nextTranscript = [...transcript];
+	nextTranscript[messageIndex] = appendAssistantDeltaToMessage(
+		existingMessage,
+		bufferedDelta.delta,
+		bufferedDelta.field,
+		bufferedDelta.contentIndex,
+	);
+	return nextTranscript;
+}
+
 export function App({ runtime }: AppProps) {
 	const { data: authSession, isPending: authSessionPending } = authClient.useSession();
 	const [route, setRoute] = useState<AppRoute>(() => coerceRouteForCapabilities(readCurrentRoute(), runtime.capabilities));
@@ -93,6 +126,7 @@ export function App({ runtime }: AppProps) {
 	const [pendingPrompt, setPendingPrompt] = useState<PendingPrompt | null>(null);
 	const [sessions, setSessions] = useState<SessionSummary[]>([]);
 	const [sessionCache, setSessionCache] = useState<Map<string, SessionCacheEntry>>(() => new Map());
+	const [liveTranscriptOverrides, setLiveTranscriptOverrides] = useState<Map<string, TranscriptMessage[]>>(() => new Map());
 	const [cachedTranscriptRevisions, setCachedTranscriptRevisions] = useState<Map<string, number>>(() => new Map());
 	const [visibleSessionLimit, setVisibleSessionLimit] = useState(SESSION_PAGE_SIZE);
 	const [totalSessionCount, setTotalSessionCount] = useState<number | null>(null);
@@ -120,6 +154,8 @@ export function App({ runtime }: AppProps) {
 	const sessionCacheRef = useRef(sessionCache);
 	const activeSessionIdRef = useRef(activeSessionId);
 	const visibleSessionLimitRef = useRef(visibleSessionLimit);
+	const bufferedAssistantDeltasRef = useRef<Map<string, BufferedAssistantDelta[]>>(new Map());
+	const streamFlushTimerRef = useRef<number | null>(null);
 	const pendingConnectionResolversRef = useRef(new Set<() => void>());
 	const resolvePendingConnectionsRef = useRef<() => void>(() => {});
 	const ensureSessionLoadedRef = useRef<(sessionId: string | null) => void>(() => {});
@@ -153,8 +189,9 @@ export function App({ runtime }: AppProps) {
 		sessions.find((session) => session.id === activeSessionId) ??
 		(cachedActiveSession && !isScheduledSessionSummary(cachedActiveSession) ? cachedActiveSession : null);
 	const activeSessionCacheEntry = activeSessionId ? sessionCache.get(activeSessionId) ?? null : null;
-	const activeTranscriptAvailable = Boolean(activeSessionCacheEntry?.transcriptLoaded);
-	const activeTranscript = activeTranscriptAvailable ? activeSessionCacheEntry?.transcript ?? [] : [];
+	const activeLiveTranscript = activeSessionId ? liveTranscriptOverrides.get(activeSessionId) ?? null : null;
+	const activeTranscriptAvailable = Boolean(activeLiveTranscript || activeSessionCacheEntry?.transcriptLoaded);
+	const activeTranscript = activeLiveTranscript ?? (activeSessionCacheEntry?.transcript ?? []);
 	const activePendingPrompt =
 		pendingPrompt && pendingPrompt.sessionId === activeSessionId && (activeTranscriptAvailable || !activeSessionId)
 			? pendingPrompt
@@ -202,6 +239,95 @@ export function App({ runtime }: AppProps) {
 		});
 	}, []);
 
+	const clearBufferedAssistantDeltas = useCallback((sessionId?: string) => {
+		if (sessionId) {
+			bufferedAssistantDeltasRef.current.delete(sessionId);
+			setLiveTranscriptOverrides((previous) => {
+				if (!previous.has(sessionId)) {
+					return previous;
+				}
+
+				const next = new Map(previous);
+				next.delete(sessionId);
+				return next;
+			});
+			return;
+		}
+
+		bufferedAssistantDeltasRef.current.clear();
+		setLiveTranscriptOverrides((previous) => (previous.size === 0 ? previous : new Map()));
+	}, []);
+
+	const flushBufferedAssistantDeltas = useCallback((sessionId?: string) => {
+		const drained = new Map<string, BufferedAssistantDelta[]>();
+		if (sessionId) {
+			const pending = bufferedAssistantDeltasRef.current.get(sessionId);
+			if (pending && pending.length > 0) {
+				drained.set(sessionId, pending);
+				bufferedAssistantDeltasRef.current.delete(sessionId);
+			}
+		} else {
+			for (const [bufferedSessionId, pending] of bufferedAssistantDeltasRef.current.entries()) {
+				if (pending.length > 0) {
+					drained.set(bufferedSessionId, pending);
+				}
+			}
+			bufferedAssistantDeltasRef.current.clear();
+		}
+
+		if (drained.size === 0) {
+			return;
+		}
+
+		setLiveTranscriptOverrides((previous) => {
+			let next = previous;
+
+			for (const [bufferedSessionId, pending] of drained.entries()) {
+				const sourceTranscript =
+					next.get(bufferedSessionId) ??
+					sessionCacheRef.current.get(bufferedSessionId)?.transcript;
+				if (!sourceTranscript) {
+					const existingPending = bufferedAssistantDeltasRef.current.get(bufferedSessionId) ?? [];
+					bufferedAssistantDeltasRef.current.set(bufferedSessionId, [...pending, ...existingPending]);
+					continue;
+				}
+
+				let transcript = cloneTranscript(sourceTranscript);
+				for (const bufferedDelta of pending) {
+					transcript = applyBufferedAssistantDelta(transcript, bufferedDelta);
+				}
+
+				if (next === previous) {
+					next = new Map(previous);
+				}
+				next.set(bufferedSessionId, transcript);
+			}
+
+			return next;
+		});
+	}, []);
+
+	const scheduleBufferedAssistantDeltaFlush = useCallback(() => {
+		if (streamFlushTimerRef.current !== null) {
+			return;
+		}
+
+		streamFlushTimerRef.current = window.setTimeout(() => {
+			streamFlushTimerRef.current = null;
+			flushBufferedAssistantDeltas();
+		}, STREAM_RENDER_INTERVAL_MS);
+	}, [flushBufferedAssistantDeltas]);
+
+	const bufferAssistantDelta = useCallback((
+		sessionId: string,
+		bufferedDelta: BufferedAssistantDelta,
+	) => {
+		const nextPending = bufferedAssistantDeltasRef.current.get(sessionId) ?? [];
+		nextPending.push(bufferedDelta);
+		bufferedAssistantDeltasRef.current.set(sessionId, nextPending);
+		scheduleBufferedAssistantDeltaFlush();
+	}, [scheduleBufferedAssistantDeltaFlush]);
+
 	const resolvePendingConnections = useCallback(() => {
 		for (const resolve of pendingConnectionResolversRef.current) {
 			resolve();
@@ -231,6 +357,13 @@ export function App({ runtime }: AppProps) {
 	useEffect(() => {
 		resolvePendingConnectionsRef.current = resolvePendingConnections;
 	}, [resolvePendingConnections]);
+
+	useEffect(() => () => {
+		if (streamFlushTimerRef.current !== null) {
+			window.clearTimeout(streamFlushTimerRef.current);
+			streamFlushTimerRef.current = null;
+		}
+	}, []);
 
 	const waitForConnectionAttempt = useCallback((timeoutMs = 1200) => {
 		if (connected) {
@@ -539,6 +672,7 @@ export function App({ runtime }: AppProps) {
 						setSessions([]);
 						setSessionCache(new Map());
 						setCachedTranscriptRevisions(new Map());
+						clearBufferedAssistantDeltas();
 						activateSessionRef.current(null, { load: false });
 						void clearCachedSessions();
 						break;
@@ -614,6 +748,7 @@ export function App({ runtime }: AppProps) {
 					break;
 				}
 				case "session_deleted": {
+					clearBufferedAssistantDeltas(message.sessionId);
 					setSessions((previous) => previous.filter((session) => session.id !== message.sessionId));
 					setSessionCache((previous) => {
 						if (!previous.has(message.sessionId)) {
@@ -643,6 +778,7 @@ export function App({ runtime }: AppProps) {
 				case "session_created": {
 					setConnectionError(null);
 					setPendingPrompt(null);
+					clearBufferedAssistantDeltas(message.session.id);
 					upsertSessionSnapshotRef.current(message.session, message.transcript);
 					if (!isScheduledSessionSummary(message.session)) {
 						setTotalSessionCount((previous) => {
@@ -664,74 +800,25 @@ export function App({ runtime }: AppProps) {
 							? null
 							: current,
 					);
+					clearBufferedAssistantDeltas(message.session.id);
 					upsertSessionSnapshotRef.current(message.session, message.transcript);
 					break;
 				}
 				case "assistant_delta": {
-					setSessionCache((previous) => {
-						const cached = previous.get(message.sessionId);
-						if (!cached) {
-							return previous;
-						}
-
-						const messageIndex = cached.transcript.findIndex((entry) => entry.id === message.messageId);
-						if (messageIndex === -1) {
-							return previous;
-						}
-
-						const transcript = [...cached.transcript];
-						const existingMessage = transcript[messageIndex];
-						if (!existingMessage) {
-							return previous;
-						}
-
-						transcript[messageIndex] = appendAssistantDeltaToMessage(
-							existingMessage,
-							message.delta,
-							"body",
-							message.contentIndex,
-						);
-
-						const next = new Map(previous);
-						next.set(message.sessionId, {
-							...cached,
-							transcript,
-						});
-						return next;
+					bufferAssistantDelta(message.sessionId, {
+						messageId: message.messageId,
+						delta: message.delta,
+						field: "body",
+						contentIndex: message.contentIndex,
 					});
 					break;
 				}
 				case "assistant_thinking_delta": {
-					setSessionCache((previous) => {
-						const cached = previous.get(message.sessionId);
-						if (!cached) {
-							return previous;
-						}
-
-						const messageIndex = cached.transcript.findIndex((entry) => entry.id === message.messageId);
-						if (messageIndex === -1) {
-							return previous;
-						}
-
-						const transcript = [...cached.transcript];
-						const existingMessage = transcript[messageIndex];
-						if (!existingMessage) {
-							return previous;
-						}
-
-						transcript[messageIndex] = appendAssistantDeltaToMessage(
-							existingMessage,
-							message.delta,
-							"thinking",
-							message.contentIndex,
-						);
-
-						const next = new Map(previous);
-						next.set(message.sessionId, {
-							...cached,
-							transcript,
-						});
-						return next;
+					bufferAssistantDelta(message.sessionId, {
+						messageId: message.messageId,
+						delta: message.delta,
+						field: "thinking",
+						contentIndex: message.contentIndex,
 					});
 					break;
 				}
@@ -760,7 +847,7 @@ export function App({ runtime }: AppProps) {
 			eventSource?.close();
 			setConnected(false);
 		};
-	}, [chatTransportReady, handleServerMessage, runtime, streamGeneration, streamRequested]);
+	}, [bufferAssistantDelta, chatTransportReady, clearBufferedAssistantDeltas, handleServerMessage, runtime, streamGeneration, streamRequested]);
 
 	const handleLoadMoreSessions = useCallback(() => {
 		const nextVisibleLimit = visibleSessionLimitRef.current + SESSION_PAGE_SIZE;

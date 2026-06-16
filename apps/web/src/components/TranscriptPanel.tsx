@@ -10,7 +10,8 @@ import {
 	ConversationContent,
 	ConversationEmptyState,
 } from "./ai-elements/conversation";
-import { Message, MessageContent, MessageResponse } from "./ai-elements/message";
+import { Message, MessageContent } from "./ai-elements/message";
+import { StreamingMarkdownText } from "./StreamingMarkdownText";
 import { Brain, TerminalSquare, Wrench } from "lucide-react";
 
 type TranscriptTextOnlySegment = Extract<TranscriptMessageSegment, { type: "text" }>;
@@ -151,11 +152,6 @@ function groupAssistantSegments(segments: TranscriptMessageSegment[]): Assistant
 	return keepFinalTextAtBottom(groups);
 }
 
-type EmptyState = {
-	title: string;
-	body: string | null;
-};
-
 type TranscriptPanelProps = {
 	activeSession: SessionSummary | null;
 	activeTranscript: TranscriptMessage[];
@@ -163,18 +159,10 @@ type TranscriptPanelProps = {
 	connectionError: string | null;
 };
 
-function AssistantMarkdownMessage({ content, pending }: { content: string; pending: boolean }) {
-	return (
-		<MessageResponse
-			className={[
-				"markdown-content w-full wrap-break-word text-[0.95rem] leading-[1.7] text-ink selection:bg-black/10 selection:text-black",
-				pending ? "opacity-75" : "",
-			].join(" ")}
-		>
-			{content}
-		</MessageResponse>
-	);
-}
+type EmptyState = {
+	title: string;
+	body: string | null;
+};
 
 function getReasoningStepStatus(segment: TranscriptReasoningSegment): "complete" | "active" | "pending" {
 	if (segment.type === "thinking") {
@@ -283,7 +271,7 @@ function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 
 			{shouldShowAssistantBodyFallback && (
 				<MessageContent className="w-full bg-transparent p-0">
-					<AssistantMarkdownMessage content={item.body} pending={item.pending} />
+					<StreamingMarkdownText content={item.body} pending={item.pending} />
 				</MessageContent>
 			)}
 
@@ -293,7 +281,7 @@ function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 						{assistantSegmentGroups.map((group) => group.type === "reasoning" ? (
 							<AssistantReasoningBlock key={group.id} item={item} segments={group.segments} />
 						) : (
-							<AssistantMarkdownMessage key={group.segment.id} content={group.segment.content} pending={item.pending} />
+							<StreamingMarkdownText key={group.segment.id} content={group.segment.content} pending={item.pending} />
 						))}
 					</div>
 				</MessageContent>
