@@ -10,7 +10,7 @@ import type {
 	TranscriptMessage,
 } from "./session-state.ts";
 import { getServerEnv } from "../env.ts";
-import type { ServerAppMessage } from "../protocol.ts";
+import type { ServerAppMessage, ServerAppPayload } from "../protocol.ts";
 
 export const DEFAULT_PORT = 3000;
 export const DEFAULT_SESSION_PAGE_LIMIT = 50;
@@ -23,6 +23,7 @@ export const SSE_ENCODER = new TextEncoder();
 
 export type ClientTransport = "http" | "relay";
 
+export type ServerPayload = ServerAppPayload<SessionSummary, TranscriptMessage>;
 export type ServerMessage = ServerAppMessage<SessionSummary, TranscriptMessage>;
 
 export type ClientConnection = {
@@ -62,6 +63,9 @@ export function parseRelayAgentCommand(rawMessage: string): RelayAgentCommand | 
 		return {
 			type: "client_connect",
 			clientId: value.clientId,
+			lastSeq: typeof value.lastSeq === "number" && Number.isInteger(value.lastSeq) && value.lastSeq >= 0
+				? value.lastSeq
+				: undefined,
 		};
 	}
 

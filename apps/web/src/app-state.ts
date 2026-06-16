@@ -7,6 +7,7 @@ import type {
 	ServerMcpMessage,
 	ServerProvidersMessage,
 	ServerStatusMessage,
+	ServerSyncEnvelope,
 } from "@apreal/shared";
 import type { SessionCacheEntry, SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "./chatTypes";
 import { createBrowserUuid } from "./local-client";
@@ -32,7 +33,7 @@ export type ClientMessage =
 	| ClientStatusCommand
 	| ClientMcpCommand;
 
-export type ServerMessage =
+export type ServerPayload =
 	| { type: "connected"; clientId: string; message: string; tools?: string }
 	| { type: "disconnected"; reason: string; message: string }
 	| { type: "sessions_page"; sessions: SessionSummary[]; offset: number; limit: number; total: number }
@@ -48,6 +49,8 @@ export type ServerMessage =
 	| ServerProvidersMessage
 	| ServerStatusMessage
 	| ServerMcpMessage;
+
+export type ServerMessage = ServerPayload | ServerSyncEnvelope<ServerPayload>;
 
 export type AssistantDeltaField = "body" | "thinking";
 

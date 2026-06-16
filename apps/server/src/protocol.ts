@@ -9,6 +9,7 @@ import type {
 	ServerMcpMessage,
 	ServerProvidersMessage,
 	ServerStatusMessage,
+	ServerSyncEnvelope,
 	UpdateMcpServerRequest,
 } from "@apreal/shared";
 
@@ -25,7 +26,7 @@ export type ClientAppMessage =
 	| ClientStatusCommand
 	| ClientMcpCommand;
 
-export type ServerAppMessage<SessionSummary, TranscriptMessage> =
+export type ServerAppPayload<SessionSummary, TranscriptMessage> =
 	| { type: "connected"; clientId: string; message: string; tools?: string }
 	| { type: "sessions_page"; sessions: SessionSummary[]; offset: number; limit: number; total: number }
 	| { type: "session_summary_updated"; session: SessionSummary }
@@ -40,6 +41,10 @@ export type ServerAppMessage<SessionSummary, TranscriptMessage> =
 	| ServerProvidersMessage
 	| ServerStatusMessage
 	| ServerMcpMessage;
+
+export type ServerAppMessage<SessionSummary, TranscriptMessage> =
+	| ServerAppPayload<SessionSummary, TranscriptMessage>
+	| ServerSyncEnvelope<ServerAppPayload<SessionSummary, TranscriptMessage>>;
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);

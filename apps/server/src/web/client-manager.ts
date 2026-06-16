@@ -1,6 +1,7 @@
 import { getConfiguredToolsLabel } from "../agent-tools.ts";
 import type { ClientAppMessage } from "../protocol.ts";
 import { parseClientAppMessage } from "../protocol.ts";
+import { SYNC_LAST_SEQ_QUERY_PARAM, type ServerSyncEnvelope, type ServerSyncScope } from "@apreal/shared";
 import {
 	buildSessionPayload,
 	buildSessionSummary,
@@ -17,6 +18,7 @@ import {
 	type ClientConnection,
 	type ClientTransport,
 	type ServerMessage,
+	type ServerPayload,
 } from "./utils.ts";
 import type { createLogger } from "../logger.ts";
 
@@ -30,11 +32,12 @@ export interface ClientManagerState {
 }
 
 export interface ClientActions {
-	sendClientPayload(clientId: string, payload: ServerMessage, options?: { requireReady?: boolean }): boolean;
+	sendClientPayload(clientId: string, payload: ServerPayload, options?: { requireReady?: boolean }): boolean;
 	sendError(clientId: string, message: string, sessionId?: string): void;
 	sendConnected(clientId: string): void;
-	broadcast(payload: ServerMessage): void;
-	broadcastSessionPayload(sessionId: string, payload: ServerMessage): void;
+	replayClientSyncEvents(clientId: string, lastSeq?: number): void;
+	broadcast(payload: ServerPayload): void;
+	broadcastSessionPayload(sessionId: string, payload: ServerPayload): void;
 	markSessionLoaded(clientId: string, sessionId: string): void;
 	sendSessionPage(clientId: string, offset?: number, limit?: number): void;
 	broadcastSessionSummaryUpdated(session: SharedSessionState): void;
@@ -59,8 +62,11 @@ export interface ClientActions {
 	createHttpClientMessageHandler(handleClientMessage: (clientId: string, message: ClientAppMessage) => Promise<void>): (request: Request, clientId: string) => Promise<Response>;
 }
 
+const SYNC_EVENT_BUFFER_LIMIT = 1_000;
+
 function createSseChunk(payload: ServerMessage): Uint8Array {
-	return SSE_ENCODER.encode(`data: ${JSON.stringify(payload)}\n\n`);
+	const id = payload.type === "sync_event" ? `id: ${payload.seq}\n` : "";
+	return SSE_ENCODER.encode(`${id}data: ${JSON.stringify(payload)}\n\n`);
 }
 
 function createSseComment(comment: string): Uint8Array {
@@ -69,6 +75,8 @@ function createSseComment(comment: string): Uint8Array {
 
 export function createClientManager(state: ClientManagerState): ClientActions {
 	const { logger, clients, sessions, getToolsLabel } = state;
+	const clientSyncBuffers = new Map<string, Array<ServerSyncEnvelope<ServerPayload>>>();
+	const clientNextSyncSeqs = new Map<string, number>();
 
 	function isScheduledSession(session: SharedSessionState): boolean {
 		return session.title.startsWith("[Scheduled:");
@@ -76,7 +84,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 
 	function sendClientPayload(
 		clientId: string,
-		payload: ServerMessage,
+		payload: ServerPayload,
 		options?: { requireReady?: boolean },
 	): boolean {
 		const client = clients.get(clientId);
@@ -88,8 +96,9 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 			return false;
 		}
 
+		const wirePayload = shouldWrapPayload(payload) ? createSyncEvent(clientId, payload) : payload;
 		try {
-			return client.send(payload) !== false;
+			return client.send(wirePayload) !== false;
 		} catch (error) {
 			logger.warn("failed to send client payload", {
 				clientId,
@@ -98,6 +107,54 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 			});
 			return false;
 		}
+	}
+
+	function shouldWrapPayload(payload: ServerPayload): boolean {
+		return payload.type !== "connected" &&
+			payload.type !== "error" &&
+			payload.type !== "pong";
+	}
+
+	function getSyncScope(payload: ServerPayload, clientId: string): ServerSyncScope {
+		if ("sessionId" in payload && typeof payload.sessionId === "string") {
+			return `session:${payload.sessionId}`;
+		}
+
+		if ("session" in payload && payload.session && typeof payload.session === "object" && "id" in payload.session) {
+			const sessionId = (payload.session as { id?: unknown }).id;
+			if (typeof sessionId === "string") {
+				return `session:${sessionId}`;
+			}
+		}
+
+		if (payload.type === "sessions_page") {
+			return `client:${clientId}`;
+		}
+
+		return "global";
+	}
+
+	function rememberSyncEvent(clientId: string, event: ServerSyncEnvelope<ServerPayload>) {
+		const buffer = clientSyncBuffers.get(clientId) ?? [];
+		buffer.push(event);
+		if (buffer.length > SYNC_EVENT_BUFFER_LIMIT) {
+			buffer.splice(0, buffer.length - SYNC_EVENT_BUFFER_LIMIT);
+		}
+		clientSyncBuffers.set(clientId, buffer);
+	}
+
+	function createSyncEvent(clientId: string, payload: ServerPayload): ServerSyncEnvelope<ServerPayload> {
+		const seq = clientNextSyncSeqs.get(clientId) ?? 1;
+		clientNextSyncSeqs.set(clientId, seq + 1);
+		const event = {
+			type: "sync_event",
+			seq,
+			scope: getSyncScope(payload, clientId),
+			emittedAt: Date.now(),
+			payload,
+		} satisfies ServerSyncEnvelope<ServerPayload>;
+		rememberSyncEvent(clientId, event);
+		return event;
 	}
 
 	function registerClientConnection(
@@ -176,7 +233,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 		};
 	}
 
-	function broadcast(payload: ServerMessage) {
+	function broadcast(payload: ServerPayload) {
 		for (const client of clients.values()) {
 			if (client.closed || !client.ready) {
 				continue;
@@ -186,7 +243,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 		}
 	}
 
-	function broadcastSessionPayload(sessionId: string, payload: ServerMessage) {
+	function broadcastSessionPayload(sessionId: string, payload: ServerPayload) {
 		for (const client of clients.values()) {
 			if (client.closed || !client.ready || !client.loadedSessionIds.has(sessionId)) {
 				continue;
@@ -203,6 +260,36 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 		}
 
 		client.loadedSessionIds.add(sessionId);
+	}
+
+	function replayClientSyncEvents(clientId: string, lastSeq?: number) {
+		if (lastSeq === undefined) {
+			return;
+		}
+
+		const client = clients.get(clientId);
+		if (!client || client.closed || !client.ready) {
+			return;
+		}
+
+		const buffer = clientSyncBuffers.get(clientId) ?? [];
+		for (const event of buffer) {
+			if (event.seq > lastSeq) {
+				client.send(event);
+			}
+		}
+	}
+
+	function readLastSeqFromRequest(request: Request): number | undefined {
+		const headerValue = request.headers.get("last-event-id");
+		const queryValue = new URL(request.url).searchParams.get(SYNC_LAST_SEQ_QUERY_PARAM);
+		const rawValue = headerValue ?? queryValue;
+		if (!rawValue) {
+			return undefined;
+		}
+
+		const value = Number.parseInt(rawValue, 10);
+		return Number.isInteger(value) && value >= 0 ? value : undefined;
 	}
 
 	function sendSessionPage(clientId: string, offset = 0, limit?: number) {
@@ -295,6 +382,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 
 		const client = registerClientConnection(clientId, "http", sendPayload, closeStream);
 		client.ready = true;
+		replayClientSyncEvents(clientId, readLastSeqFromRequest(request));
 		sendConnected(clientId);
 
 		heartbeatTimer = setInterval(() => {
@@ -375,6 +463,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 		sendClientPayload,
 		sendError,
 		sendConnected,
+		replayClientSyncEvents,
 		broadcast,
 		broadcastSessionPayload,
 		markSessionLoaded,

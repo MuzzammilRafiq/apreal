@@ -1,6 +1,15 @@
 // Serializes one SSE data frame for a JSON payload.
 export function createSseChunk(payload: unknown): string {
-	return `data: ${JSON.stringify(payload)}\n\n`;
+	const id =
+		typeof payload === "object" &&
+		payload !== null &&
+		"type" in payload &&
+		payload.type === "sync_event" &&
+		"seq" in payload &&
+		typeof payload.seq === "number"
+			? `id: ${payload.seq}\n`
+			: "";
+	return `${id}data: ${JSON.stringify(payload)}\n\n`;
 }
 
 // Serializes a comment-only SSE frame, used for heartbeats and connection

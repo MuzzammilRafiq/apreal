@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { CreateMcpServerRequest, LocalWebAdminStatus, McpServerConfig, ProvidersResponse, UpdateMcpServerRequest } from "@apreal/shared";
 import type { ScheduledJobDetails, SessionSummary } from "./chatTypes";
-import { ADMIN_STATUS_REFRESH_INTERVAL_MS, getErrorMessage, type AppRoute, type ClientMessage, type ServerMessage } from "./app-state";
+import { ADMIN_STATUS_REFRESH_INTERVAL_MS, getErrorMessage, type AppRoute, type ClientMessage, type ServerPayload } from "./app-state";
 import type { WebRuntime } from "./runtime";
 import {
 	createMcpServer as createMcpServerRequest,
@@ -421,7 +421,7 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		setMcpServersError(null);
 	}, [runtime.target, sendRemoteMessage]);
 
-	const handleServerMessage = useCallback((message: ServerMessage): boolean => {
+	const handleServerMessage = useCallback((message: ServerPayload): boolean => {
 		switch (message.type) {
 			case "status_snapshot": {
 				setAdminStatus(message.status);

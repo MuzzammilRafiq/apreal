@@ -13,6 +13,7 @@ import {
 	RELAY_AGENT_STREAM_PATH,
 	RELAY_CLIENT_AUTH_PATH,
 	RELAY_CLIENT_HEARTBEAT_PATH,
+	SYNC_LAST_SEQ_QUERY_PARAM,
 	type RelayAgentAuthResponse,
 	type RelayAgentCommand,
 	type RelayAgentMessage,
@@ -402,6 +403,39 @@ test("routes client traffic only to the paired agent", async (t) => {
 		message: clientMessage,
 	});
 	assert.equal(await pairB.agentStream.next<RelayAgentCommand>(150), null);
+});
+
+test("forwards browser reconnect cursor to the paired agent", async (t) => {
+	const { baseUrl } = await startRelayTestServer(t);
+	const ownerGrant = generateOwnerAgentGrant("owner-reconnect-cursor").ownerGrant;
+	const initialClient = await issueClientAuth(baseUrl, "client-reconnect-cursor", "client-key-reconnect-cursor", ownerGrant);
+	const agent = await issueAgentAuth(baseUrl, "agent-reconnect-cursor", "agent-key-reconnect-cursor", ownerGrant);
+	const client = await refreshClientAuth(baseUrl, initialClient, ownerGrant);
+	const agentStream = await openSseStream(`${baseUrl}${RELAY_AGENT_STREAM_PATH}`, {
+		headers: {
+			authorization: `Bearer ${agent.token}`,
+		},
+	});
+	t.after(async () => {
+		await agentStream.close();
+	});
+
+	const streamUrl = new URL(`${baseUrl}${CLIENT_EVENT_STREAM_PATH}`);
+	streamUrl.searchParams.set(SYNC_LAST_SEQ_QUERY_PARAM, "42");
+	const clientStream = await openSseStream(streamUrl.toString(), {
+		headers: {
+			authorization: `Bearer ${client.token}`,
+		},
+	});
+	t.after(async () => {
+		await clientStream.close();
+	});
+
+	assert.deepEqual(await agentStream.next<RelayAgentCommand>(), {
+		type: "client_connect",
+		clientId: client.clientId,
+		lastSeq: 42,
+	});
 });
 
 test("rejects agent delivery to a client paired with another agent", async (t) => {

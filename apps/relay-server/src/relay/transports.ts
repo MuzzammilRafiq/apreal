@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { RelayAgentCommand } from "@apreal/shared";
+import { SYNC_LAST_SEQ_QUERY_PARAM, type RelayAgentCommand } from "@apreal/shared";
 import { AuthError, readBearerTokenFromRequest, readRelayToken } from "../auth.ts";
 import type { RelayServerState } from "./state.ts";
 import { RELAY_SSE_HEARTBEAT_INTERVAL_MS } from "./constants.ts";
@@ -13,6 +13,19 @@ import type { RelayAgentConnection, RelayBrowserClientConnection } from "../util
 // Builds the in-memory transport operations that attach browser and agent SSE
 // streams and relay messages between them.
 export function createRelayTransportHandlers(state: RelayServerState) {
+	function readLastSeqFromRequest(request: IncomingMessage): number | undefined {
+		const headerValue = request.headers["last-event-id"];
+		const rawHeaderValue = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+		const queryValue = new URL(request.url ?? "/", "http://relay.local").searchParams.get(SYNC_LAST_SEQ_QUERY_PARAM);
+		const rawValue = rawHeaderValue ?? queryValue;
+		if (!rawValue) {
+			return undefined;
+		}
+
+		const value = Number.parseInt(rawValue, 10);
+		return Number.isInteger(value) && value >= 0 ? value : undefined;
+	}
+
 	// Returns every currently open browser stream paired to one agent.
 	function listBrowserClientsForAgent(agentId: string): RelayBrowserClientConnection[] {
 		return Array.from(state.browserClients.values()).filter((client) => client.agentId === agentId && !client.closed);
@@ -118,6 +131,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		corsHeaders: Record<string, string>,
 	) {
 		const target = resolveClientRelayTarget(request);
+		const lastSeq = readLastSeqFromRequest(request);
 		assertActiveBrowserClient(target.ownerUserId, target.clientId);
 		response.statusCode = 200;
 		setHeaders(response, createSseHeaders(corsHeaders));
@@ -206,7 +220,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 			close("browser_stream_closed");
 		});
 
-		sendAgentCommand(target.agentId, { type: "client_connect", clientId: target.clientId });
+		sendAgentCommand(target.agentId, { type: "client_connect", clientId: target.clientId, lastSeq });
 		log("info", "relay browser stream connected", {
 			clientId: target.clientId,
 			agentId: target.agentId,

@@ -62,7 +62,6 @@ import {
 	DEFAULT_WORKSPACE_ROOT,
 	SERVER_SRC_DIR,
 	type ClientConnection,
-	type ServerMessage,
 } from "./utils.ts";
 
 export type {

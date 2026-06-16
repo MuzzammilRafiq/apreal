@@ -18,6 +18,17 @@ export const RELAY_CONNECTION_PATH = "/api/relay/connection";
 export const RELAY_PRINCIPAL_TYPES = ["agent", "client"] as const;
 export const LOCAL_CLIENT_ID_HEADER = "x-pi-local-client-id";
 export const LOCAL_CLIENT_ID_QUERY_PARAM = "clientId";
+export const SYNC_LAST_SEQ_QUERY_PARAM = "lastSeq";
+
+export type ServerSyncScope = "global" | `session:${string}` | `client:${string}`;
+
+export type ServerSyncEnvelope<TPayload = unknown> = {
+	type: "sync_event";
+	seq: number;
+	scope: ServerSyncScope;
+	emittedAt: number;
+	payload: TPayload;
+};
 
 export type RelayPrincipalType = (typeof RELAY_PRINCIPAL_TYPES)[number];
 
@@ -303,6 +314,7 @@ export type RelayAgentCommand =
 	| {
 		type: "client_connect";
 		clientId: string;
+		lastSeq?: number;
 	}
 	| {
 		type: "client_disconnect";

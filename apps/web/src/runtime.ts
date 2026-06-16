@@ -4,6 +4,7 @@ import {
 	CLIENT_MESSAGE_PATH,
 	LOCAL_CLIENT_ID_HEADER,
 	LOCAL_CLIENT_ID_QUERY_PARAM,
+	SYNC_LAST_SEQ_QUERY_PARAM,
 	type LocalWebAdminStatus,
 	type RemoteSettingsSection,
 } from "@apreal/shared";
@@ -40,7 +41,7 @@ export type WebClientTransport = {
 	unavailableBody: string;
 	connectingBody: string;
 	readStatus: () => Promise<WebTransportStatus>;
-	openEventStream: () => Promise<EventSource>;
+	openEventStream: (options?: { lastSeq?: number }) => Promise<EventSource>;
 	sendMessage: (message: ClientMessage) => Promise<void>;
 };
 
@@ -135,10 +136,13 @@ export function createLocalWebRuntime(): WebRuntime {
 					settingsSections: localCapabilities.settingsSections,
 				};
 			},
-			openEventStream: async () => {
+			openEventStream: async (options) => {
 				await ensureLocalBrowserAuthSession();
 				const eventStreamUrl = new URL(streamUrl);
 				eventStreamUrl.searchParams.set(LOCAL_CLIENT_ID_QUERY_PARAM, localClientId);
+				if (typeof options?.lastSeq === "number") {
+					eventStreamUrl.searchParams.set(SYNC_LAST_SEQ_QUERY_PARAM, `${options.lastSeq}`);
+				}
 				return new EventSource(eventStreamUrl.toString());
 			},
 			sendMessage: async (message) => {
@@ -192,10 +196,13 @@ export function createRemoteWebRuntime(): WebRuntime {
 						: "Sign in locally and remotely with the same Google account to link your laptop server.",
 				};
 			},
-			openEventStream: async () => {
+			openEventStream: async (options) => {
 				const auth = await readAuth();
 				const eventStreamUrl = new URL(streamUrl);
 				eventStreamUrl.searchParams.set("token", auth.token);
+				if (typeof options?.lastSeq === "number") {
+					eventStreamUrl.searchParams.set(SYNC_LAST_SEQ_QUERY_PARAM, `${options.lastSeq}`);
+				}
 				return new EventSource(eventStreamUrl.toString());
 			},
 			sendMessage: async (message) => {

@@ -181,11 +181,12 @@ export function createRelay(
 		};
 	}
 
-	function ensureRelayClientConnection(clientId: string) {
+	function ensureRelayClientConnection(clientId: string, lastSeq?: number) {
 		const existing = clients.get(clientId);
 		const wasReady = existing?.ready ?? false;
 		const client = registerClientConnection(clientId, "relay", createRelaySendPayload(clientId));
 		client.ready = true;
+		clientActions.replayClientSyncEvents(clientId, lastSeq);
 		if (!wasReady) {
 			sendConnected(clientId);
 		}
@@ -195,7 +196,7 @@ export function createRelay(
 	async function handleRelayAgentCommand(command: RelayAgentCommand) {
 		switch (command.type) {
 			case "client_connect": {
-				ensureRelayClientConnection(command.clientId);
+				ensureRelayClientConnection(command.clientId, command.lastSeq);
 				break;
 			}
 			case "client_disconnect": {

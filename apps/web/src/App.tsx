@@ -155,6 +155,7 @@ export function App({ runtime }: AppProps) {
 	const activeSessionIdRef = useRef(activeSessionId);
 	const visibleSessionLimitRef = useRef(visibleSessionLimit);
 	const bufferedAssistantDeltasRef = useRef<Map<string, BufferedAssistantDelta[]>>(new Map());
+	const lastSeenSyncSeqRef = useRef(0);
 	const streamFlushTimerRef = useRef<number | null>(null);
 	const pendingConnectionResolversRef = useRef(new Set<() => void>());
 	const resolvePendingConnectionsRef = useRef<() => void>(() => {});
@@ -617,7 +618,7 @@ export function App({ runtime }: AppProps) {
 
 		const connect = async () => {
 			try {
-				eventSource = await runtime.transport.openEventStream();
+				eventSource = await runtime.transport.openEventStream({ lastSeq: lastSeenSyncSeqRef.current });
 			} catch (error) {
 				if (!cancelled) {
 					setConnected(false);
@@ -638,16 +639,31 @@ export function App({ runtime }: AppProps) {
 			};
 
 			eventSource.onmessage = (event) => {
-			const message = parseServerMessage(event.data);
-			if (!message) {
-				return;
-			}
+				const message = parseServerMessage(event.data);
+				if (!message) {
+					return;
+				}
 
-			if (handleServerMessage(message)) {
-				return;
-			}
+				const serverPayload = message.type === "sync_event" ? message.payload : message;
+				if (message.type === "sync_event") {
+					if (message.seq <= lastSeenSyncSeqRef.current) {
+						return;
+					}
 
-			switch (message.type) {
+					const missedEvents = lastSeenSyncSeqRef.current > 0 && message.seq > lastSeenSyncSeqRef.current + 1;
+					lastSeenSyncSeqRef.current = message.seq;
+					if (missedEvents) {
+						clearBufferedAssistantDeltas();
+						requestSessionPageRef.current(0, Math.max(visibleSessionLimitRef.current, SESSION_PAGE_SIZE));
+						ensureSessionLoadedRef.current(activeSessionIdRef.current);
+					}
+				}
+
+				if (handleServerMessage(serverPayload)) {
+					return;
+				}
+
+				switch (serverPayload.type) {
 				case "connected": {
 					setConnected(true);
 					setConnectionError(null);
@@ -659,16 +675,16 @@ export function App({ runtime }: AppProps) {
 				case "disconnected": {
 					setConnected(false);
 					setStreamRequested(false);
-					setConnectionError(message.message);
+					setConnectionError(serverPayload.message);
 					break;
 				}
 				case "sessions_page": {
 					setLoadingMoreSessions(false);
-					serverLoadedSessionCountRef.current = message.offset === 0
-						? message.sessions.length
-						: Math.max(serverLoadedSessionCountRef.current, message.offset + message.sessions.length);
-					setTotalSessionCount(message.total);
-					if (message.offset === 0 && message.total === 0) {
+					serverLoadedSessionCountRef.current = serverPayload.offset === 0
+						? serverPayload.sessions.length
+						: Math.max(serverLoadedSessionCountRef.current, serverPayload.offset + serverPayload.sessions.length);
+					setTotalSessionCount(serverPayload.total);
+					if (serverPayload.offset === 0 && serverPayload.total === 0) {
 						setSessions([]);
 						setSessionCache(new Map());
 						setCachedTranscriptRevisions(new Map());
@@ -679,7 +695,7 @@ export function App({ runtime }: AppProps) {
 					}
 					setSessions((previous) => {
 						let next = previous;
-						for (const session of message.sessions) {
+						for (const session of serverPayload.sessions) {
 							if (!isScheduledSessionSummary(session)) {
 								const existing = next.find((entry) => entry.id === session.id);
 								next = upsertSessionInList(next, existing && existing.revision > session.revision ? existing : session);
@@ -689,7 +705,7 @@ export function App({ runtime }: AppProps) {
 					});
 					setSessionCache((previous) => {
 						const next = new Map(previous);
-						for (const session of message.sessions) {
+						for (const session of serverPayload.sessions) {
 							const cached = next.get(session.id);
 							const latestSession = cached && cached.session.revision > session.revision ? cached.session : session;
 							next.set(session.id, cached
@@ -701,7 +717,7 @@ export function App({ runtime }: AppProps) {
 						}
 						return next;
 					});
-					void writeSessionSummaries(message.sessions);
+					void writeSessionSummaries(serverPayload.sessions);
 
 					const currentActiveSessionId = activeSessionIdRef.current;
 					if (currentActiveSessionId) {
@@ -710,122 +726,122 @@ export function App({ runtime }: AppProps) {
 					break;
 				}
 				case "session_summary_updated": {
-					if (!isScheduledSessionSummary(message.session)) {
+					if (!isScheduledSessionSummary(serverPayload.session)) {
 						setSessions((previous) => {
-							const existing = previous.find((entry) => entry.id === message.session.id);
+							const existing = previous.find((entry) => entry.id === serverPayload.session.id);
 							return upsertSessionInList(
 								previous,
-								existing && existing.revision > message.session.revision ? existing : message.session,
+								existing && existing.revision > serverPayload.session.revision ? existing : serverPayload.session,
 							);
 						});
 					}
 					setSessionCache((previous) => {
 						const next = new Map(previous);
-						const cached = next.get(message.session.id);
-						const latestSession = cached && cached.session.revision > message.session.revision ? cached.session : message.session;
-						next.set(message.session.id, cached
+						const cached = next.get(serverPayload.session.id);
+						const latestSession = cached && cached.session.revision > serverPayload.session.revision ? cached.session : serverPayload.session;
+						next.set(serverPayload.session.id, cached
 							? {
 								...cached,
 								session: latestSession,
 							}
-							: createSummaryOnlyCacheEntry(message.session));
+							: createSummaryOnlyCacheEntry(serverPayload.session));
 						return next;
 					});
-					if (!isScheduledSessionSummary(message.session)) {
+					if (!isScheduledSessionSummary(serverPayload.session)) {
 						setTotalSessionCount((previous) => {
 							if (previous === null) {
 								return Math.max(sessionsRef.current.length, 1);
 							}
-							const exists = sessionsRef.current.some((session) => session.id === message.session.id);
+							const exists = sessionsRef.current.some((session) => session.id === serverPayload.session.id);
 							return exists ? previous : previous + 1;
 						});
 					}
-					void writeSessionSummary(message.session);
+					void writeSessionSummary(serverPayload.session);
 
-					if (activeSessionIdRef.current === message.session.id && !isScheduledSessionSummary(message.session)) {
-						ensureSessionLoadedRef.current(message.session.id);
+					if (activeSessionIdRef.current === serverPayload.session.id && !isScheduledSessionSummary(serverPayload.session)) {
+						ensureSessionLoadedRef.current(serverPayload.session.id);
 					}
 					break;
 				}
 				case "session_deleted": {
-					clearBufferedAssistantDeltas(message.sessionId);
-					setSessions((previous) => previous.filter((session) => session.id !== message.sessionId));
+					clearBufferedAssistantDeltas(serverPayload.sessionId);
+					setSessions((previous) => previous.filter((session) => session.id !== serverPayload.sessionId));
 					setSessionCache((previous) => {
-						if (!previous.has(message.sessionId)) {
+						if (!previous.has(serverPayload.sessionId)) {
 							return previous;
 						}
 
 						const next = new Map(previous);
-						next.delete(message.sessionId);
+						next.delete(serverPayload.sessionId);
 						return next;
 					});
 					setCachedTranscriptRevisions((previous) => {
-						if (!previous.has(message.sessionId)) {
+						if (!previous.has(serverPayload.sessionId)) {
 							return previous;
 						}
 
 						const next = new Map(previous);
-						next.delete(message.sessionId);
+						next.delete(serverPayload.sessionId);
 						return next;
 					});
 					setTotalSessionCount((previous) => (previous === null ? null : Math.max(0, previous - 1)));
-					if (activeSessionIdRef.current === message.sessionId) {
+					if (activeSessionIdRef.current === serverPayload.sessionId) {
 						activateSessionRef.current(null, { load: false });
 					}
-					void deleteCachedSession(message.sessionId);
+					void deleteCachedSession(serverPayload.sessionId);
 					break;
 				}
 				case "session_created": {
 					setConnectionError(null);
 					setPendingPrompt(null);
-					clearBufferedAssistantDeltas(message.session.id);
-					upsertSessionSnapshotRef.current(message.session, message.transcript);
-					if (!isScheduledSessionSummary(message.session)) {
+					clearBufferedAssistantDeltas(serverPayload.session.id);
+					upsertSessionSnapshotRef.current(serverPayload.session, serverPayload.transcript);
+					if (!isScheduledSessionSummary(serverPayload.session)) {
 						setTotalSessionCount((previous) => {
 							if (previous === null) {
 								return Math.max(sessionsRef.current.length, 1);
 							}
-							const exists = sessionsRef.current.some((session) => session.id === message.session.id);
+							const exists = sessionsRef.current.some((session) => session.id === serverPayload.session.id);
 							return exists ? previous : previous + 1;
 						});
 						setPendingDraft(false);
-						activateSessionRef.current(message.session.id, { load: false, focus: false });
+						activateSessionRef.current(serverPayload.session.id, { load: false, focus: false });
 					}
 					break;
 				}
 				case "session_snapshot": {
 					setConnectionError(null);
 					setPendingPrompt((current) =>
-						current?.sessionId === message.session.id && transcriptContainsPrompt(message.transcript, current.prompt)
+						current?.sessionId === serverPayload.session.id && transcriptContainsPrompt(serverPayload.transcript, current.prompt)
 							? null
 							: current,
 					);
-					clearBufferedAssistantDeltas(message.session.id);
-					upsertSessionSnapshotRef.current(message.session, message.transcript);
+					clearBufferedAssistantDeltas(serverPayload.session.id);
+					upsertSessionSnapshotRef.current(serverPayload.session, serverPayload.transcript);
 					break;
 				}
 				case "assistant_delta": {
-					bufferAssistantDelta(message.sessionId, {
-						messageId: message.messageId,
-						delta: message.delta,
+					bufferAssistantDelta(serverPayload.sessionId, {
+						messageId: serverPayload.messageId,
+						delta: serverPayload.delta,
 						field: "body",
-						contentIndex: message.contentIndex,
+						contentIndex: serverPayload.contentIndex,
 					});
 					break;
 				}
 				case "assistant_thinking_delta": {
-					bufferAssistantDelta(message.sessionId, {
-						messageId: message.messageId,
-						delta: message.delta,
+					bufferAssistantDelta(serverPayload.sessionId, {
+						messageId: serverPayload.messageId,
+						delta: serverPayload.delta,
 						field: "thinking",
-						contentIndex: message.contentIndex,
+						contentIndex: serverPayload.contentIndex,
 					});
 					break;
 				}
 				case "error": {
 					setPendingDraft(false);
 					setPendingPrompt(null);
-					setConnectionError(message.message);
+					setConnectionError(serverPayload.message);
 					break;
 				}
 				case "pong": {
