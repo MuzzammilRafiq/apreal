@@ -10,26 +10,60 @@ const repoRoot = path.resolve(webRoot, "..", "..");
 const outputDir = path.join(webRoot, "src", "generated");
 const outputFile = path.join(outputDir, "build-version.ts");
 
-function getLastCommitDate() {
+function getGitValue(args) {
 	try {
-		const rawDate = execFileSync(
+		return execFileSync(
 			"git",
-			["log", "-1", "--date=short", "--format=%cd"],
+			args,
 			{ cwd: repoRoot, encoding: "utf8" },
 		).trim();
-
-		if (!rawDate) {
-			throw new Error("Empty git commit date.");
-		}
-
-		return rawDate;
 	} catch {
-		return "unknown";
+		return "";
 	}
 }
 
-const lastCommitDate = getLastCommitDate();
-const fileContents = `export const BUILD_VERSION = "Updated ${lastCommitDate}" as const;\n`;
+function buildGitHubCommitUrl(remoteUrl, commitHash) {
+	if (!remoteUrl || !commitHash) {
+		return null;
+	}
+
+	const normalizedRemote = remoteUrl.endsWith(".git")
+		? remoteUrl.slice(0, -4)
+		: remoteUrl;
+
+	if (normalizedRemote.startsWith("https://github.com/")) {
+		return `${normalizedRemote}/commit/${commitHash}`;
+	}
+
+	const sshMatch = normalizedRemote.match(/^git@github\.com:(.+)$/);
+	if (sshMatch) {
+		return `https://github.com/${sshMatch[1]}/commit/${commitHash}`;
+	}
+
+	return null;
+}
+
+const lastCommitDate = getGitValue(["log", "-1", "--date=short", "--format=%cd"]) || "unknown";
+const commitHash = getGitValue(["rev-parse", "HEAD"]) || "unknown";
+const shortCommitHash = commitHash === "unknown"
+	? "unknown"
+	: getGitValue(["rev-parse", "--short=7", "HEAD"]) || commitHash.slice(0, 7);
+const originUrl = getGitValue(["remote", "get-url", "origin"]);
+const commitUrl = buildGitHubCommitUrl(originUrl, commitHash);
+
+const fileContents = `export const BUILD_VERSION: {
+  label: string;
+  updatedAt: string;
+  commitHash: string;
+  shortCommitHash: string;
+  commitUrl: string | null;
+} = ${JSON.stringify({
+	label: `Updated ${lastCommitDate}`,
+	updatedAt: lastCommitDate,
+	commitHash,
+	shortCommitHash,
+	commitUrl,
+})};\n`;
 
 mkdirSync(outputDir, { recursive: true });
 writeFileSync(outputFile, fileContents, "utf8");
