@@ -133,15 +133,18 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 			}
 
 			const existing = state.browserClients.get(target.clientId);
-			if (existing === connection) {
+			const isActiveConnection = existing === connection;
+			if (isActiveConnection) {
 				state.browserClients.delete(target.clientId);
 			}
 
-			sendAgentCommand(target.agentId, {
-				type: "client_disconnect",
-				clientId: target.clientId,
-				reason,
-			});
+			if (isActiveConnection && reason !== "browser_stream_replaced") {
+				sendAgentCommand(target.agentId, {
+					type: "client_disconnect",
+					clientId: target.clientId,
+					reason,
+				});
+			}
 
 			if (!response.writableEnded) {
 				response.end();

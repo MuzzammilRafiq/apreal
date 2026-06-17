@@ -438,6 +438,53 @@ test("forwards browser reconnect cursor to the paired agent", async (t) => {
 	});
 });
 
+test("replacing a browser stream keeps the logical client connected", async (t) => {
+	const { baseUrl } = await startRelayTestServer(t);
+	const ownerGrant = generateOwnerAgentGrant("owner-browser-replace").ownerGrant;
+	const initialClient = await issueClientAuth(baseUrl, "client-browser-replace", "client-key-browser-replace", ownerGrant);
+	const agent = await issueAgentAuth(baseUrl, "agent-browser-replace", "agent-key-browser-replace", ownerGrant);
+	const client = await refreshClientAuth(baseUrl, initialClient, ownerGrant);
+	const agentStream = await openSseStream(`${baseUrl}${RELAY_AGENT_STREAM_PATH}`, {
+		headers: {
+			authorization: `Bearer ${agent.token}`,
+		},
+	});
+	t.after(async () => {
+		await agentStream.close();
+	});
+
+	const firstClientStream = await openSseStream(`${baseUrl}${CLIENT_EVENT_STREAM_PATH}`, {
+		headers: {
+			authorization: `Bearer ${client.token}`,
+		},
+	});
+	t.after(async () => {
+		await firstClientStream.close();
+	});
+	assert.deepEqual(await agentStream.next<RelayAgentCommand>(), {
+		type: "client_connect",
+		clientId: client.clientId,
+	});
+
+	const replacementUrl = new URL(`${baseUrl}${CLIENT_EVENT_STREAM_PATH}`);
+	replacementUrl.searchParams.set(SYNC_LAST_SEQ_QUERY_PARAM, "7");
+	const replacementClientStream = await openSseStream(replacementUrl.toString(), {
+		headers: {
+			authorization: `Bearer ${client.token}`,
+		},
+	});
+	t.after(async () => {
+		await replacementClientStream.close();
+	});
+
+	assert.deepEqual(await agentStream.next<RelayAgentCommand>(), {
+		type: "client_connect",
+		clientId: client.clientId,
+		lastSeq: 7,
+	});
+	assert.equal(await agentStream.next<RelayAgentCommand>(150), null);
+});
+
 test("rejects agent delivery to a client paired with another agent", async (t) => {
 	const { baseUrl } = await startRelayTestServer(t);
 	const pairA = await createPair(t, baseUrl, "a");
