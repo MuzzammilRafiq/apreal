@@ -183,15 +183,6 @@ export function createRelayRequestHandler(state: RelayServerState) {
 					clientAuthRequest.clientKey,
 					ownerUserId,
 				);
-				if (ownerUserId) {
-					state.activeClientIdsByOwner.set(ownerUserId, issuedToken.payload.id);
-					transports.closeBrowserClientsForOwner(
-						ownerUserId,
-						issuedToken.payload.id,
-						"browser_owner_session_replaced",
-					);
-				}
-
 				log("info", "issued client auth token", {
 					clientId: issuedToken.payload.id,
 					paired: Boolean(issuedToken.payload.targetId),

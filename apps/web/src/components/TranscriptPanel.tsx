@@ -198,7 +198,7 @@ function AssistantReasoningBlock({ item, segments }: { item: TranscriptMessage; 
 								label="Thinking"
 								status="complete"
 							>
-								<pre className="overflow-x-auto font-mono text-[0.78rem] leading-5 whitespace-pre-wrap wrap-break-word text-[#3f3f46]">
+								<pre className="overflow-x-auto font-sans text-[0.78rem] leading-5 whitespace-pre-wrap wrap-break-word text-[#3f3f46]">
 									{segment.content}
 								</pre>
 							</ChainOfThoughtStep>
@@ -216,7 +216,7 @@ function AssistantReasoningBlock({ item, segments }: { item: TranscriptMessage; 
 							showStatus={segment.status !== "completed"}
 						>
 							{segment.summary ? (
-								<pre className="overflow-x-auto font-mono text-[0.78rem] leading-5 whitespace-pre-wrap wrap-break-word text-[#3f3f46]">
+								<pre className="overflow-x-auto font-sans text-[0.78rem] leading-5 whitespace-pre-wrap wrap-break-word text-[#3f3f46]">
 									{segment.summary}
 								</pre>
 							) : null}

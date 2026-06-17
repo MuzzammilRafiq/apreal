@@ -57,7 +57,7 @@ Instead:
 - a second browser stream for the same `clientId` replaces the first
 - a second agent stream for the same `agentId` replaces the first
 
-This keeps state simple and makes one principal map to one active transport endpoint.
+Multiple browser clients signed in as the same owner may stay connected at the same time. Each browser is isolated by its own `clientId`, while the owner still maps to a single active laptop agent.
 
 ## 4. Failure Propagation Rules
 

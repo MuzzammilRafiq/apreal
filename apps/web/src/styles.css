@@ -427,7 +427,7 @@
 		border: 1px solid rgba(15, 23, 42, 0.08);
 		background: rgba(15, 23, 42, 0.04);
 		padding: 0.1rem 0.35rem;
-		font-family: var(--font-mono);
+		font-family: var(--font-ui);
 		font-size: 0.85em;
 		border-radius: 4px;
 		color: #171717;
@@ -644,21 +644,21 @@
 }
 
 :root {
-	--background: var(--color-canvas);
-	--foreground: var(--color-ink);
-	--card: var(--color-surface-strong);
-	--card-foreground: var(--color-ink);
+	--background: #ffffff;
+	--foreground: #000000;
+	--card: #ffffff;
+	--card-foreground: #000000;
 	--popover: #ffffff;
-	--popover-foreground: var(--color-ink);
-	--primary: var(--color-brand-strong);
-	--primary-foreground: #ffffff;
-	--secondary: rgba(0, 0, 0, 0.06);
-	--secondary-foreground: var(--color-brand-ink);
-	--muted: var(--color-surface-muted);
-	--muted-foreground: var(--color-muted);
-	--accent: rgba(0, 0, 0, 0.06);
-	--accent-foreground: var(--color-brand-ink);
-	--destructive: var(--color-danger);
+	--popover-foreground: #000000;
+	--primary: #ffffff;
+	--primary-foreground: #000000;
+	--secondary: #ffffff;
+	--secondary-foreground: #000000;
+	--muted: #ffffff;
+	--muted-foreground: #000000;
+	--accent: #ffffff;
+	--accent-foreground: #000000;
+	--destructive: #000000;
 	--border: var(--color-brand-line);
 	--input: var(--color-brand-line);
 	--ring: var(--color-focus-ring);
@@ -668,46 +668,174 @@
 	--chart-4: oklch(0.371 0 0);
 	--chart-5: oklch(0.269 0 0);
 	--radius: 0.625rem;
-	--sidebar: var(--color-sidebar-bg);
-	--sidebar-foreground: var(--color-sidebar-ink);
-	--sidebar-primary: var(--color-brand-strong);
-	--sidebar-primary-foreground: #ffffff;
-	--sidebar-accent: var(--color-sidebar-active);
-	--sidebar-accent-foreground: var(--color-brand-ink);
+	--sidebar: #ffffff;
+	--sidebar-foreground: #000000;
+	--sidebar-primary: #ffffff;
+	--sidebar-primary-foreground: #000000;
+	--sidebar-accent: #ffffff;
+	--sidebar-accent-foreground: #000000;
 	--sidebar-border: var(--color-sidebar-line);
 	--sidebar-ring: var(--color-focus-ring);
 }
 
 .dark {
-	--background: oklch(0.145 0 0);
-	--foreground: oklch(0.985 0 0);
-	--card: oklch(0.205 0 0);
-	--card-foreground: oklch(0.985 0 0);
-	--popover: oklch(0.205 0 0);
-	--popover-foreground: oklch(0.985 0 0);
-	--primary: oklch(0.922 0 0);
-	--primary-foreground: oklch(0.205 0 0);
-	--secondary: oklch(0.269 0 0);
-	--secondary-foreground: oklch(0.985 0 0);
-	--muted: oklch(0.269 0 0);
-	--muted-foreground: oklch(0.708 0 0);
-	--accent: oklch(0.269 0 0);
-	--accent-foreground: oklch(0.985 0 0);
-	--destructive: oklch(0.704 0.191 22.216);
-	--border: oklch(1 0 0 / 10%);
-	--input: oklch(1 0 0 / 15%);
-	--ring: oklch(0.556 0 0);
+	--background: #ffffff;
+	--foreground: #000000;
+	--card: #ffffff;
+	--card-foreground: #000000;
+	--popover: #ffffff;
+	--popover-foreground: #000000;
+	--primary: #ffffff;
+	--primary-foreground: #000000;
+	--secondary: #ffffff;
+	--secondary-foreground: #000000;
+	--muted: #ffffff;
+	--muted-foreground: #000000;
+	--accent: #ffffff;
+	--accent-foreground: #000000;
+	--destructive: #000000;
+	--border: var(--color-brand-line);
+	--input: var(--color-brand-line);
+	--ring: var(--color-focus-ring);
 	--chart-1: oklch(0.87 0 0);
 	--chart-2: oklch(0.556 0 0);
 	--chart-3: oklch(0.439 0 0);
 	--chart-4: oklch(0.371 0 0);
 	--chart-5: oklch(0.269 0 0);
-	--sidebar: oklch(0.205 0 0);
-	--sidebar-foreground: oklch(0.985 0 0);
-	--sidebar-primary: oklch(0.922 0 0);
-	--sidebar-primary-foreground: oklch(0.985 0 0);
-	--sidebar-accent: oklch(0.269 0 0);
-	--sidebar-accent-foreground: oklch(0.985 0 0);
-	--sidebar-border: oklch(1 0 0 / 10%);
-	--sidebar-ring: oklch(0.556 0 0);
+	--sidebar: #ffffff;
+	--sidebar-foreground: #000000;
+	--sidebar-primary: #ffffff;
+	--sidebar-primary-foreground: #000000;
+	--sidebar-accent: #ffffff;
+	--sidebar-accent-foreground: #000000;
+	--sidebar-border: var(--color-sidebar-line);
+	--sidebar-ring: var(--color-focus-ring);
+}
+
+html,
+body,
+#root {
+	background: #ffffff !important;
+	color: #000000 !important;
+}
+
+body :where(
+	a,
+	abbr,
+	address,
+	b,
+	blockquote,
+	button,
+	caption,
+	cite,
+	code,
+	dd,
+	del,
+	details,
+	dfn,
+	div,
+	dt,
+	em,
+	fieldset,
+	figcaption,
+	h1,
+	h2,
+	h3,
+	h4,
+	h5,
+	h6,
+	input,
+	ins,
+	kbd,
+	label,
+	legend,
+	li,
+	mark,
+	output,
+	p,
+	pre,
+	q,
+	s,
+	samp,
+	select,
+	small,
+	span,
+	strong,
+	sub,
+	summary,
+	sup,
+	table,
+	tbody,
+	td,
+	textarea,
+	tfoot,
+	th,
+	thead,
+	time,
+	tr,
+	u,
+	var
+) {
+	color: #000000 !important;
+}
+
+body :where(
+	article,
+	aside,
+	blockquote,
+	button,
+	code,
+	dialog,
+	div,
+	fieldset,
+	footer,
+	form,
+	header,
+	input,
+	main,
+	nav,
+	pre,
+	section,
+	select,
+	table,
+	tbody,
+	td,
+	textarea,
+	tfoot,
+	th,
+	thead,
+	tr
+) {
+	background-color: #ffffff !important;
+}
+
+.group.is-user > div {
+	background-color: #000000 !important;
+	color: #ffffff !important;
+}
+
+.group.is-user > div :where(
+	a,
+	b,
+	code,
+	del,
+	em,
+	kbd,
+	li,
+	mark,
+	p,
+	pre,
+	s,
+	samp,
+	small,
+	span,
+	strong,
+	sub,
+	sup,
+	time,
+	u,
+	var
+) {
+	color: #ffffff !important;
+	background-color: transparent !important;
 }

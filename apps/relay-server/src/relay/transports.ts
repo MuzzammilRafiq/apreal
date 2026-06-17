@@ -42,26 +42,11 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 	}
 
 	function getBrowserDisconnectMessage(reason: string): string | null {
-		if (reason === "browser_owner_session_replaced") {
-			return "You were signed out because your account opened Apreal somewhere else.";
-		}
-
 		if (reason === "agent_owner_session_replaced") {
 			return "Your Apreal agent changed because this account signed in on another computer.";
 		}
 
 		return null;
-	}
-
-	function assertActiveBrowserClient(ownerUserId: string | undefined, clientId: string) {
-		if (!ownerUserId) {
-			return;
-		}
-
-		const activeClientId = state.activeClientIdsByOwner.get(ownerUserId);
-		if (activeClientId && activeClientId !== clientId) {
-			throw new AuthError("client session was replaced");
-		}
 	}
 
 	function assertActiveAgentPrincipal(principal: ReturnType<typeof readRelayToken>) {
@@ -83,16 +68,6 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		}
 
 		existing.close(reason);
-	}
-
-	// Closes every browser stream owned by an account except the stream that is
-	// becoming active.
-	function closeBrowserClientsForOwner(ownerUserId: string, exceptClientId: string, reason: string) {
-		for (const client of Array.from(state.browserClients.values())) {
-			if (client.ownerUserId === ownerUserId && client.clientId !== exceptClientId && !client.closed) {
-				client.close(reason);
-			}
-		}
 	}
 
 	// Closes one agent stream by id through its connection handle.
@@ -132,7 +107,6 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 	) {
 		const target = resolveClientRelayTarget(request);
 		const lastSeq = readLastSeqFromRequest(request);
-		assertActiveBrowserClient(target.ownerUserId, target.clientId);
 		response.statusCode = 200;
 		setHeaders(response, createSseHeaders(corsHeaders));
 
@@ -204,9 +178,6 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		if (existing) {
 			existing.close("browser_stream_replaced");
 		}
-		if (target.ownerUserId) {
-			closeBrowserClientsForOwner(target.ownerUserId, target.clientId, "browser_owner_session_replaced");
-		}
 
 		state.browserClients.set(target.clientId, connection);
 		response.write(createSseComment("connected"));
@@ -236,7 +207,6 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		corsHeaders: Record<string, string>,
 	) {
 		const target = resolveClientRelayTarget(request);
-		assertActiveBrowserClient(target.ownerUserId, target.clientId);
 		const browserClient = state.browserClients.get(target.clientId);
 		if (!browserClient || browserClient.closed) {
 			throw new AuthError("browser client stream is not connected");
@@ -390,7 +360,6 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		listBrowserClientsForAgent,
 		sendAgentCommand,
 		closeBrowserClient,
-		closeBrowserClientsForOwner,
 		closeAgentConnection,
 		closeAgentConnectionsForOwner,
 		notifyAgentOfConnectedClients,

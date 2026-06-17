@@ -575,11 +575,11 @@ test("keeps the browser stream open while the paired agent reconnects", async (t
 	});
 });
 
-test("replaces the active owner browser client with a clear disconnect message", async (t) => {
+test("allows multiple owner browser clients to stay connected", async (t) => {
 	const { baseUrl } = await startRelayTestServer(t);
-	const ownerGrant = generateOwnerAgentGrant("owner-client-singleton").ownerGrant;
+	const ownerGrant = generateOwnerAgentGrant("owner-client-multi").ownerGrant;
 
-	const agent = await issueAgentAuth(baseUrl, "agent-client-singleton", "agent-key-client-singleton", ownerGrant);
+	const agent = await issueAgentAuth(baseUrl, "agent-client-multi", "agent-key-client-multi", ownerGrant);
 	const agentStream = await openSseStream(`${baseUrl}${RELAY_AGENT_STREAM_PATH}`, {
 		headers: {
 			authorization: `Bearer ${agent.token}`,
@@ -615,18 +615,7 @@ test("replaces the active owner browser client with a clear disconnect message",
 		ownerGrant,
 	});
 	assert.equal(secondClientResponse.status, 200);
-	assert.deepEqual(await firstClientStream.next(), {
-		type: "disconnected",
-		reason: "browser_owner_session_replaced",
-		message: "You were signed out because your account opened Apreal somewhere else.",
-	});
-	const replacedClientStreamResponse = await fetch(`${baseUrl}${CLIENT_EVENT_STREAM_PATH}`, {
-		method: "GET",
-		headers: {
-			authorization: `Bearer ${firstClient.token}`,
-		},
-	});
-	assert.equal(replacedClientStreamResponse.status, 401);
+	assert.equal(await firstClientStream.next(150), null);
 
 	const secondClientStream = await openSseStream(`${baseUrl}${CLIENT_EVENT_STREAM_PATH}`, {
 		headers: {
@@ -638,12 +627,39 @@ test("replaces the active owner browser client with a clear disconnect message",
 	});
 
 	assert.deepEqual(await agentStream.next<RelayAgentCommand>(), {
-		type: "client_disconnect",
-		clientId: "client-first",
-		reason: "browser_owner_session_replaced",
-	});
-	assert.deepEqual(await agentStream.next<RelayAgentCommand>(), {
 		type: "client_connect",
 		clientId: "client-second",
+	});
+
+	const firstMessage = {
+		type: "prompt",
+		prompt: "hello from first browser",
+	};
+	const firstMessageResponse = await postJson<{ ok: true }>(baseUrl, CLIENT_MESSAGE_PATH, firstMessage, {
+		headers: {
+			authorization: `Bearer ${firstClient.token}`,
+		},
+	});
+	assert.equal(firstMessageResponse.status, 202);
+	assert.deepEqual(await agentStream.next<RelayAgentCommand>(), {
+		type: "client_message",
+		clientId: "client-first",
+		message: firstMessage,
+	});
+
+	const secondMessage = {
+		type: "prompt",
+		prompt: "hello from second browser",
+	};
+	const secondMessageResponse = await postJson<{ ok: true }>(baseUrl, CLIENT_MESSAGE_PATH, secondMessage, {
+		headers: {
+			authorization: `Bearer ${secondClientResponse.body.token}`,
+		},
+	});
+	assert.equal(secondMessageResponse.status, 202);
+	assert.deepEqual(await agentStream.next<RelayAgentCommand>(), {
+		type: "client_message",
+		clientId: "client-second",
+		message: secondMessage,
 	});
 });
