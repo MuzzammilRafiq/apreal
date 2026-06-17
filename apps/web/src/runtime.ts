@@ -95,6 +95,10 @@ function getResponseMessage(payload: unknown, fallback: string): string {
 	return fallback;
 }
 
+function logTransportTrace(message: string, fields?: Record<string, unknown>) {
+	console.info(`[apreal:transport] ${message}`, fields ?? {});
+}
+
 function isRouteSupported(route: AppRoute, capabilities: WebCapabilities): boolean {
 	if (route === "settings") {
 		return capabilities.settings;
@@ -143,10 +147,19 @@ export function createLocalWebRuntime(): WebRuntime {
 				if (typeof options?.lastSeq === "number") {
 					eventStreamUrl.searchParams.set(SYNC_LAST_SEQ_QUERY_PARAM, `${options.lastSeq}`);
 				}
+				logTransportTrace("open local event stream", {
+					clientId: localClientId,
+					lastSeq: options?.lastSeq ?? null,
+				});
 				return new EventSource(eventStreamUrl.toString());
 			},
 			sendMessage: async (message) => {
 				await ensureLocalBrowserAuthSession();
+				logTransportTrace("send local message", {
+					clientId: localClientId,
+					type: message.type,
+					sessionId: "sessionId" in message ? message.sessionId ?? null : null,
+				});
 				const response = await fetch(messageUrl, {
 					method: "POST",
 					headers: {
@@ -156,10 +169,21 @@ export function createLocalWebRuntime(): WebRuntime {
 					body: JSON.stringify(message),
 				});
 				if (response.ok) {
+					logTransportTrace("local message accepted", {
+						clientId: localClientId,
+						type: message.type,
+						status: response.status,
+					});
 					return;
 				}
 
 				const payload = await parseJsonResponse(response);
+				logTransportTrace("local message rejected", {
+					clientId: localClientId,
+					type: message.type,
+					status: response.status,
+					message: getResponseMessage(payload, `request failed with status ${response.status}`),
+				});
 				throw new Error(getResponseMessage(payload, `request failed with status ${response.status}`));
 			},
 		},
@@ -184,6 +208,13 @@ export function createRemoteWebRuntime(): WebRuntime {
 			readStatus: async () => {
 				const heartbeat = await readRelayClientHeartbeat(relayBaseUrl.toString());
 				const paired = Boolean(heartbeat.auth.target);
+				logTransportTrace("remote heartbeat", {
+					clientId: heartbeat.auth.clientId,
+					paired,
+					serverReady: heartbeat.serverReady,
+					transportReady: heartbeat.transportReady,
+					targetId: heartbeat.auth.target?.id ?? null,
+				});
 				return {
 					serverReady: heartbeat.serverReady,
 					transportReady: heartbeat.transportReady,
@@ -203,10 +234,22 @@ export function createRemoteWebRuntime(): WebRuntime {
 				if (typeof options?.lastSeq === "number") {
 					eventStreamUrl.searchParams.set(SYNC_LAST_SEQ_QUERY_PARAM, `${options.lastSeq}`);
 				}
+				logTransportTrace("open remote event stream", {
+					clientId: auth.clientId,
+					targetId: auth.target?.id ?? null,
+					lastSeq: options?.lastSeq ?? null,
+					expiresInMs: auth.expiresAt - Date.now(),
+				});
 				return new EventSource(eventStreamUrl.toString());
 			},
 			sendMessage: async (message) => {
 				const auth = await readAuth();
+				logTransportTrace("send remote message", {
+					clientId: auth.clientId,
+					targetId: auth.target?.id ?? null,
+					type: message.type,
+					sessionId: "sessionId" in message ? message.sessionId ?? null : null,
+				});
 				const response = await fetch(messageUrl, {
 					method: "POST",
 					headers: {
@@ -216,10 +259,21 @@ export function createRemoteWebRuntime(): WebRuntime {
 					body: JSON.stringify(message),
 				});
 				if (response.ok) {
+					logTransportTrace("remote message accepted", {
+						clientId: auth.clientId,
+						type: message.type,
+						status: response.status,
+					});
 					return;
 				}
 
 				const payload = await parseJsonResponse(response);
+				logTransportTrace("remote message rejected", {
+					clientId: auth.clientId,
+					type: message.type,
+					status: response.status,
+					message: getResponseMessage(payload, `relay request failed with status ${response.status}`),
+				});
 				throw new Error(getResponseMessage(payload, `relay request failed with status ${response.status}`));
 			},
 		},

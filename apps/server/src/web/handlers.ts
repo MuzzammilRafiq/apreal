@@ -402,6 +402,15 @@ export function createHandlers(
 	}
 
 	function handleControllerEvent(session: SharedSessionState, event: AgentStreamEvent) {
+		logger.info("controller event received", {
+			sessionId: session.id,
+			eventType: event.type,
+			revision: session.revision,
+			busy: session.busy,
+			contentIndex: "contentIndex" in event ? event.contentIndex : undefined,
+			deltaLength: "delta" in event ? event.delta.length : undefined,
+			toolId: "toolId" in event ? event.toolId : "tool" in event ? event.tool.id : undefined,
+		});
 		let shouldPersist = false;
 		switch (event.type) {
 			case "assistant_message_start": {
@@ -499,6 +508,13 @@ export function createHandlers(
 		}
 
 		if (shouldPersist) {
+			logger.info("persisting session after controller event", {
+				sessionId: session.id,
+				eventType: event.type,
+				revision: session.revision,
+				busy: session.busy,
+				transcriptLength: session.transcript.length,
+			});
 			chatStore.saveSession(session);
 		}
 	}
@@ -506,10 +522,12 @@ export function createHandlers(
 	async function ensureController(session: SharedSessionState) {
 		const sessionLogger = createScopedLogger(`web-session:${session.id}`);
 		if (session.controller) {
+			sessionLogger.info("reusing existing shared browser session controller", { sessionId: session.id });
 			return session.controller;
 		}
 
 		if (session.controllerPromise) {
+			sessionLogger.info("awaiting in-flight shared browser session controller", { sessionId: session.id });
 			return session.controllerPromise;
 		}
 
@@ -545,6 +563,11 @@ export function createHandlers(
 		sessionId?: string | null,
 	) {
 		const trimmedPrompt = prompt.trim();
+		logger.info("prompt message received", {
+			clientId,
+			sessionId: sessionId ?? null,
+			promptLength: trimmedPrompt.length,
+		});
 		if (!trimmedPrompt) {
 			clientActions.sendError(clientId, "Prompt cannot be empty.");
 			return;
@@ -553,6 +576,7 @@ export function createHandlers(
 		let session = sessionId ? sessions.get(sessionId) : null;
 		const createdSession = !session;
 		if (sessionId && !session) {
+			logger.warn("prompt rejected because selected session was missing", { clientId, sessionId });
 			clientActions.sendError(clientId, "The selected session could not be found.", sessionId);
 			return;
 		}
@@ -560,9 +584,19 @@ export function createHandlers(
 		if (!session) {
 			session = createSharedSession(trimmedPrompt);
 			sessions.set(session.id, session);
+			logger.info("created session for prompt", {
+				clientId,
+				sessionId: session.id,
+				revision: session.revision,
+			});
 		}
 
 		if (session.busy) {
+			logger.warn("prompt rejected because session is busy", {
+				clientId,
+				sessionId: session.id,
+				revision: session.revision,
+			});
 			clientActions.sendError(
 				clientId,
 				"The selected session is still responding. Wait for it to finish or abort the current run.",
@@ -583,6 +617,13 @@ export function createHandlers(
 			pending: false,
 		});
 		createPendingAssistantMessage(session);
+		logger.info("prompt appended and pending assistant created", {
+			clientId,
+			sessionId: session.id,
+			revision: session.revision,
+			transcriptLength: session.transcript.length,
+			createdSession,
+		});
 		clientActions.markSessionLoaded(clientId, session.id);
 		if (createdSession) {
 			chatStore.saveSession(session);
@@ -601,18 +642,47 @@ export function createHandlers(
 		try {
 			const controller = await ensureController(session);
 			if (controller.isStreaming()) {
+				logger.warn("prompt rejected because controller is already streaming", {
+					clientId,
+					sessionId: session.id,
+				});
 				throw new Error(
 					"The selected session is still responding. Wait for it to finish or abort the current run.",
 				);
 			}
 
+			logger.info("calling controller prompt", {
+				clientId,
+				sessionId: session.id,
+				revision: session.revision,
+			});
 			await controller.prompt(trimmedPrompt);
+			logger.info("controller prompt returned", {
+				clientId,
+				sessionId: session.id,
+				revision: session.revision,
+				busy: session.busy,
+				controllerStreaming: controller.isStreaming(),
+			});
 			if (session.busy && !controller.isStreaming()) {
 				settleSession(session);
+				logger.info("session settled after controller prompt returned without streaming", {
+					clientId,
+					sessionId: session.id,
+					revision: session.revision,
+					busy: session.busy,
+				});
 				clientActions.broadcastSessionSnapshot(session);
 				clientActions.broadcastSessionSummaryUpdated(session);
 			}
 			chatStore.saveSession(session);
+			logger.info("prompt handling completed and session saved", {
+				clientId,
+				sessionId: session.id,
+				revision: session.revision,
+				busy: session.busy,
+				transcriptLength: session.transcript.length,
+			});
 		} catch (error) {
 			logger.error("browser prompt failed", {
 				sessionId: session.id,
@@ -746,6 +816,12 @@ export function createHandlers(
 	}
 
 	async function handleClientMessage(clientId: string, message: ClientAppMessage) {
+		logger.info("client message received by handler", {
+			clientId,
+			type: message.type,
+			sessionId: "sessionId" in message ? message.sessionId ?? null : undefined,
+			knownRevision: "knownRevision" in message ? message.knownRevision : undefined,
+		});
 		const client = clients.get(clientId);
 		if (!client || client.closed) {
 			logger.warn("message received for missing client", { clientId, type: message.type });
@@ -758,6 +834,11 @@ export function createHandlers(
 		}
 
 		if (message.type === "load_sessions_page") {
+			logger.info("handling load sessions page", {
+				clientId,
+				offset: message.offset ?? 0,
+				limit: message.limit ?? null,
+			});
 			clientActions.sendSessionPage(clientId, message.offset, message.limit);
 			return;
 		}
@@ -785,12 +866,30 @@ export function createHandlers(
 		if (message.type === "load_session") {
 			const session = sessions.get(message.sessionId);
 			if (!session) {
+				logger.warn("load session rejected because session was missing", {
+					clientId,
+					sessionId: message.sessionId,
+				});
 				clientActions.sendError(clientId, "The selected session could not be found.", message.sessionId);
 				return;
 			}
 
+			logger.info("handling load session", {
+				clientId,
+				sessionId: session.id,
+				knownRevision: message.knownRevision ?? null,
+				currentRevision: session.revision,
+				busy: session.busy,
+				transcriptLength: session.transcript.length,
+			});
 			clientActions.markSessionLoaded(clientId, session.id);
 			if (message.knownRevision !== undefined && message.knownRevision >= session.revision) {
+				logger.info("load session skipped snapshot because known revision is current", {
+					clientId,
+					sessionId: session.id,
+					knownRevision: message.knownRevision,
+					currentRevision: session.revision,
+				});
 				return;
 			}
 

@@ -155,16 +155,46 @@ export function createRelay(
 	}
 
 	async function postRelayServerMessage(clientId: string, payload: ServerMessage) {
+		logger.info("posting relay server message", {
+			clientId,
+			payloadType: payload.type === "sync_event" ? payload.payload.type : payload.type,
+			seq: payload.type === "sync_event" ? payload.seq : undefined,
+			scope: payload.type === "sync_event" ? payload.scope : undefined,
+			sessionId: payload.type === "sync_event" && "sessionId" in payload.payload
+				? payload.payload.sessionId
+				: payload.type !== "sync_event" && "sessionId" in payload
+					? payload.sessionId
+					: undefined,
+		});
 		const currentAuth = await ensureActiveRelayAgentAuth();
 		try {
 			await sendRelayServerMessage(currentAuth.token as string, clientId, payload);
+			logger.info("posted relay server message", {
+				clientId,
+				payloadType: payload.type === "sync_event" ? payload.payload.type : payload.type,
+				seq: payload.type === "sync_event" ? payload.seq : undefined,
+			});
 		} catch (error) {
 			if ((error as { status?: number }).status !== 401) {
+				logger.warn("posting relay server message failed", {
+					clientId,
+					payloadType: payload.type === "sync_event" ? payload.payload.type : payload.type,
+					error: getErrorMessage(error),
+				});
 				throw error;
 			}
 
+			logger.warn("posting relay server message got 401; refreshing auth", {
+				clientId,
+				payloadType: payload.type === "sync_event" ? payload.payload.type : payload.type,
+			});
 			const refreshedAuth = await ensureActiveRelayAgentAuth({ force: true });
 			await sendRelayServerMessage(refreshedAuth.token as string, clientId, payload);
+			logger.info("posted relay server message after auth refresh", {
+				clientId,
+				payloadType: payload.type === "sync_event" ? payload.payload.type : payload.type,
+				seq: payload.type === "sync_event" ? payload.seq : undefined,
+			});
 		}
 	}
 
@@ -183,6 +213,15 @@ export function createRelay(
 
 	function ensureRelayClientConnection(clientId: string, options: { lastSeq?: number; announce?: boolean } = {}) {
 		const existing = clients.get(clientId);
+		logger.info("ensuring relay client connection", {
+			clientId,
+			hasExisting: Boolean(existing),
+			existingTransport: existing?.transport,
+			existingClosed: existing?.closed,
+			existingReady: existing?.ready,
+			lastSeq: options.lastSeq,
+			announce: options.announce ?? false,
+		});
 		if (existing?.transport === "relay" && !existing.closed) {
 			existing.ready = true;
 			clientActions.replayClientSyncEvents(clientId, options.lastSeq);
@@ -203,12 +242,25 @@ export function createRelay(
 	}
 
 	async function handleRelayAgentCommand(command: RelayAgentCommand) {
+		logger.info("relay agent command received", {
+			type: command.type,
+			clientId: command.clientId,
+			lastSeq: "lastSeq" in command ? command.lastSeq : undefined,
+			reason: "reason" in command ? command.reason : undefined,
+			messageType: "message" in command && typeof command.message === "object" && command.message !== null && "type" in command.message && typeof command.message.type === "string"
+				? command.message.type
+				: undefined,
+		});
 		switch (command.type) {
 			case "client_connect": {
 				ensureRelayClientConnection(command.clientId, { lastSeq: command.lastSeq, announce: true });
 				break;
 			}
 			case "client_disconnect": {
+				logger.info("relay client disconnect command applying", {
+					clientId: command.clientId,
+					reason: command.reason ?? "relay_client_disconnected",
+				});
 				removeClientConnection(command.clientId, command.reason ?? "relay_client_disconnected");
 				break;
 			}
@@ -220,6 +272,11 @@ export function createRelay(
 					return;
 				}
 
+				logger.info("dispatching relay client message to handler", {
+					clientId: command.clientId,
+					type: message.type,
+					sessionId: "sessionId" in message ? message.sessionId ?? null : undefined,
+				});
 				await handleClientMessage(command.clientId, message);
 				break;
 			}
@@ -251,6 +308,9 @@ export function createRelay(
 		}
 
 		relayState.transportConnected = true;
+		logger.info("relay agent stream response opened", {
+			relayUrl,
+		});
 		const reader = response.body.getReader();
 		const decoder = new TextDecoder();
 		let buffer = "";
@@ -276,6 +336,9 @@ export function createRelay(
 						.join("\n");
 
 					if (data) {
+						logger.info("relay agent stream data event", {
+							dataLength: data.length,
+						});
 						const command = parseRelayAgentCommand(data);
 						if (command) {
 							await handleRelayAgentCommand(command);
