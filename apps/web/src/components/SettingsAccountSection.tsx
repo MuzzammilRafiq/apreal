@@ -200,7 +200,30 @@ export function SettingsAccountSection({
           </p>
         ) : null}
         <p className="mt-3 text-[0.68rem] leading-normal text-slate-400">
-          {BUILD_VERSION}
+          {BUILD_VERSION.label}
+          {BUILD_VERSION.shortCommitHash !== "unknown" ? (
+            <>
+              {" · "}
+              {BUILD_VERSION.commitUrl ? (
+                <a
+                  href={BUILD_VERSION.commitUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-slate-500 underline underline-offset-2"
+                  title={BUILD_VERSION.commitHash}
+                >
+                  {BUILD_VERSION.shortCommitHash}
+                </a>
+              ) : (
+                <span
+                  className="font-mono text-slate-500"
+                  title={BUILD_VERSION.commitHash}
+                >
+                  {BUILD_VERSION.shortCommitHash}
+                </span>
+              )}
+            </>
+          ) : null}
         </p>
       </section>
     </div>
