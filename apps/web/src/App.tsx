@@ -62,9 +62,6 @@ type BufferedAssistantDelta = {
 
 const STREAM_RENDER_INTERVAL_MS = 50;
 
-function logWebTrace(message: string, fields?: Record<string, unknown>) {
-	console.info(`[apreal:web] ${message}`, fields ?? {});
-}
 
 function createOptimisticTranscript(transcript: TranscriptMessage[], pendingPrompt: PendingPrompt | null): TranscriptMessage[] {
 	if (!pendingPrompt) {
@@ -263,10 +260,6 @@ export function App({ runtime }: AppProps) {
 	}, []);
 
 	const clearBufferedAssistantDeltas = useCallback((sessionId?: string) => {
-		logWebTrace("clear buffered assistant deltas", {
-			sessionId: sessionId ?? null,
-			bufferedSessionCount: bufferedAssistantDeltasRef.current.size,
-		});
 		if (sessionId) {
 			bufferedAssistantDeltasRef.current.delete(sessionId);
 			setLiveTranscriptOverrides((previous) => {
@@ -306,11 +299,6 @@ export function App({ runtime }: AppProps) {
 			return;
 		}
 
-		logWebTrace("flush buffered assistant deltas", {
-			sessionId: sessionId ?? null,
-			sessionCount: drained.size,
-			totalDeltas: Array.from(drained.values()).reduce((total, pending) => total + pending.length, 0),
-		});
 
 		setLiveTranscriptOverrides((previous) => {
 			let next = previous;
@@ -320,10 +308,6 @@ export function App({ runtime }: AppProps) {
 					next.get(bufferedSessionId) ??
 					sessionCacheRef.current.get(bufferedSessionId)?.transcript;
 				if (!sourceTranscript) {
-					logWebTrace("buffered deltas waiting for transcript source", {
-						sessionId: bufferedSessionId,
-						pendingCount: pending.length,
-					});
 					const existingPending = bufferedAssistantDeltasRef.current.get(bufferedSessionId) ?? [];
 					bufferedAssistantDeltasRef.current.set(bufferedSessionId, [...pending, ...existingPending]);
 					continue;
@@ -362,14 +346,6 @@ export function App({ runtime }: AppProps) {
 		const nextPending = bufferedAssistantDeltasRef.current.get(sessionId) ?? [];
 		nextPending.push(bufferedDelta);
 		bufferedAssistantDeltasRef.current.set(sessionId, nextPending);
-		logWebTrace("buffer assistant delta", {
-			sessionId,
-			messageId: bufferedDelta.messageId,
-			field: bufferedDelta.field,
-			contentIndex: bufferedDelta.contentIndex,
-			deltaLength: bufferedDelta.delta.length,
-			pendingCount: nextPending.length,
-		});
 		scheduleBufferedAssistantDeltaFlush();
 	}, [scheduleBufferedAssistantDeltaFlush]);
 
@@ -449,12 +425,6 @@ export function App({ runtime }: AppProps) {
 	}), []);
 
 	const ensureClientTransport = useCallback(async () => {
-		logWebTrace("ensure client transport", {
-			target: runtime.target,
-			serverReady,
-			connected: connectedRef.current,
-			streamRequested,
-		});
 		if (!serverReady) {
 			throw new Error(adminStatusError ?? transportStatusMessage ?? runtime.transport.unavailableBody);
 		}
@@ -466,21 +436,11 @@ export function App({ runtime }: AppProps) {
 		setStreamRequested(true);
 		await waitForConnectionAttempt();
 		if (!connectedRef.current) {
-			logWebTrace("ensure client transport failed waiting for connected message", {
-				target: runtime.target,
-			});
 			throw new Error(STREAM_REQUIRED_MESSAGE);
 		}
 	}, [adminStatusError, runtime, serverReady, transportStatusMessage, waitForConnectionAttempt]);
 
 	const sendClientMessage = useCallback(async (message: ClientMessage) => {
-		logWebTrace("send client message requested", {
-			target: runtime.target,
-			type: message.type,
-			sessionId: "sessionId" in message ? message.sessionId ?? null : null,
-			connected: connectedRef.current,
-			serverReady,
-		});
 		if (!serverReady) {
 			throw new Error(adminStatusError ?? transportStatusMessage ?? runtime.transport.unavailableBody);
 		}
@@ -489,33 +449,13 @@ export function App({ runtime }: AppProps) {
 
 		try {
 			await runtime.transport.sendMessage(message);
-			logWebTrace("send client message accepted", {
-				target: runtime.target,
-				type: message.type,
-				sessionId: "sessionId" in message ? message.sessionId ?? null : null,
-			});
 		} catch (error) {
 			if (isClientStreamRequiredError(error)) {
-				logWebTrace("send client message hit stream-required; restarting", {
-					target: runtime.target,
-					type: message.type,
-					error: getErrorMessage(error),
-				});
 				restartEventStream();
 				await waitForFreshConnection();
 				await runtime.transport.sendMessage(message);
-				logWebTrace("send client message accepted after restart", {
-					target: runtime.target,
-					type: message.type,
-					sessionId: "sessionId" in message ? message.sessionId ?? null : null,
-				});
 				return;
 			}
-			logWebTrace("send client message failed", {
-				target: runtime.target,
-				type: message.type,
-				error: getErrorMessage(error),
-			});
 			throw error;
 		}
 	}, [adminStatusError, ensureClientTransport, restartEventStream, runtime, serverReady, streamRequested, transportStatusMessage, waitForFreshConnection]);
@@ -702,11 +642,6 @@ export function App({ runtime }: AppProps) {
 		let cancelled = false;
 
 		const connect = async () => {
-			logWebTrace("opening event stream", {
-				target: runtime.target,
-				lastSeq: lastSeenSyncSeqRef.current,
-				activeSessionId: activeSessionIdRef.current,
-			});
 			try {
 				eventSource = await runtime.transport.openEventStream({ lastSeq: lastSeenSyncSeqRef.current });
 			} catch (error) {
@@ -714,10 +649,6 @@ export function App({ runtime }: AppProps) {
 					connectedRef.current = false;
 					setConnected(false);
 					setConnectionError(getErrorMessage(error));
-					logWebTrace("event stream open failed", {
-						target: runtime.target,
-						error: getErrorMessage(error),
-					});
 				}
 				return;
 			}
@@ -729,51 +660,23 @@ export function App({ runtime }: AppProps) {
 
 			eventSource.onopen = () => {
 				setConnectionError(null);
-				logWebTrace("event source onopen", {
-					target: runtime.target,
-					waitingForConnectedPayload: true,
-				});
 			};
 
 			eventSource.onmessage = (event) => {
 				const message = parseServerMessage(event.data);
 				if (!message) {
-					logWebTrace("ignored unparsable server event", {
-						target: runtime.target,
-						rawLength: event.data.length,
-					});
 					return;
 				}
 
 				const serverPayload = message.type === "sync_event" ? message.payload : message;
-				logWebTrace("received server payload", {
-					target: runtime.target,
-					envelopeType: message.type,
-					seq: message.type === "sync_event" ? message.seq : null,
-					scope: message.type === "sync_event" ? message.scope : null,
-					payloadType: serverPayload.type,
-					sessionId: "sessionId" in serverPayload ? serverPayload.sessionId ?? null : "session" in serverPayload ? serverPayload.session.id : null,
-					activeSessionId: activeSessionIdRef.current,
-				});
 				if (message.type === "sync_event") {
 					if (message.seq <= lastSeenSyncSeqRef.current) {
-						logWebTrace("ignored duplicate sync event", {
-							seq: message.seq,
-							lastSeenSeq: lastSeenSyncSeqRef.current,
-							scope: message.scope,
-							payloadType: message.payload.type,
-						});
 						return;
 					}
 
 					const missedEvents = lastSeenSyncSeqRef.current > 0 && message.seq > lastSeenSyncSeqRef.current + 1;
 					lastSeenSyncSeqRef.current = message.seq;
 					if (missedEvents) {
-						logWebTrace("missed sync event gap; requesting resync", {
-							seq: message.seq,
-							scope: message.scope,
-							activeSessionId: activeSessionIdRef.current,
-						});
 						clearBufferedAssistantDeltas();
 						requestSessionPageRef.current(0, Math.max(visibleSessionLimitRef.current, SESSION_PAGE_SIZE));
 						ensureSessionLoadedRef.current(activeSessionIdRef.current);
@@ -790,12 +693,6 @@ export function App({ runtime }: AppProps) {
 					setConnected(true);
 					setConnectionError(null);
 					resolvePendingConnectionsRef.current();
-					logWebTrace("connected payload applied", {
-						clientId: serverPayload.clientId,
-						target: runtime.target,
-						lastSeq: lastSeenSyncSeqRef.current,
-						activeSessionId: activeSessionIdRef.current,
-					});
 					if (runtime.target === "remote" && runtime.capabilities.settings) {
 						void runtime.transport.sendMessage({ type: "load_status" }).catch((error) => {
 							setAdminStatusError(getErrorMessage(error));
@@ -813,11 +710,6 @@ export function App({ runtime }: AppProps) {
 					break;
 				}
 				case "sessions_page": {
-					logWebTrace("sessions page applied", {
-						offset: serverPayload.offset,
-						count: serverPayload.sessions.length,
-						total: serverPayload.total,
-					});
 					setLoadingMoreSessions(false);
 					serverLoadedSessionCountRef.current = serverPayload.offset === 0
 						? serverPayload.sessions.length
@@ -865,12 +757,6 @@ export function App({ runtime }: AppProps) {
 					break;
 				}
 				case "session_summary_updated": {
-					logWebTrace("session summary updated applied", {
-						sessionId: serverPayload.session.id,
-						revision: serverPayload.session.revision,
-						busy: serverPayload.session.busy,
-						activeSessionId: activeSessionIdRef.current,
-					});
 					if (!isScheduledSessionSummary(serverPayload.session)) {
 						setSessions((previous) => {
 							const existing = previous.find((entry) => entry.id === serverPayload.session.id);
@@ -937,12 +823,6 @@ export function App({ runtime }: AppProps) {
 					break;
 				}
 				case "session_created": {
-					logWebTrace("session created applied", {
-						sessionId: serverPayload.session.id,
-						revision: serverPayload.session.revision,
-						busy: serverPayload.session.busy,
-						transcriptLength: serverPayload.transcript.length,
-					});
 					setConnectionError(null);
 					setPendingPrompt(null);
 					clearBufferedAssistantDeltas(serverPayload.session.id);
@@ -961,13 +841,6 @@ export function App({ runtime }: AppProps) {
 					break;
 				}
 				case "session_snapshot": {
-					logWebTrace("session snapshot applied", {
-						sessionId: serverPayload.session.id,
-						revision: serverPayload.session.revision,
-						busy: serverPayload.session.busy,
-						transcriptLength: serverPayload.transcript.length,
-						activeSessionId: activeSessionIdRef.current,
-					});
 					setConnectionError(null);
 					setPendingPrompt((current) =>
 						current?.sessionId === serverPayload.session.id && transcriptContainsPrompt(serverPayload.transcript, current.prompt)
@@ -997,10 +870,6 @@ export function App({ runtime }: AppProps) {
 					break;
 				}
 				case "error": {
-					logWebTrace("server error payload applied", {
-						message: serverPayload.message,
-						sessionId: serverPayload.sessionId ?? null,
-					});
 					setPendingDraft(false);
 					setPendingPrompt(null);
 					setConnectionError(serverPayload.message);
@@ -1016,11 +885,6 @@ export function App({ runtime }: AppProps) {
 				connectedRef.current = false;
 				setConnected(false);
 				setConnectionError((current) => current ?? STREAM_DISCONNECTED_MESSAGE);
-				logWebTrace("event source error", {
-					target: runtime.target,
-					lastSeq: lastSeenSyncSeqRef.current,
-					activeSessionId: activeSessionIdRef.current,
-				});
 				if (runtime.target === "remote" && !cancelled) {
 					window.setTimeout(() => {
 						if (!cancelled) {
@@ -1035,11 +899,6 @@ export function App({ runtime }: AppProps) {
 
 		return () => {
 			cancelled = true;
-			logWebTrace("closing event stream effect", {
-				target: runtime.target,
-				lastSeq: lastSeenSyncSeqRef.current,
-				activeSessionId: activeSessionIdRef.current,
-			});
 			eventSource?.close();
 			connectedRef.current = false;
 			setConnected(false);
@@ -1066,21 +925,7 @@ export function App({ runtime }: AppProps) {
 	}, [requestSessionPage, totalSessionCount]);
 
 	const submitPrompt = useCallback((trimmedPrompt: string) => {
-		logWebTrace("submit prompt requested", {
-			activeSessionId,
-			promptLength: trimmedPrompt.length,
-			isBusy,
-			chatTransportReady,
-			connected: connectedRef.current,
-			serverReady,
-		});
 		if (!trimmedPrompt || isBusy || !chatTransportReady) {
-			logWebTrace("submit prompt blocked", {
-				activeSessionId,
-				promptLength: trimmedPrompt.length,
-				isBusy,
-				chatTransportReady,
-			});
 			return false;
 		}
 

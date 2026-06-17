@@ -121,16 +121,6 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 		}
 
 		const wirePayload = shouldWrapPayload(payload) ? createSyncEvent(clientId, payload) : payload;
-		logger.info("sending client payload", {
-			clientId,
-			transport: client.transport,
-			ready: client.ready,
-			closed: client.closed,
-			wrapped: wirePayload.type === "sync_event",
-			seq: wirePayload.type === "sync_event" ? wirePayload.seq : undefined,
-			scope: wirePayload.type === "sync_event" ? wirePayload.scope : undefined,
-			...describePayload(payload),
-		});
 		try {
 			return client.send(wirePayload) !== false;
 		} catch (error) {
@@ -188,12 +178,6 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 			payload,
 		} satisfies ServerSyncEnvelope<ServerPayload>;
 		rememberSyncEvent(clientId, event);
-		logger.info("created client sync event", {
-			clientId,
-			seq: event.seq,
-			scope: event.scope,
-			...describePayload(payload),
-		});
 		return event;
 	}
 
@@ -301,12 +285,6 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 		}
 
 		client.loadedSessionIds.add(sessionId);
-		logger.info("marked session loaded for client", {
-			clientId,
-			transport: client.transport,
-			sessionId,
-			loadedSessionCount: client.loadedSessionIds.size,
-		});
 	}
 
 	function replayClientSyncEvents(clientId: string, lastSeq?: number) {
@@ -320,12 +298,6 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 		}
 
 		const buffer = clientSyncBuffers.get(clientId) ?? [];
-		logger.info("replaying client sync events", {
-			clientId,
-			lastSeq,
-			bufferLength: buffer.length,
-			replayCount: buffer.filter((event) => event.seq > lastSeq).length,
-		});
 		for (const event of buffer) {
 			if (event.seq > lastSeq) {
 				client.send(event);
@@ -347,13 +319,6 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 
 	function sendSessionPage(clientId: string, offset = 0, limit?: number) {
 		const page = buildSessionPage(offset, limit);
-		logger.info("sending session page", {
-			clientId,
-			offset: page.offset,
-			limit: page.limit,
-			count: page.sessions.length,
-			total: page.total,
-		});
 		sendClientPayload(clientId, {
 			type: "sessions_page",
 			...page,
@@ -361,12 +326,6 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 	}
 
 	function broadcastSessionSummaryUpdated(session: SharedSessionState) {
-		logger.info("broadcasting session summary", {
-			sessionId: session.id,
-			revision: session.revision,
-			busy: session.busy,
-			clients: clients.size,
-		});
 		broadcast({
 			type: "session_summary_updated",
 			session: buildSessionSummary(session),
@@ -375,13 +334,6 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 
 	function sendSessionSnapshot(targetClientId: string, session: SharedSessionState) {
 		markSessionLoaded(targetClientId, session.id);
-		logger.info("sending session snapshot", {
-			clientId: targetClientId,
-			sessionId: session.id,
-			revision: session.revision,
-			busy: session.busy,
-			transcriptLength: session.transcript.length,
-		});
 		sendClientPayload(targetClientId, {
 			type: "session_snapshot",
 			...buildSessionPayload(session),
@@ -389,13 +341,6 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 	}
 
 	function broadcastSessionSnapshot(session: SharedSessionState) {
-		logger.info("broadcasting session snapshot", {
-			sessionId: session.id,
-			revision: session.revision,
-			busy: session.busy,
-			transcriptLength: session.transcript.length,
-			clients: clients.size,
-		});
 		broadcastSessionPayload(session.id, {
 			type: "session_snapshot",
 			...buildSessionPayload(session),
@@ -451,11 +396,6 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 				return false;
 			}
 
-			logger.info("writing http stream payload", {
-				clientId,
-				payloadType: payload.type === "sync_event" ? payload.payload.type : payload.type,
-				seq: payload.type === "sync_event" ? payload.seq : undefined,
-			});
 			void writer.write(createSseChunk(payload)).catch((error) => {
 				logger.warn("failed to write http stream payload", {
 					clientId,
@@ -545,11 +485,6 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 			}
 
 			await handleClientMessage(clientId, message);
-			logger.info("http client message handled", {
-				clientId,
-				type: message.type,
-				sessionId: "sessionId" in message ? message.sessionId ?? null : undefined,
-			});
 			return json({ ok: true }, { status: 202, headers: createCorsHeaders(request) });
 		};
 	}

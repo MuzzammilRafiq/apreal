@@ -184,10 +184,6 @@ export function createRelayRequestHandler(state: RelayServerState) {
 					clientAuthRequest.clientKey,
 					ownerUserId,
 				);
-				log("info", "issued client auth token", {
-					clientId: issuedToken.payload.id,
-					paired: Boolean(issuedToken.payload.targetId),
-				});
 				sendJson(response, 200, buildClientAuthResponse(issuedToken), corsHeaders);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "client auth failed";
@@ -289,11 +285,6 @@ export function createRelayRequestHandler(state: RelayServerState) {
 				}
 				const issuedToken = issueAgentToken(agentAuthRequest.agentId, agentAuthRequest.agentKey, ownerUserId);
 
-				log("info", "issued agent auth token", {
-					agentId: issuedToken.payload.id,
-					targetId: issuedToken.payload.targetId,
-					connected: Boolean(state.agentConnections.get(issuedToken.payload.id)),
-				});
 				sendJson(response, 200, buildAgentAuthResponse(issuedToken), corsHeaders);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "agent auth failed";
@@ -388,13 +379,6 @@ export function createRelayRequestHandler(state: RelayServerState) {
 				const token = readBearerTokenFromRequest(request);
 				const principal = readRelayToken(token);
 				const payload = authorizeRelayConnection(principal, connectionRequest);
-				log("info", "authenticated relay http connection", {
-					principalId: payload.principal.id,
-					principalType: payload.principal.type,
-					targetId: payload.target.id,
-					targetType: payload.target.type,
-					scopedToTarget: payload.principal.scopedToTarget,
-				});
 				sendJson(response, 200, payload, corsHeaders);
 			} catch (error) {
 				const statusCode = mapRelayConnectionErrorStatus(error);
