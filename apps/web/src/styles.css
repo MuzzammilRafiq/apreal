@@ -494,7 +494,6 @@
 		overflow-y: hidden;
 		-webkit-overflow-scrolling: touch;
 		overscroll-behavior-x: contain;
-		touch-action: pan-x;
 		border: 1px solid var(--color-line);
 		border-radius: 8px;
 		scrollbar-width: thin;
