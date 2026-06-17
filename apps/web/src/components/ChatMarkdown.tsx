@@ -309,7 +309,7 @@ function MarkdownCodeBlock({
 
 function MarkdownTable(props: React.ComponentProps<"table">) {
 	return (
-		<div className="markdown-table-container">
+		<div className="markdown-table-container" tabIndex={0}>
 			<table {...props} />
 		</div>
 	);
