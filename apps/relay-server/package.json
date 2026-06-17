@@ -13,6 +13,7 @@
 	"devDependencies": {
 		"@types/jsonwebtoken": "^9.0.10",
 		"@types/node": "^25.6.0",
+		"@types/ws": "^8.18.1",
 		"typescript": "^5.9.3"
 	},
 	"dependencies": {
@@ -22,6 +23,7 @@
 		"dotenv": "^17.4.2",
 		"jsonwebtoken": "^9.0.2",
 		"kysely": "0.28.17",
+		"ws": "^8.21.0",
 		"zod": "^4.4.3"
 	}
 }

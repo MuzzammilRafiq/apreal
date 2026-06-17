@@ -15,9 +15,11 @@
 		"@modelcontextprotocol/sdk": "^1.29.0",
 		"@t3-oss/env-core": "^0.13.11",
 		"dotenv": "^17.4.2",
+		"ws": "^8.21.0",
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
+		"@types/ws": "^8.18.1",
 		"typescript": "^5.9.3"
 	}
 }

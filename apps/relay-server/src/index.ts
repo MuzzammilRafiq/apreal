@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { getRelayEnv } from "./env.ts";
-import { createRelayRequestHandler } from "./relay/routes.ts";
+import { createRelayRequestHandler, createRelayUpgradeHandler } from "./relay/routes.ts";
 import { createRelayServerState } from "./relay/state.ts";
 import { log } from "./utils/log.ts";
 
@@ -13,6 +13,7 @@ export function runRelayServer(options?: { port?: number | string }) {
 	const state = createRelayServerState();
 	const port = options?.port ?? getRelayEnv().PORT;
 	const server = createServer(createRelayRequestHandler(state));
+	server.on("upgrade", createRelayUpgradeHandler(state));
 
 	server.listen(port);
 

@@ -41,8 +41,15 @@ export type WebClientTransport = {
 	unavailableBody: string;
 	connectingBody: string;
 	readStatus: () => Promise<WebTransportStatus>;
-	openEventStream: (options?: { lastSeq?: number }) => Promise<EventSource>;
+	openEventStream: (options?: { lastSeq?: number }) => Promise<WebEventStream>;
 	sendMessage: (message: ClientMessage) => Promise<void>;
+};
+
+export type WebEventStream = {
+	onopen: ((event: Event) => void) | null;
+	onmessage: ((event: MessageEvent<string>) => void) | null;
+	onerror: ((event: Event) => void) | null;
+	close(): void;
 };
 
 export type WebRuntime = {
@@ -79,6 +86,12 @@ function resolveRelayBaseUrl(): URL {
 	return new URL("/", authBaseUrl);
 }
 
+function createWebSocketUrl(url: string): string {
+	const websocketUrl = new URL(url);
+	websocketUrl.protocol = websocketUrl.protocol === "https:" ? "wss:" : "ws:";
+	return websocketUrl.toString();
+}
+
 async function parseJsonResponse(response: Response): Promise<unknown> {
 	try {
 		return await response.json();
@@ -97,6 +110,102 @@ function getResponseMessage(payload: unknown, fallback: string): string {
 
 function logTransportTrace(message: string, fields?: Record<string, unknown>) {
 	console.info(`[apreal:transport] ${message}`, fields ?? {});
+}
+
+function isRemoteChatMessage(message: ClientMessage): boolean {
+	return message.type === "prompt" ||
+		message.type === "abort" ||
+		message.type === "delete_session" ||
+		message.type === "delete_all_sessions" ||
+		message.type === "load_session" ||
+		message.type === "load_sessions_page" ||
+		message.type === "ping";
+}
+
+class RemoteWebSocketEventStream implements WebEventStream {
+	onopen: ((event: Event) => void) | null = null;
+	onmessage: ((event: MessageEvent<string>) => void) | null = null;
+	onerror: ((event: Event) => void) | null = null;
+
+	private readonly socket: WebSocket;
+	private closedByClient = false;
+
+	constructor(
+		url: string,
+		private readonly context: { clientId: string; targetId: string | null; lastSeq: number | null },
+		private readonly onClose: (stream: RemoteWebSocketEventStream) => void,
+	) {
+		this.socket = new WebSocket(url);
+		this.socket.addEventListener("open", (event) => {
+			logTransportTrace("remote websocket opened", {
+				...this.context,
+				bufferedAmount: this.socket.bufferedAmount,
+			});
+			this.onopen?.(event);
+		});
+		this.socket.addEventListener("message", (event) => {
+			const data = typeof event.data === "string" ? event.data : "";
+			logTransportTrace("remote websocket message", {
+				...this.context,
+				dataLength: data.length,
+			});
+			this.onmessage?.(new MessageEvent("message", { data }));
+		});
+		this.socket.addEventListener("error", (event) => {
+			logTransportTrace("remote websocket error", {
+				...this.context,
+				readyState: this.socket.readyState,
+				bufferedAmount: this.socket.bufferedAmount,
+			});
+			this.onerror?.(event);
+		});
+		this.socket.addEventListener("close", (event) => {
+			logTransportTrace("remote websocket closed", {
+				...this.context,
+				code: event.code,
+				reason: event.reason,
+				wasClean: event.wasClean,
+				closedByClient: this.closedByClient,
+			});
+			this.onClose(this);
+			if (!this.closedByClient) {
+				this.onerror?.(event);
+			}
+		});
+	}
+
+	get isOpen(): boolean {
+		return this.socket.readyState === WebSocket.OPEN;
+	}
+
+	sendMessage(message: ClientMessage) {
+		if (!this.isOpen) {
+			throw new Error("browser client stream is not connected");
+		}
+
+		const data = JSON.stringify(message);
+		logTransportTrace("send remote websocket message", {
+			...this.context,
+			type: message.type,
+			sessionId: "sessionId" in message ? message.sessionId ?? null : null,
+			byteLength: data.length,
+			bufferedAmount: this.socket.bufferedAmount,
+		});
+		this.socket.send(data);
+		logTransportTrace("remote websocket message queued", {
+			...this.context,
+			type: message.type,
+			bufferedAmount: this.socket.bufferedAmount,
+		});
+	}
+
+	close() {
+		this.closedByClient = true;
+		this.onClose(this);
+		if (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING) {
+			this.socket.close(1000, "client_closed");
+		}
+	}
 }
 
 function isRouteSupported(route: AppRoute, capabilities: WebCapabilities): boolean {
@@ -194,6 +303,7 @@ export function createRemoteWebRuntime(): WebRuntime {
 	const relayBaseUrl = resolveRelayBaseUrl();
 	const messageUrl = new URL(CLIENT_MESSAGE_PATH, relayBaseUrl).toString();
 	const streamUrl = new URL(CLIENT_EVENT_STREAM_PATH, relayBaseUrl).toString();
+	let activeStream: RemoteWebSocketEventStream | null = null;
 
 	const readAuth = () => ensureRelayClientAuth(relayBaseUrl.toString());
 
@@ -234,16 +344,47 @@ export function createRemoteWebRuntime(): WebRuntime {
 				if (typeof options?.lastSeq === "number") {
 					eventStreamUrl.searchParams.set(SYNC_LAST_SEQ_QUERY_PARAM, `${options.lastSeq}`);
 				}
+				activeStream?.close();
 				logTransportTrace("open remote event stream", {
 					clientId: auth.clientId,
 					targetId: auth.target?.id ?? null,
 					lastSeq: options?.lastSeq ?? null,
 					expiresInMs: auth.expiresAt - Date.now(),
+					transport: "websocket",
 				});
-				return new EventSource(eventStreamUrl.toString());
+				const stream = new RemoteWebSocketEventStream(
+					createWebSocketUrl(eventStreamUrl.toString()),
+					{
+						clientId: auth.clientId,
+						targetId: auth.target?.id ?? null,
+						lastSeq: options?.lastSeq ?? null,
+					},
+					(closedStream) => {
+						if (activeStream === closedStream) {
+							activeStream = null;
+						}
+					},
+				);
+				activeStream = stream;
+				return stream;
 			},
 			sendMessage: async (message) => {
 				const auth = await readAuth();
+				if (isRemoteChatMessage(message)) {
+					if (!activeStream?.isOpen) {
+						logTransportTrace("remote websocket chat message rejected before send", {
+							clientId: auth.clientId,
+							targetId: auth.target?.id ?? null,
+							type: message.type,
+							hasActiveStream: Boolean(activeStream),
+						});
+						throw new Error("browser client stream is not connected");
+					}
+
+					activeStream.sendMessage(message);
+					return;
+				}
+
 				logTransportTrace("send remote message", {
 					clientId: auth.clientId,
 					targetId: auth.target?.id ?? null,

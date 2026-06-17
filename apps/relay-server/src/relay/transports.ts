@@ -1,4 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { Duplex } from "node:stream";
+import { WebSocket, WebSocketServer, type RawData } from "ws";
 import { SYNC_LAST_SEQ_QUERY_PARAM, type RelayAgentCommand } from "@apreal/shared";
 import { AuthError, readBearerTokenFromRequest, readRelayToken } from "../auth.ts";
 import type { RelayServerState } from "./state.ts";
@@ -13,6 +15,13 @@ import type { RelayAgentConnection, RelayBrowserClientConnection } from "../util
 // Builds the in-memory transport operations that attach browser and agent SSE
 // streams and relay messages between them.
 export function createRelayTransportHandlers(state: RelayServerState) {
+	const browserWsServer = new WebSocketServer({ noServer: true });
+	const agentWsServer = new WebSocketServer({ noServer: true });
+
+	function isObjectRecord(value: unknown): value is Record<string, unknown> {
+		return typeof value === "object" && value !== null && !Array.isArray(value);
+	}
+
 	function readLastSeqFromRequest(request: IncomingMessage): number | undefined {
 		const headerValue = request.headers["last-event-id"];
 		const rawHeaderValue = Array.isArray(headerValue) ? headerValue[0] : headerValue;
@@ -24,6 +33,70 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 
 		const value = Number.parseInt(rawValue, 10);
 		return Number.isInteger(value) && value >= 0 ? value : undefined;
+	}
+
+	function describeRelayPayload(payload: unknown): Record<string, unknown> {
+		if (!isObjectRecord(payload)) {
+			return { payloadType: "unknown" };
+		}
+
+		if (payload.type !== "sync_event" || !isObjectRecord(payload.payload)) {
+			return {
+				payloadType: typeof payload.type === "string" ? payload.type : "unknown",
+				sessionId: typeof payload.sessionId === "string" ? payload.sessionId : undefined,
+				messageId: typeof payload.messageId === "string" ? payload.messageId : undefined,
+				contentIndex: typeof payload.contentIndex === "number" ? payload.contentIndex : undefined,
+				deltaLength: typeof payload.delta === "string" ? payload.delta.length : undefined,
+			};
+		}
+
+		const innerPayload = payload.payload;
+		const session = isObjectRecord(innerPayload.session) ? innerPayload.session : null;
+		return {
+			payloadType: "sync_event",
+			seq: typeof payload.seq === "number" ? payload.seq : undefined,
+			scope: typeof payload.scope === "string" ? payload.scope : undefined,
+			innerType: typeof innerPayload.type === "string" ? innerPayload.type : "unknown",
+			sessionId: typeof innerPayload.sessionId === "string"
+				? innerPayload.sessionId
+				: session && typeof session.id === "string"
+					? session.id
+					: undefined,
+			revision: session && typeof session.revision === "number" ? session.revision : undefined,
+			busy: session && typeof session.busy === "boolean" ? session.busy : undefined,
+			transcriptLength: Array.isArray(innerPayload.transcript) ? innerPayload.transcript.length : undefined,
+			messageId: typeof innerPayload.messageId === "string" ? innerPayload.messageId : undefined,
+			contentIndex: typeof innerPayload.contentIndex === "number" ? innerPayload.contentIndex : undefined,
+			deltaLength: typeof innerPayload.delta === "string" ? innerPayload.delta.length : undefined,
+		};
+	}
+
+	function getWebSocketMessageText(data: RawData): string {
+		if (typeof data === "string") {
+			return data;
+		}
+
+		if (Buffer.isBuffer(data)) {
+			return data.toString("utf8");
+		}
+
+		if (Array.isArray(data)) {
+			return Buffer.concat(data).toString("utf8");
+		}
+
+		return Buffer.from(data).toString("utf8");
+	}
+
+	function rejectWebSocketUpgrade(socket: Duplex, statusCode: number, message: string) {
+		socket.write([
+			`HTTP/1.1 ${statusCode} ${message}`,
+			"Connection: close",
+			"Content-Type: text/plain; charset=utf-8",
+			`Content-Length: ${Buffer.byteLength(message)}`,
+			"",
+			message,
+		].join("\r\n"));
+		socket.destroy();
 	}
 
 	// Returns every currently open browser stream paired to one agent.
@@ -124,9 +197,13 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		const lastSeq = readLastSeqFromRequest(request);
 		response.statusCode = 200;
 		setHeaders(response, createSseHeaders(corsHeaders));
+		response.socket?.setNoDelay(true);
+		response.flushHeaders();
 
 		let closed = false;
 		let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+		let waitingForBrowserDrain = false;
+		let browserDrainTimer: ReturnType<typeof setTimeout> | null = null;
 
 		// Tears down the browser stream, removes it from state, and notifies the
 		// paired agent that the client disappeared.
@@ -151,6 +228,10 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 			if (heartbeatTimer) {
 				clearInterval(heartbeatTimer);
 				heartbeatTimer = null;
+			}
+			if (browserDrainTimer) {
+				clearTimeout(browserDrainTimer);
+				browserDrainTimer = null;
 			}
 
 			const existing = state.browserClients.get(target.clientId);
@@ -189,7 +270,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 					log("warn", "relay browser payload skipped; browser stream closed", {
 						clientId: target.clientId,
 						agentId: target.agentId,
-						payloadType: typeof payload === "object" && payload !== null && "type" in payload ? payload.type : "unknown",
+						...describeRelayPayload(payload),
 					});
 					return false;
 				}
@@ -198,11 +279,50 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 					log("info", "relay browser payload writing", {
 						clientId: target.clientId,
 						agentId: target.agentId,
-						payloadType: typeof payload === "object" && payload !== null && "type" in payload ? payload.type : "unknown",
-						seq: typeof payload === "object" && payload !== null && "type" in payload && payload.type === "sync_event" && "seq" in payload ? payload.seq : undefined,
-						innerType: typeof payload === "object" && payload !== null && "type" in payload && payload.type === "sync_event" && "payload" in payload && typeof payload.payload === "object" && payload.payload !== null && "type" in payload.payload ? payload.payload.type : undefined,
+						writableLength: response.writableLength,
+						writableNeedDrain: response.writableNeedDrain,
+						...describeRelayPayload(payload),
 					});
-					response.write(createSseChunk(payload));
+					const writeAccepted = response.write(createSseChunk(payload));
+					log("info", "relay browser payload queued", {
+						clientId: target.clientId,
+						agentId: target.agentId,
+						writeAccepted,
+						writableLength: response.writableLength,
+						writableNeedDrain: response.writableNeedDrain,
+						socketBufferSize: response.socket?.bufferSize,
+						...describeRelayPayload(payload),
+					});
+					if (!writeAccepted && !waitingForBrowserDrain) {
+						waitingForBrowserDrain = true;
+						browserDrainTimer = setTimeout(() => {
+							log("warn", "relay browser stream drain timed out; closing stream", {
+								clientId: target.clientId,
+								agentId: target.agentId,
+								writableLength: response.writableLength,
+								writableNeedDrain: response.writableNeedDrain,
+								socketBufferSize: response.socket?.bufferSize,
+								...describeRelayPayload(payload),
+							});
+							close("browser_stream_backpressure_timeout");
+						}, 5_000);
+						response.once("drain", () => {
+							waitingForBrowserDrain = false;
+							if (browserDrainTimer) {
+								clearTimeout(browserDrainTimer);
+								browserDrainTimer = null;
+							}
+							log("info", "relay browser stream drained", {
+								clientId: target.clientId,
+								agentId: target.agentId,
+								writableLength: response.writableLength,
+								writableNeedDrain: response.writableNeedDrain,
+								socketBufferSize: response.socket?.bufferSize,
+							});
+						});
+					}
+					// A false return from response.write means the data was queued and the
+					// stream needs drain, not that delivery failed.
 					return true;
 				} catch {
 					log("warn", "relay browser payload write threw", {
@@ -229,10 +349,28 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		}
 
 		state.browserClients.set(target.clientId, connection);
-		response.write(createSseComment("connected"));
+		const openCommentAccepted = response.write(createSseComment("connected"));
+		log("info", "relay browser stream open comment queued", {
+			clientId: target.clientId,
+			agentId: target.agentId,
+			writeAccepted: openCommentAccepted,
+			writableLength: response.writableLength,
+			writableNeedDrain: response.writableNeedDrain,
+			socketBufferSize: response.socket?.bufferSize,
+		});
 		heartbeatTimer = setInterval(() => {
 			if (!closed) {
-				response.write(createSseComment("ping"));
+				const heartbeatAccepted = response.write(createSseComment("ping"));
+				if (!heartbeatAccepted || response.writableNeedDrain) {
+					log("warn", "relay browser heartbeat queued with backpressure", {
+						clientId: target.clientId,
+						agentId: target.agentId,
+						writeAccepted: heartbeatAccepted,
+						writableLength: response.writableLength,
+						writableNeedDrain: response.writableNeedDrain,
+						socketBufferSize: response.socket?.bufferSize,
+					});
+				}
 			}
 		}, RELAY_SSE_HEARTBEAT_INTERVAL_MS);
 
@@ -246,6 +384,219 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 			agentId: target.agentId,
 			lastSeq,
 			browserClients: state.browserClients.size,
+		});
+	}
+
+	function registerBrowserWebSocketConnection(
+		ws: WebSocket,
+		target: ReturnType<typeof resolveClientRelayTarget>,
+		lastSeq: number | undefined,
+	) {
+		let closed = false;
+		let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+		const close = (reason: string) => {
+			if (closed) {
+				return;
+			}
+
+			log("info", "relay browser websocket closing", {
+				clientId: target.clientId,
+				agentId: target.agentId,
+				reason,
+				readyState: ws.readyState,
+				bufferedAmount: ws.bufferedAmount,
+			});
+			closed = true;
+			connection.closed = true;
+			if (heartbeatTimer) {
+				clearInterval(heartbeatTimer);
+				heartbeatTimer = null;
+			}
+
+			const existing = state.browserClients.get(target.clientId);
+			const isActiveConnection = existing === connection;
+			if (isActiveConnection) {
+				state.browserClients.delete(target.clientId);
+			}
+
+			if (isActiveConnection && reason !== "browser_stream_replaced") {
+				log("info", "relay browser websocket notifying agent of disconnect", {
+					clientId: target.clientId,
+					agentId: target.agentId,
+					reason,
+				});
+				sendAgentCommand(target.agentId, {
+					type: "client_disconnect",
+					clientId: target.clientId,
+					reason,
+				});
+			}
+
+			if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+				ws.close(1000, reason);
+			}
+		};
+
+		const connection: RelayBrowserClientConnection = {
+			clientId: target.clientId,
+			agentId: target.agentId,
+			ownerUserId: target.ownerUserId ?? null,
+			closed: false,
+			send(payload) {
+				if (closed || ws.readyState !== WebSocket.OPEN) {
+					log("warn", "relay browser websocket payload skipped; socket not open", {
+						clientId: target.clientId,
+						agentId: target.agentId,
+						readyState: ws.readyState,
+						bufferedAmount: ws.bufferedAmount,
+						...describeRelayPayload(payload),
+					});
+					return false;
+				}
+
+				const data = JSON.stringify(payload);
+				log("info", "relay browser websocket payload sending", {
+					clientId: target.clientId,
+					agentId: target.agentId,
+					byteLength: Buffer.byteLength(data),
+					bufferedAmount: ws.bufferedAmount,
+					...describeRelayPayload(payload),
+				});
+				ws.send(data, (error) => {
+					if (error) {
+						log("warn", "relay browser websocket payload send failed", {
+							clientId: target.clientId,
+							agentId: target.agentId,
+							error: error.message,
+							...describeRelayPayload(payload),
+						});
+						close("browser_ws_send_failed");
+						return;
+					}
+
+					log("info", "relay browser websocket payload sent", {
+						clientId: target.clientId,
+						agentId: target.agentId,
+						bufferedAmount: ws.bufferedAmount,
+						...describeRelayPayload(payload),
+					});
+				});
+				return true;
+			},
+			close,
+		};
+
+		const existing = state.browserClients.get(target.clientId);
+		if (existing) {
+			log("info", "relay browser websocket replacing existing stream", {
+				clientId: target.clientId,
+				agentId: target.agentId,
+			});
+			existing.close("browser_stream_replaced");
+		}
+
+		state.browserClients.set(target.clientId, connection);
+
+		ws.on("message", (data) => {
+			let message: unknown;
+			const rawMessage = getWebSocketMessageText(data);
+			try {
+				message = JSON.parse(rawMessage);
+			} catch {
+				log("warn", "relay browser websocket ignored invalid json", {
+					clientId: target.clientId,
+					agentId: target.agentId,
+					rawLength: rawMessage.length,
+				});
+				connection.send({ type: "error", message: "Invalid client message payload." });
+				return;
+			}
+
+			log("info", "relay browser websocket message forwarding to agent", {
+				clientId: target.clientId,
+				agentId: target.agentId,
+				messageType: isObjectRecord(message) && typeof message.type === "string" ? message.type : undefined,
+				sessionId: isObjectRecord(message) && typeof message.sessionId === "string" ? message.sessionId : undefined,
+				rawLength: rawMessage.length,
+			});
+			if (!sendAgentCommand(target.agentId, {
+				type: "client_message",
+				clientId: target.clientId,
+				message,
+			})) {
+				log("warn", "relay browser websocket message could not reach paired agent", {
+					clientId: target.clientId,
+					agentId: target.agentId,
+				});
+				connection.send({ type: "error", message: "Paired agent transport unavailable." });
+			}
+		});
+
+		ws.on("close", (code, reason) => {
+			log("info", "relay browser websocket closed", {
+				clientId: target.clientId,
+				agentId: target.agentId,
+				code,
+				reason: reason.toString(),
+			});
+			close("browser_ws_closed");
+		});
+
+		ws.on("error", (error) => {
+			log("warn", "relay browser websocket error", {
+				clientId: target.clientId,
+				agentId: target.agentId,
+				error: error.message,
+			});
+			close("browser_ws_error");
+		});
+
+		heartbeatTimer = setInterval(() => {
+			if (closed || ws.readyState !== WebSocket.OPEN) {
+				return;
+			}
+
+			if (ws.bufferedAmount > 0) {
+				log("warn", "relay browser websocket heartbeat sees buffered data", {
+					clientId: target.clientId,
+					agentId: target.agentId,
+					bufferedAmount: ws.bufferedAmount,
+				});
+			}
+
+			ws.ping();
+		}, RELAY_SSE_HEARTBEAT_INTERVAL_MS);
+
+		sendAgentCommand(target.agentId, { type: "client_connect", clientId: target.clientId, lastSeq });
+		log("info", "relay browser websocket connected", {
+			clientId: target.clientId,
+			agentId: target.agentId,
+			lastSeq,
+			browserClients: state.browserClients.size,
+		});
+	}
+
+	function handleBrowserClientWebSocketUpgrade(
+		request: IncomingMessage,
+		socket: Duplex,
+		head: Buffer,
+	) {
+		let target: ReturnType<typeof resolveClientRelayTarget>;
+		let lastSeq: number | undefined;
+		try {
+			target = resolveClientRelayTarget(request);
+			lastSeq = readLastSeqFromRequest(request);
+		} catch (error) {
+			log("warn", "relay browser websocket rejected", {
+				error: error instanceof Error ? error.message : "browser websocket authorization failed",
+			});
+			rejectWebSocketUpgrade(socket, 401, "Unauthorized");
+			return;
+		}
+
+		browserWsServer.handleUpgrade(request, socket, head, (ws) => {
+			registerBrowserWebSocketConnection(ws, target, lastSeq);
 		});
 	}
 
@@ -425,6 +776,234 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		});
 	}
 
+	function deliverAgentMessageToBrowser(
+		principal: ReturnType<typeof readRelayToken>,
+		payload: NonNullable<ReturnType<typeof parseRelayAgentMessage>>,
+	): boolean {
+		log("info", "relay agent message received", {
+			agentId: principal.id,
+			clientId: payload.clientId,
+			...describeRelayPayload(payload.message),
+		});
+		const client = state.browserClients.get(payload.clientId);
+		if (!client || client.closed || client.agentId !== principal.id) {
+			log("warn", "relay agent message rejected; browser client unavailable", {
+				agentId: principal.id,
+				clientId: payload.clientId,
+				hasClient: Boolean(client),
+				clientClosed: client?.closed,
+				clientAgentId: client?.agentId,
+			});
+			return false;
+		}
+
+		const queuedToBrowser = client.send(payload.message);
+		log("info", "relay agent message queued to browser", {
+			agentId: principal.id,
+			clientId: payload.clientId,
+			queuedToBrowser,
+			...describeRelayPayload(payload.message),
+		});
+		return queuedToBrowser;
+	}
+
+	function registerAgentWebSocketConnection(
+		ws: WebSocket,
+		principal: ReturnType<typeof readRelayToken>,
+	) {
+		let closed = false;
+		let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+		const close = (reason: string) => {
+			if (closed) {
+				return;
+			}
+
+			log("info", "relay agent websocket closing", {
+				agentId: principal.id,
+				ownerUserId: principal.ownerUserId ?? null,
+				reason,
+				readyState: ws.readyState,
+				bufferedAmount: ws.bufferedAmount,
+			});
+			closed = true;
+			connection.closed = true;
+			if (heartbeatTimer) {
+				clearInterval(heartbeatTimer);
+				heartbeatTimer = null;
+			}
+
+			const existing = state.agentConnections.get(principal.id);
+			if (existing === connection) {
+				state.agentConnections.delete(principal.id);
+			}
+
+			if (reason === "agent_owner_session_replaced") {
+				for (const client of listBrowserClientsForAgent(principal.id)) {
+					client.close(reason);
+				}
+			}
+
+			if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+				ws.close(1000, reason);
+			}
+		};
+
+		const connection: RelayAgentConnection = {
+			agentId: principal.id,
+			ownerUserId: principal.ownerUserId ?? null,
+			closed: false,
+			send(command) {
+				if (closed || ws.readyState !== WebSocket.OPEN) {
+					log("warn", "relay agent websocket command skipped; socket not open", {
+						agentId: principal.id,
+						commandType: command.type,
+						clientId: command.clientId,
+						readyState: ws.readyState,
+						bufferedAmount: ws.bufferedAmount,
+					});
+					return false;
+				}
+
+				const data = JSON.stringify(command);
+				log("info", "relay agent websocket command sending", {
+					agentId: principal.id,
+					commandType: command.type,
+					clientId: command.clientId,
+					lastSeq: "lastSeq" in command ? command.lastSeq : undefined,
+					messageType: "message" in command && isObjectRecord(command.message) && typeof command.message.type === "string"
+						? command.message.type
+						: undefined,
+					byteLength: Buffer.byteLength(data),
+					bufferedAmount: ws.bufferedAmount,
+				});
+				ws.send(data, (error) => {
+					if (error) {
+						log("warn", "relay agent websocket command send failed", {
+							agentId: principal.id,
+							commandType: command.type,
+							clientId: command.clientId,
+							error: error.message,
+						});
+						close("agent_ws_send_failed");
+						return;
+					}
+
+					log("info", "relay agent websocket command sent", {
+						agentId: principal.id,
+						commandType: command.type,
+						clientId: command.clientId,
+						bufferedAmount: ws.bufferedAmount,
+					});
+				});
+				return true;
+			},
+			close,
+		};
+
+		const existing = state.agentConnections.get(principal.id);
+		if (existing) {
+			log("info", "relay agent websocket replacing existing stream", {
+				agentId: principal.id,
+			});
+			existing.close("agent_stream_replaced");
+		}
+		if (principal.ownerUserId) {
+			closeAgentConnectionsForOwner(principal.ownerUserId, principal.id, "agent_owner_session_replaced");
+		}
+
+		state.agentConnections.set(principal.id, connection);
+
+		ws.on("message", (data) => {
+			let parsed: unknown;
+			const rawMessage = getWebSocketMessageText(data);
+			try {
+				parsed = JSON.parse(rawMessage);
+			} catch {
+				log("warn", "relay agent websocket ignored invalid json", {
+					agentId: principal.id,
+					rawLength: rawMessage.length,
+				});
+				return;
+			}
+
+			const payload = parseRelayAgentMessage(parsed);
+			if (!payload) {
+				log("warn", "relay agent websocket ignored invalid message", {
+					agentId: principal.id,
+					rawLength: rawMessage.length,
+				});
+				return;
+			}
+
+			deliverAgentMessageToBrowser(principal, payload);
+		});
+
+		ws.on("close", (code, reason) => {
+			log("info", "relay agent websocket closed", {
+				agentId: principal.id,
+				code,
+				reason: reason.toString(),
+			});
+			close("agent_ws_closed");
+		});
+
+		ws.on("error", (error) => {
+			log("warn", "relay agent websocket error", {
+				agentId: principal.id,
+				error: error.message,
+			});
+			close("agent_ws_error");
+		});
+
+		heartbeatTimer = setInterval(() => {
+			if (closed || ws.readyState !== WebSocket.OPEN) {
+				return;
+			}
+
+			if (ws.bufferedAmount > 0) {
+				log("warn", "relay agent websocket heartbeat sees buffered data", {
+					agentId: principal.id,
+					bufferedAmount: ws.bufferedAmount,
+				});
+			}
+
+			ws.ping();
+		}, RELAY_SSE_HEARTBEAT_INTERVAL_MS);
+
+		notifyAgentOfConnectedClients(principal.id);
+		log("info", "relay agent websocket connected", {
+			agentId: principal.id,
+			agentConnections: state.agentConnections.size,
+		});
+	}
+
+	function handleAgentWebSocketUpgrade(
+		request: IncomingMessage,
+		socket: Duplex,
+		head: Buffer,
+	) {
+		let principal: ReturnType<typeof readRelayToken>;
+		try {
+			const token = readBearerTokenFromRequest(request);
+			principal = readRelayToken(token);
+			if (principal.type !== "agent") {
+				throw new AuthError("only agent tokens may open relay agent transport");
+			}
+			assertActiveAgentPrincipal(principal);
+		} catch (error) {
+			log("warn", "relay agent websocket rejected", {
+				error: error instanceof Error ? error.message : "agent websocket authorization failed",
+			});
+			rejectWebSocketUpgrade(socket, 401, "Unauthorized");
+			return;
+		}
+
+		agentWsServer.handleUpgrade(request, socket, head, (ws) => {
+			registerAgentWebSocketConnection(ws, principal);
+		});
+	}
+
 	// Accepts one agent-originated server message and forwards it to the
 	// browser client currently paired to that same agent.
 	async function handleAgentMessageRequest(
@@ -445,32 +1024,11 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 			return;
 		}
 
-		log("info", "relay agent message received", {
-			agentId: principal.id,
-			clientId: payload.clientId,
-			messageType: typeof payload.message === "object" && payload.message !== null && "type" in payload.message ? payload.message.type : "unknown",
-			seq: typeof payload.message === "object" && payload.message !== null && "type" in payload.message && payload.message.type === "sync_event" && "seq" in payload.message ? payload.message.seq : undefined,
-			innerType: typeof payload.message === "object" && payload.message !== null && "type" in payload.message && payload.message.type === "sync_event" && "payload" in payload.message && typeof payload.message.payload === "object" && payload.message.payload !== null && "type" in payload.message.payload ? payload.message.payload.type : undefined,
-		});
-		const client = state.browserClients.get(payload.clientId);
-		if (!client || client.closed || client.agentId !== principal.id) {
-			log("warn", "relay agent message rejected; browser client unavailable", {
-				agentId: principal.id,
-				clientId: payload.clientId,
-				hasClient: Boolean(client),
-				clientClosed: client?.closed,
-				clientAgentId: client?.agentId,
-			});
+		if (!deliverAgentMessageToBrowser(principal, payload)) {
 			sendJson(response, 409, { message: "Browser client stream is not connected." }, corsHeaders);
 			return;
 		}
 
-		const delivered = client.send(payload.message);
-		log("info", "relay agent message delivered to browser", {
-			agentId: principal.id,
-			clientId: payload.clientId,
-			delivered,
-		});
 		sendJson(response, 202, { ok: true }, corsHeaders);
 	}
 
@@ -482,8 +1040,10 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		closeAgentConnectionsForOwner,
 		notifyAgentOfConnectedClients,
 		registerBrowserClientStream,
+		handleBrowserClientWebSocketUpgrade,
 		handleClientMessageRequest,
 		handleAgentStreamRequest,
+		handleAgentWebSocketUpgrade,
 		handleAgentMessageRequest,
 	};
 }

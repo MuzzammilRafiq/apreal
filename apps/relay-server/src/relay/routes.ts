@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { Duplex } from "node:stream";
 import {
 	CLIENT_EVENT_STREAM_PATH,
 	CLIENT_MESSAGE_PATH,
@@ -408,5 +409,26 @@ export function createRelayRequestHandler(state: RelayServerState) {
 
 		// Everything else is outside the relay API surface.
 		sendText(response, 404, "Not Found", corsHeaders);
+	};
+}
+
+export function createRelayUpgradeHandler(state: RelayServerState) {
+	const transports = createRelayTransportHandlers(state);
+
+	return (request: IncomingMessage, socket: Duplex, head: Buffer) => {
+		const pathname = new URL(request.url ?? "/", "http://relay.local").pathname;
+		if (pathname === CLIENT_EVENT_STREAM_PATH) {
+			transports.handleBrowserClientWebSocketUpgrade(request, socket, head);
+			return;
+		}
+
+		if (pathname === RELAY_AGENT_STREAM_PATH) {
+			transports.handleAgentWebSocketUpgrade(request, socket, head);
+			return;
+		}
+
+		log("warn", "relay websocket upgrade rejected for unknown path", { pathname });
+		socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+		socket.destroy();
 	};
 }

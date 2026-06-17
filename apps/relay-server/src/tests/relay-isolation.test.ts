@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import test, { type TestContext } from "node:test";
 import { fileURLToPath } from "node:url";
+import { WebSocket, type RawData } from "ws";
 
 import {
 	CLIENT_EVENT_STREAM_PATH,
@@ -50,6 +51,12 @@ type SseWaiter = {
 
 type SseStream = {
 	next<T>(timeoutMs?: number): Promise<T | null>;
+	close(): Promise<void>;
+};
+
+type WsStream = {
+	next<T>(timeoutMs?: number): Promise<T | null>;
+	send(value: unknown): Promise<void>;
 	close(): Promise<void>;
 };
 
@@ -203,6 +210,136 @@ async function openSseStream(url: string, options?: { headers?: Record<string, s
 			} catch {
 				// Ignore teardown errors from an aborted test stream.
 			}
+		},
+	};
+}
+
+function toWebSocketUrl(url: string): string {
+	const websocketUrl = new URL(url);
+	websocketUrl.protocol = websocketUrl.protocol === "https:" ? "wss:" : "ws:";
+	return websocketUrl.toString();
+}
+
+function getWebSocketMessageText(data: RawData): string {
+	if (typeof data === "string") {
+		return data;
+	}
+
+	if (Buffer.isBuffer(data)) {
+		return data.toString("utf8");
+	}
+
+	if (Array.isArray(data)) {
+		return Buffer.concat(data).toString("utf8");
+	}
+
+	return Buffer.from(data).toString("utf8");
+}
+
+async function openWsStream(url: string, options?: { headers?: Record<string, string> }): Promise<WsStream> {
+	const ws = new WebSocket(toWebSocketUrl(url), {
+		headers: options?.headers,
+	});
+	const queuedEvents: unknown[] = [];
+	const waiters: SseWaiter[] = [];
+	let closed = false;
+
+	const resolveEvent = (event: unknown) => {
+		const waiter = waiters.shift();
+		if (!waiter) {
+			queuedEvents.push(event);
+			return;
+		}
+
+		if (waiter.timer) {
+			clearTimeout(waiter.timer);
+		}
+		waiter.resolve(event);
+	};
+
+	const rejectAll = (error: unknown) => {
+		closed = true;
+		while (waiters.length > 0) {
+			const waiter = waiters.shift();
+			if (!waiter) {
+				continue;
+			}
+
+			if (waiter.timer) {
+				clearTimeout(waiter.timer);
+			}
+			waiter.reject(error);
+		}
+	};
+
+	ws.on("message", (data) => {
+		resolveEvent(JSON.parse(getWebSocketMessageText(data)));
+	});
+	ws.on("close", () => {
+		rejectAll(new Error("WebSocket closed."));
+	});
+	ws.on("error", (error) => {
+		rejectAll(error);
+	});
+
+	await new Promise<void>((resolve, reject) => {
+		ws.once("open", resolve);
+		ws.once("error", reject);
+	});
+
+	return {
+		next<T>(timeoutMs = 1_000) {
+			if (queuedEvents.length > 0) {
+				return Promise.resolve(queuedEvents.shift() as T);
+			}
+
+			if (closed) {
+				return Promise.reject(new Error("WebSocket closed."));
+			}
+
+			return new Promise<T | null>((resolve, reject) => {
+				const waiter: SseWaiter = {
+					resolve,
+					reject,
+					timer: setTimeout(() => {
+						const index = waiters.indexOf(waiter);
+						if (index >= 0) {
+							waiters.splice(index, 1);
+						}
+						resolve(null);
+					}, timeoutMs),
+				};
+				waiters.push(waiter);
+			});
+		},
+		send(value: unknown) {
+			return new Promise<void>((resolve, reject) => {
+				ws.send(JSON.stringify(value), (error) => {
+					if (error) {
+						reject(error);
+						return;
+					}
+
+					resolve();
+				});
+			});
+		},
+		close() {
+			if (ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+				return Promise.resolve();
+			}
+
+			return new Promise<void>((resolve) => {
+				const timer = setTimeout(() => {
+					ws.terminate();
+					resolve();
+				}, 250);
+				ws.once("close", () => {
+					clearTimeout(timer);
+					resolve();
+				});
+				ws.close();
+			});
 		},
 	};
 }
@@ -483,6 +620,67 @@ test("replacing a browser stream keeps the logical client connected", async (t) 
 		lastSeq: 7,
 	});
 	assert.equal(await agentStream.next<RelayAgentCommand>(150), null);
+});
+
+test("routes websocket browser and agent traffic bidirectionally", async (t) => {
+	const { baseUrl } = await startRelayTestServer(t);
+	const ownerGrant = generateOwnerAgentGrant("owner-ws").ownerGrant;
+	const initialClient = await issueClientAuth(baseUrl, "client-ws", "client-key-ws", ownerGrant);
+	const agent = await issueAgentAuth(baseUrl, "agent-ws", "agent-key-ws", ownerGrant);
+	const client = await refreshClientAuth(baseUrl, initialClient, ownerGrant);
+
+	const agentStream = await openWsStream(`${baseUrl}${RELAY_AGENT_STREAM_PATH}`, {
+		headers: {
+			authorization: `Bearer ${agent.token}`,
+		},
+	});
+	let browserStream: WsStream | null = null;
+	try {
+		const browserUrl = new URL(`${baseUrl}${CLIENT_EVENT_STREAM_PATH}`);
+		browserUrl.searchParams.set("token", client.token);
+		browserUrl.searchParams.set(SYNC_LAST_SEQ_QUERY_PARAM, "5");
+		browserStream = await openWsStream(browserUrl.toString());
+
+		assert.deepEqual(await agentStream.next<RelayAgentCommand>(), {
+			type: "client_connect",
+			clientId: client.clientId,
+			lastSeq: 5,
+		});
+
+		const clientMessage = {
+			type: "prompt",
+			prompt: "hello over websocket",
+		};
+		await browserStream.send(clientMessage);
+		assert.deepEqual(await agentStream.next<RelayAgentCommand>(), {
+			type: "client_message",
+			clientId: client.clientId,
+			message: clientMessage,
+		});
+
+		const serverMessage = {
+			type: "sync_event",
+			seq: 6,
+			scope: "session:session-ws",
+			emittedAt: Date.now(),
+			payload: {
+				type: "assistant_delta",
+				sessionId: "session-ws",
+				messageId: "message-ws",
+				delta: "hi",
+				contentIndex: 0,
+			},
+		};
+		await agentStream.send({
+			type: "server_message",
+			clientId: client.clientId,
+			message: serverMessage,
+		});
+		assert.deepEqual(await browserStream.next(), serverMessage);
+	} finally {
+		await browserStream?.close();
+		await agentStream.close();
+	}
 });
 
 test("rejects agent delivery to a client paired with another agent", async (t) => {

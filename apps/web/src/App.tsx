@@ -40,7 +40,7 @@ type PendingConnectionWaiter = {
 	reject(error: Error): void;
 	timer: number;
 };
-import { coerceRouteForCapabilities, type WebRuntime } from "./runtime";
+import { coerceRouteForCapabilities, type WebEventStream, type WebRuntime } from "./runtime";
 import { useAppAdmin } from "./useAppAdmin";
 
 type AppProps = {
@@ -698,7 +698,7 @@ export function App({ runtime }: AppProps) {
 			return;
 		}
 
-		let eventSource: EventSource | null = null;
+		let eventSource: WebEventStream | null = null;
 		let cancelled = false;
 
 		const connect = async () => {
@@ -1021,6 +1021,13 @@ export function App({ runtime }: AppProps) {
 					lastSeq: lastSeenSyncSeqRef.current,
 					activeSessionId: activeSessionIdRef.current,
 				});
+				if (runtime.target === "remote" && !cancelled) {
+					window.setTimeout(() => {
+						if (!cancelled) {
+							setStreamGeneration((current) => current + 1);
+						}
+					}, 1_000);
+				}
 			};
 		};
 

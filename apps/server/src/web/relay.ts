@@ -1,4 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
+import { WebSocket, type RawData } from "ws";
 import {
 	RELAY_AGENT_MESSAGE_PATH,
 	RELAY_AGENT_STREAM_PATH,
@@ -55,6 +56,7 @@ export function createRelay(
 	const { logger, relayUrl, relayState, clients } = state;
 	const { removeClientConnection, registerClientConnection, sendError, sendConnected } = clientActions;
 	let relayAuthRefreshPromise: Promise<Awaited<ReturnType<typeof ensureRelayAgentAuth>>> | null = null;
+	let relayAgentWebSocket: WebSocket | null = null;
 
 	function getClientAuthErrorStatus(error: unknown): number {
 		const message = getErrorMessage(error);
@@ -120,6 +122,21 @@ export function createRelay(
 	}
 
 	async function sendRelayServerMessage(token: string, clientId: string, payload: ServerMessage) {
+		const activeWebSocket = relayAgentWebSocket;
+		if (activeWebSocket?.readyState === WebSocket.OPEN) {
+			try {
+				await sendRelayServerMessageOverWebSocket(activeWebSocket, clientId, payload);
+				return;
+			} catch (error) {
+				logger.warn("relay websocket send failed; falling back to http post", {
+					clientId,
+					payloadType: payload.type === "sync_event" ? payload.payload.type : payload.type,
+					seq: payload.type === "sync_event" ? payload.seq : undefined,
+					error: getErrorMessage(error),
+				});
+			}
+		}
+
 		const response = await fetch(new URL(RELAY_AGENT_MESSAGE_PATH, relayUrl), {
 			method: "POST",
 			headers: {
@@ -152,6 +169,64 @@ export function createRelay(
 			(error as Error & { status?: number }).status = 401;
 		}
 		throw error;
+	}
+
+	function createRelayWebSocketUrl(pathname: string): string {
+		const url = new URL(pathname, relayUrl);
+		url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+		return url.toString();
+	}
+
+	function getWebSocketMessageText(data: RawData): string {
+		if (typeof data === "string") {
+			return data;
+		}
+
+		if (Buffer.isBuffer(data)) {
+			return data.toString("utf8");
+		}
+
+		if (Array.isArray(data)) {
+			return Buffer.concat(data).toString("utf8");
+		}
+
+		return Buffer.from(data).toString("utf8");
+	}
+
+	function sendRelayServerMessageOverWebSocket(ws: WebSocket, clientId: string, payload: ServerMessage): Promise<void> {
+		const message = {
+			type: "server_message",
+			clientId,
+			message: payload,
+		};
+		const data = JSON.stringify(message);
+		logger.info("sending relay server message over websocket", {
+			clientId,
+			payloadType: payload.type === "sync_event" ? payload.payload.type : payload.type,
+			seq: payload.type === "sync_event" ? payload.seq : undefined,
+			byteLength: Buffer.byteLength(data),
+			bufferedAmount: ws.bufferedAmount,
+		});
+		return new Promise((resolve, reject) => {
+			ws.send(data, (error) => {
+				if (error) {
+					logger.warn("relay websocket server message send failed", {
+						clientId,
+						error: getErrorMessage(error),
+					});
+					reject(error);
+					return;
+				}
+
+				logger.info("sent relay server message over websocket", {
+					clientId,
+					payloadType: payload.type === "sync_event" ? payload.payload.type : payload.type,
+					seq: payload.type === "sync_event" ? payload.seq : undefined,
+					bufferedAmount: ws.bufferedAmount,
+				});
+				resolve();
+			});
+		});
 	}
 
 	async function postRelayServerMessage(clientId: string, payload: ServerMessage) {
@@ -355,6 +430,100 @@ export function createRelay(
 		}
 	}
 
+	async function consumeRelayAgentWebSocket(token: string, signal: AbortSignal) {
+		const url = createRelayWebSocketUrl(RELAY_AGENT_STREAM_PATH);
+		const ws = new WebSocket(url, {
+			headers: {
+				authorization: `Bearer ${token}`,
+			},
+		});
+		relayAgentWebSocket = ws;
+		let commandChain = Promise.resolve();
+		let opened = false;
+
+		const closeForAbort = () => {
+			if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+				ws.close(1000, "relay_transport_aborted");
+			}
+		};
+		signal.addEventListener("abort", closeForAbort, { once: true });
+
+		try {
+			await new Promise<void>((resolve, reject) => {
+				const handleOpen = () => {
+					ws.off("error", handleOpenError);
+					ws.off("close", handleOpenClose);
+					opened = true;
+					relayState.transportConnected = true;
+					logger.info("relay agent websocket opened", {
+						relayUrl,
+						bufferedAmount: ws.bufferedAmount,
+					});
+					resolve();
+				};
+				const handleOpenError = (error: Error) => {
+					ws.off("open", handleOpen);
+					ws.off("close", handleOpenClose);
+					reject(error);
+				};
+				const handleOpenClose = (code: number, reason: Buffer) => {
+					ws.off("open", handleOpen);
+					ws.off("error", handleOpenError);
+					reject(new Error(`relay agent websocket closed before open (${code}: ${reason.toString()})`));
+				};
+				ws.once("open", handleOpen);
+				ws.once("error", handleOpenError);
+				ws.once("close", handleOpenClose);
+			});
+
+			await new Promise<void>((resolve, reject) => {
+				ws.on("message", (data) => {
+					const rawMessage = getWebSocketMessageText(data);
+					logger.info("relay agent websocket message event", {
+						dataLength: rawMessage.length,
+					});
+					commandChain = commandChain
+						.then(async () => {
+							const command = parseRelayAgentCommand(rawMessage);
+							if (command) {
+								await handleRelayAgentCommand(command);
+							} else {
+								logger.warn("ignored invalid relay agent websocket command", { raw: rawMessage });
+							}
+						})
+						.catch((error) => {
+							logger.warn("relay agent websocket command handler failed", {
+								error: getErrorMessage(error),
+							});
+						});
+				});
+				ws.once("close", (code, reason) => {
+					logger.warn("relay agent websocket closed", {
+						relayUrl,
+						code,
+						reason: reason.toString(),
+					});
+					resolve();
+				});
+				ws.once("error", (error) => {
+					logger.warn("relay agent websocket error", {
+						relayUrl,
+						error: getErrorMessage(error),
+					});
+					reject(error);
+				});
+			});
+		} finally {
+			signal.removeEventListener("abort", closeForAbort);
+			if (relayAgentWebSocket === ws) {
+				relayAgentWebSocket = null;
+			}
+			await commandChain.catch(() => {
+				// Command handler errors are logged above.
+			});
+		}
+	}
+
 	async function runRelayTransportLoop(generation: number) {
 		while (generation === relayState.transportGeneration) {
 			let currentAuth: Awaited<ReturnType<typeof ensureRelayAgentAuth>>;
@@ -374,12 +543,12 @@ export function createRelay(
 			relayState.transportAbortController = abortController;
 
 			try {
-				await consumeRelayAgentStream(currentAuth.token as string, abortController.signal);
+				await consumeRelayAgentWebSocket(currentAuth.token as string, abortController.signal);
 				if (abortController.signal.aborted || generation !== relayState.transportGeneration) {
 					return;
 				}
 
-				logger.warn("relay agent stream ended; reconnecting", {
+				logger.warn("relay agent websocket ended; reconnecting", {
 					relayUrl,
 					agentId: currentAuth.agentId,
 				});
@@ -388,7 +557,7 @@ export function createRelay(
 					return;
 				}
 
-				logger.warn("relay agent stream disconnected", {
+				logger.warn("relay agent websocket disconnected", {
 					relayUrl,
 					agentId: currentAuth.agentId,
 					error: getErrorMessage(error),
