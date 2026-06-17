@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { CreateMcpServerRequest, LocalWebAdminStatus, McpServerConfig, ProvidersResponse, UpdateMcpServerRequest } from "@apreal/shared";
 import type { ScheduledJobDetails, SessionSummary } from "./chatTypes";
-import { ADMIN_STATUS_REFRESH_INTERVAL_MS, getErrorMessage, type AppRoute, type ClientMessage, type ServerPayload } from "./app-state";
+import {
+	LOCAL_ADMIN_STATUS_REFRESH_INTERVAL_MS,
+	RELAY_STATUS_REFRESH_INTERVAL_MS,
+	getErrorMessage,
+	type AppRoute,
+	type ClientMessage,
+	type ServerPayload,
+} from "./app-state";
 import type { WebRuntime } from "./runtime";
 import {
 	createMcpServer as createMcpServerRequest,
@@ -146,8 +153,10 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 
 	const refreshAdminStatus = useCallback(async () => {
 		const nextStatus = await runtime.transport.readStatus();
-		setAdminStatus(nextStatus.adminStatus);
-		setAdminStatusError(null);
+		if (nextStatus.adminStatus) {
+			setAdminStatus(nextStatus.adminStatus);
+			setAdminStatusError(null);
+		}
 		setTransportStatusMessage(nextStatus.message);
 		setServerReady(nextStatus.serverReady);
 		setTransportReady(nextStatus.transportReady);
@@ -189,9 +198,9 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 					return;
 				}
 
-				setAdminStatus(null);
 				setAdminStatusError(getErrorMessage(error));
 				if (runtime.target === "local") {
+					setAdminStatus(null);
 					setTransportStatusMessage(null);
 					setServerReady(false);
 					setTransportReady(false);
@@ -200,7 +209,10 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 				}
 			} finally {
 				if (!cancelled) {
-					refreshTimer = window.setTimeout(pollAdminStatus, ADMIN_STATUS_REFRESH_INTERVAL_MS);
+					const refreshIntervalMs = runtime.target === "remote"
+						? RELAY_STATUS_REFRESH_INTERVAL_MS
+						: LOCAL_ADMIN_STATUS_REFRESH_INTERVAL_MS;
+					refreshTimer = window.setTimeout(pollAdminStatus, refreshIntervalMs);
 				}
 			}
 		};
@@ -213,7 +225,7 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 				window.clearTimeout(refreshTimer);
 			}
 		};
-	}, [enabled, refreshAdminStatus, runtime.capabilities.settingsSections, setConnected, setStreamRequested]);
+	}, [enabled, refreshAdminStatus, runtime.capabilities.settingsSections, runtime.target, setConnected, setStreamRequested]);
 
 	const refreshScheduledJobs = useCallback(async () => {
 		setLoadingScheduledJobs(true);

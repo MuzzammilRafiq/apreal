@@ -113,11 +113,16 @@ export function SettingsPage({
 	const [deleteSessionsMessage, setDeleteSessionsMessage] = useState<string | null>(null);
 	const [deleteSessionsError, setDeleteSessionsError] = useState<string | null>(null);
 
-	const currentAppendSystemPrompt = adminStatus?.appendSystemPrompt ?? "";
-	if (appendSystemPromptBaseline !== currentAppendSystemPrompt) {
+	const currentAppendSystemPrompt = adminStatus?.appendSystemPrompt;
+
+	useEffect(() => {
+		if (currentAppendSystemPrompt === undefined || appendSystemPromptBaseline === currentAppendSystemPrompt) {
+			return;
+		}
+
 		setAppendSystemPromptBaseline(currentAppendSystemPrompt);
 		setAppendSystemPromptDraft(currentAppendSystemPrompt);
-	}
+	}, [appendSystemPromptBaseline, currentAppendSystemPrompt]);
 
 	useEffect(() => {
 		if (!mergedVisibleSections.includes(activeSection)) {

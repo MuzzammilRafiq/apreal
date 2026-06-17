@@ -16,7 +16,8 @@ export const ACTIVE_SESSION_STORAGE_KEY = "pi-browser-active-session";
 export const SESSION_PAGE_SIZE = 50;
 export const STREAM_DISCONNECTED_MESSAGE = "Disconnected from the server stream. Reconnecting...";
 export const STREAM_REQUIRED_MESSAGE = "Client event stream is not connected.";
-export const ADMIN_STATUS_REFRESH_INTERVAL_MS = 3_000;
+export const LOCAL_ADMIN_STATUS_REFRESH_INTERVAL_MS = 3_000;
+export const RELAY_STATUS_REFRESH_INTERVAL_MS = 15_000;
 
 export type AppRoute = "chat" | "settings" | "jobs";
 
