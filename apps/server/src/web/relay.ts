@@ -183,6 +183,12 @@ export function createRelay(
 
 	function ensureRelayClientConnection(clientId: string, lastSeq?: number) {
 		const existing = clients.get(clientId);
+		if (existing?.transport === "relay" && !existing.closed) {
+			existing.ready = true;
+			clientActions.replayClientSyncEvents(clientId, lastSeq);
+			return existing;
+		}
+
 		const wasReady = existing?.ready ?? false;
 		const client = registerClientConnection(clientId, "relay", createRelaySendPayload(clientId));
 		client.ready = true;

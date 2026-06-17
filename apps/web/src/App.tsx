@@ -668,6 +668,11 @@ export function App({ runtime }: AppProps) {
 					setConnected(true);
 					setConnectionError(null);
 					resolvePendingConnectionsRef.current();
+					if (runtime.target === "remote" && runtime.capabilities.settings) {
+						void runtime.transport.sendMessage({ type: "load_status" }).catch((error) => {
+							setAdminStatusError(getErrorMessage(error));
+						});
+					}
 					requestSessionPageRef.current(0, Math.max(visibleSessionLimitRef.current, SESSION_PAGE_SIZE));
 					ensureSessionLoadedRef.current(activeSessionIdRef.current);
 					break;

@@ -152,13 +152,7 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		setServerReady(nextStatus.serverReady);
 		setTransportReady(nextStatus.transportReady);
 		setAuthorizedSettingsSections(nextStatus.settingsSections);
-		if (runtime.target === "remote") {
-			if (runtime.capabilities.settings) {
-				void sendRemoteMessage({ type: "load_status" }).catch(() => {
-					// The heartbeat state is already reflected above.
-				});
-			}
-		} else if (runtime.capabilities.providers) {
+		if (runtime.target !== "remote" && runtime.capabilities.providers) {
 			void refreshProviders().catch(() => {
 				// Provider errors are already captured in UI state.
 			});
