@@ -181,19 +181,22 @@ export function createRelay(
 		};
 	}
 
-	function ensureRelayClientConnection(clientId: string, lastSeq?: number) {
+	function ensureRelayClientConnection(clientId: string, options: { lastSeq?: number; announce?: boolean } = {}) {
 		const existing = clients.get(clientId);
 		if (existing?.transport === "relay" && !existing.closed) {
 			existing.ready = true;
-			clientActions.replayClientSyncEvents(clientId, lastSeq);
+			clientActions.replayClientSyncEvents(clientId, options.lastSeq);
+			if (options.announce) {
+				sendConnected(clientId);
+			}
 			return existing;
 		}
 
 		const wasReady = existing?.ready ?? false;
 		const client = registerClientConnection(clientId, "relay", createRelaySendPayload(clientId));
 		client.ready = true;
-		clientActions.replayClientSyncEvents(clientId, lastSeq);
-		if (!wasReady) {
+		clientActions.replayClientSyncEvents(clientId, options.lastSeq);
+		if (options.announce || !wasReady) {
 			sendConnected(clientId);
 		}
 		return client;
@@ -202,7 +205,7 @@ export function createRelay(
 	async function handleRelayAgentCommand(command: RelayAgentCommand) {
 		switch (command.type) {
 			case "client_connect": {
-				ensureRelayClientConnection(command.clientId, command.lastSeq);
+				ensureRelayClientConnection(command.clientId, { lastSeq: command.lastSeq, announce: true });
 				break;
 			}
 			case "client_disconnect": {

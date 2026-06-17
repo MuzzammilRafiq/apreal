@@ -657,10 +657,7 @@ export function App({ runtime }: AppProps) {
 			}
 
 			eventSource.onopen = () => {
-				connectedRef.current = true;
-				setConnected(true);
 				setConnectionError(null);
-				resolvePendingConnectionsRef.current();
 			};
 
 			eventSource.onmessage = (event) => {
