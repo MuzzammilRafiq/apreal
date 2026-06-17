@@ -1,11 +1,8 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { code } from "@streamdown/code";
 import type { UIMessage } from "ai";
-import type { ComponentProps, HTMLAttributes } from "react";
-import { memo } from "react";
-import { Streamdown } from "streamdown";
+import type { HTMLAttributes } from "react";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -41,32 +38,3 @@ export const MessageContent = ({
     {children}
   </div>
 );
-
-export type MessageResponseProps = ComponentProps<typeof Streamdown>;
-
-const streamdownPlugins = { code };
-const streamdownControls = {
-  code: false,
-  mermaid: true,
-  table: true,
-};
-
-export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => (
-    <Streamdown
-      className={cn(
-        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-        className
-      )}
-      animated={false}
-      controls={streamdownControls}
-      plugins={streamdownPlugins}
-      {...props}
-    />
-  ),
-  (prevProps, nextProps) =>
-    prevProps.children === nextProps.children &&
-    nextProps.isAnimating === prevProps.isAnimating
-);
-
-MessageResponse.displayName = "MessageResponse";

@@ -4,8 +4,6 @@
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
-@source "../node_modules/streamdown/dist/*.js";
-@source "../node_modules/@streamdown/code/dist/*.js";
 
 @theme {
 	--font-ui: -apple-system-body, ui-sans-serif, -apple-system, system-ui, "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol";
@@ -277,26 +275,38 @@
 		overflow-anchor: none;
 	}
 
+	.markdown-content > :first-child {
+		margin-top: 0;
+	}
+
+	.markdown-content > :last-child {
+		margin-bottom: 0;
+	}
+
 	.markdown-content p + p,
 	.markdown-content p + ul,
 	.markdown-content p + ol,
 	.markdown-content p + pre,
-	.markdown-content p + .code-block,
+	.markdown-content p + .markdown-code-block,
 	.markdown-content p + blockquote,
 	.markdown-content ul + p,
 	.markdown-content ol + p,
 	.markdown-content pre + p,
-	.markdown-content .code-block + p,
-	.markdown-content h1 + .code-block,
-	.markdown-content h2 + .code-block,
-	.markdown-content h3 + .code-block,
-	.markdown-content .code-block + ul,
-	.markdown-content .code-block + ol,
-	.markdown-content table + p,
+	.markdown-content .markdown-code-block + p,
+	.markdown-content h1 + .markdown-code-block,
+	.markdown-content h2 + .markdown-code-block,
+	.markdown-content h3 + .markdown-code-block,
+	.markdown-content .markdown-code-block + ul,
+	.markdown-content .markdown-code-block + ol,
+	.markdown-content .markdown-table-container + p,
 	.markdown-content h1 + p,
 	.markdown-content h2 + p,
 	.markdown-content h3 + p {
 		margin-top: 0.75rem;
+	}
+
+	.markdown-content p {
+		margin: 0;
 	}
 
 	.markdown-content ul,
@@ -315,6 +325,24 @@
 
 	.markdown-content li + li {
 		margin-top: 0.3rem;
+	}
+
+	.markdown-content li > p {
+		display: inline;
+	}
+
+	.markdown-content li > p + p {
+		display: block;
+		margin-top: 0.45rem;
+	}
+
+	.markdown-content li.task-list-item {
+		list-style: none;
+	}
+
+	.markdown-content li.task-list-item input[type="checkbox"] {
+		margin: 0 0.4rem 0.12rem -1.25rem;
+		vertical-align: middle;
 	}
 
 	.markdown-content a {
@@ -348,197 +376,51 @@
 		color: var(--color-muted);
 	}
 
-	.markdown-content pre:not([data-streamdown="code-block"] pre) {
+	.markdown-content > pre {
+		margin-top: 1rem;
 		overflow-x: auto;
+		border-radius: 8px;
+		border: 1px solid var(--color-code-line);
+		background: var(--color-code-surface);
 		padding: 1rem;
 		color: var(--color-code-text);
 	}
 
-	.markdown-content pre:not([data-streamdown="code-block"] pre) code {
+	.markdown-content > pre code {
 		white-space: pre;
 		font-family: var(--font-mono);
 		font-size: 0.88rem;
 		line-height: 1.7;
 	}
 
-	.markdown-content [data-streamdown="code-block"] {
-		margin: 1rem 0 !important;
-		gap: 0 !important;
-		overflow: hidden;
-		border-radius: 8px;
-		border: 1px solid var(--color-code-line) !important;
-		background: var(--color-code-surface) !important;
-		padding: 0 !important;
-		box-shadow: 0 1px 2px rgba(39, 39, 42, 0.04);
-		content-visibility: visible !important;
-		contain-intrinsic-size: auto !important;
-	}
-
-	.markdown-content [data-streamdown="code-block-header"] {
-		height: 2rem !important;
-		border-bottom: 1px solid var(--color-code-line);
-		background: var(--color-code-surface-strong) !important;
-		color: var(--color-code-label) !important;
-	}
-
-	.markdown-content [data-streamdown="code-block-header"] span {
-		margin-left: 0 !important;
-		padding: 0 0.85rem;
-		font-size: 0.68rem;
-		font-weight: 600;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-	}
-
-	.markdown-content [data-streamdown="code-block-actions"] {
-		gap: 0.25rem;
-		border-color: rgba(0, 0, 0, 0.2) !important;
-		background: rgba(0, 0, 0, 0.9) !important;
-		color: #f4f4f5;
-		box-shadow: 0 8px 20px rgba(24, 24, 27, 0.18);
-		backdrop-filter: none;
-	}
-
-	.markdown-content [data-streamdown="code-block-actions"] button {
-		color: #f4f4f5;
-		opacity: 0.82;
-		transition: opacity 150ms, background-color 150ms, color 150ms;
-	}
-
-	.markdown-content [data-streamdown="code-block-actions"] button:hover {
-		background: rgba(255, 255, 255, 0.12);
-		color: #ffffff;
-		opacity: 1;
-	}
-
-	.markdown-content [data-streamdown="code-block-body"] {
-		overflow-x: auto !important;
-		border: 0 !important;
-		border-radius: 0 !important;
-		background: var(--color-code-surface) !important;
-		padding: 0.75rem 1.15rem 1rem !important;
-		color: var(--color-code-text) !important;
-	}
-
-	.markdown-content [data-streamdown="code-block-body"] pre {
-		margin: 0 !important;
-		background: transparent !important;
-	}
-
-	.markdown-content [data-streamdown="code-block-body"] code {
-		white-space: pre;
-		font-family: var(--font-mono);
-		font-size: 0.86rem;
-		line-height: 1.65;
-	}
-
-	.markdown-content [data-streamdown="code-block-body"] code > span {
-		display: block;
-		min-height: 1.65em;
-	}
-
-	.markdown-content [data-streamdown="code-block-body"] code > span::before {
-		display: none !important;
-		content: none !important;
-	}
-
-	.markdown-content .code-block {
-		position: relative;
-		margin-top: 0.75rem;
+	.markdown-content .markdown-code-block {
+		margin-top: 1rem;
 		overflow: hidden;
 		border-radius: 8px;
 		border: 1px solid var(--color-code-line);
 		background: var(--color-code-surface);
+		box-shadow: 0 1px 2px rgba(39, 39, 42, 0.04);
 	}
 
-	.markdown-content > .code-block:first-child {
-		margin-top: 0;
-	}
-
-	.markdown-content .code-block::before {
-		content: attr(data-language);
-		display: block;
+	.markdown-content .markdown-code-header {
+		display: flex;
+		min-height: 2rem;
+		align-items: center;
 		border-bottom: 1px solid var(--color-code-line);
-		padding: 0.6rem 1rem;
-		font-family: var(--font-mono);
-		font-size: 0.72rem;
-		font-weight: 600;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-		color: var(--color-code-label);
 		background: var(--color-code-surface-strong);
+		color: var(--color-code-label);
 	}
 
-	.markdown-content .code-block pre {
-		margin-top: 0;
-		background: transparent;
-	}
-
-	.markdown-content .code-block .hljs {
-		display: block;
-		background: transparent;
-		color: var(--color-code-text);
-	}
-
-	.markdown-content .code-block .hljs-comment,
-	.markdown-content .code-block .hljs-quote {
-		color: var(--color-code-comment);
-		font-style: italic;
-	}
-
-	.markdown-content .code-block .hljs-keyword,
-	.markdown-content .code-block .hljs-selector-tag,
-	.markdown-content .code-block .hljs-literal,
-	.markdown-content .code-block .hljs-section,
-	.markdown-content .code-block .hljs-link,
-	.markdown-content .code-block .hljs-doctag {
-		color: var(--color-code-keyword);
-		font-weight: 500;
-	}
-
-	.markdown-content .code-block .hljs-string,
-	.markdown-content .code-block .hljs-regexp,
-	.markdown-content .code-block .hljs-selector-attr,
-	.markdown-content .code-block .hljs-selector-pseudo,
-	.markdown-content .code-block .hljs-meta .hljs-string {
-		color: var(--color-code-string);
-	}
-
-	.markdown-content .code-block .hljs-number,
-	.markdown-content .code-block .hljs-bullet,
-	.markdown-content .code-block .hljs-variable,
-	.markdown-content .code-block .hljs-template-variable,
-	.markdown-content .code-block .hljs-operator {
-		color: var(--color-code-number);
-	}
-
-	.markdown-content .code-block .hljs-title,
-	.markdown-content .code-block .hljs-title.class_,
-	.markdown-content .code-block .hljs-title.function_,
-	.markdown-content .code-block .hljs-property,
-	.markdown-content .code-block .hljs-selector-id {
-		color: var(--color-code-title);
-	}
-
-	.markdown-content .code-block .hljs-attr,
-	.markdown-content .code-block .hljs-attribute,
-	.markdown-content .code-block .hljs-type {
-		color: var(--color-code-attribute);
-	}
-
-	.markdown-content .code-block .hljs-built_in,
-	.markdown-content .code-block .hljs-symbol {
-		color: var(--color-code-built-in);
-	}
-
-	.markdown-content .code-block .hljs-name,
-	.markdown-content .code-block .hljs-selector-class {
-		color: var(--color-code-name);
-	}
-
-	.markdown-content .code-block .hljs-meta,
-	.markdown-content .code-block .hljs-meta .hljs-keyword {
-		color: var(--color-code-meta);
+	.markdown-content .markdown-code-header span {
+		max-width: 100%;
+		overflow: hidden;
+		padding: 0 0.85rem;
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.markdown-content :not(pre) > code {
@@ -551,8 +433,34 @@
 		color: #171717;
 	}
 
-	.markdown-content table {
+	.markdown-content .markdown-code-block pre,
+	.markdown-content .markdown-code-shiki pre {
+		margin: 0;
+		overflow-x: auto;
+		border: 0;
+		border-radius: 0;
+		background: var(--color-code-surface) !important;
+		padding: 0.85rem 1rem 1rem;
+		color: var(--color-code-text);
+	}
+
+	.markdown-content .markdown-code-block code,
+	.markdown-content .markdown-code-shiki code {
+		white-space: pre;
+		font-family: var(--font-mono);
+		font-size: 0.86rem;
+		line-height: 1.65;
+	}
+
+	.markdown-content .markdown-table-container {
 		margin-top: 1rem;
+		max-width: 100%;
+		overflow-x: auto;
+		border: 1px solid var(--color-line);
+		border-radius: 8px;
+	}
+
+	.markdown-content table {
 		width: 100%;
 		border-collapse: collapse;
 		font-size: 0.95rem;
@@ -560,10 +468,20 @@
 
 	.markdown-content th,
 	.markdown-content td {
-		border: 1px solid var(--color-line);
+		border-right: 1px solid var(--color-line);
+		border-bottom: 1px solid var(--color-line);
 		padding: 0.6rem 0.8rem;
 		text-align: left;
 		vertical-align: top;
+	}
+
+	.markdown-content th:last-child,
+	.markdown-content td:last-child {
+		border-right: 0;
+	}
+
+	.markdown-content tr:last-child td {
+		border-bottom: 0;
 	}
 
 	.markdown-content th {
@@ -593,12 +511,10 @@
 
 	.markdown-content h1 {
 		font-size: 1.625rem;
-		letter-spacing: -0.02em;
 	}
 
 	.markdown-content h2 {
 		font-size: 1.375rem;
-		letter-spacing: -0.01em;
 	}
 
 	.markdown-content h3 {
