@@ -97,7 +97,7 @@ export function AccountAuthButton({
 				<button
 					type="button"
 					className={buttonClassName ?? (tone === "light"
-						? "ui-button-primary flex w-full items-center justify-center rounded-md border px-3 py-2 text-[0.8rem] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+						? "ui-settings-action-button flex w-full items-center justify-center rounded-md border px-3 py-2 text-[0.8rem] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
 						: "flex w-full items-center justify-center rounded-md bg-white px-3 py-2 text-[0.8rem] font-semibold text-black transition-colors duration-150 hover:bg-neutral-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white")}
 					onClick={() => {
 						void handleSignIn();
@@ -119,7 +119,7 @@ export function AccountAuthButton({
 			<button
 				type="button"
 				className={`flex w-full items-center justify-center rounded-md border px-3 py-2 text-[0.75rem] font-semibold transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 ${tone === "light"
-					? "ui-button-secondary focus-visible:outline-slate-500"
+					? "ui-settings-action-button focus-visible:outline-slate-500"
 					: "border-white/10 bg-white/4 text-[#b5b5b5] hover:border-white/16 hover:bg-white/8 hover:text-white focus-visible:outline-white"}`}
 				onClick={() => {
 					void handleSignOut();

@@ -241,6 +241,40 @@
 		color: var(--color-brand-strong);
 	}
 
+	.ui-settings-action-button {
+		border-color: #000000 !important;
+		background-color: #000000 !important;
+		color: #ffffff !important;
+	}
+
+	.ui-settings-action-button:hover {
+		background-color: #171717 !important;
+		color: #ffffff !important;
+	}
+
+	.ui-settings-action-button:disabled {
+		background-color: #000000 !important;
+		color: #ffffff !important;
+		opacity: 1 !important;
+	}
+
+	.ui-settings-danger-button {
+		border-color: #b91c1c !important;
+		background-color: #b91c1c !important;
+		color: #ffffff !important;
+	}
+
+	.ui-settings-danger-button:hover {
+		background-color: #991b1b !important;
+		color: #ffffff !important;
+	}
+
+	.ui-settings-danger-button:disabled {
+		background-color: #b91c1c !important;
+		color: #ffffff !important;
+		opacity: 1 !important;
+	}
+
 	.ui-field-line {
 		border-color: var(--color-brand-line-strong);
 		transition: border-color 150ms, background-color 150ms;
@@ -725,7 +759,6 @@ body :where(
 	address,
 	b,
 	blockquote,
-	button,
 	caption,
 	cite,
 	code,
@@ -783,7 +816,6 @@ body :where(
 	article,
 	aside,
 	blockquote,
-	button,
 	code,
 	dialog,
 	div,

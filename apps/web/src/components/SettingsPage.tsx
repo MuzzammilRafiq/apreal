@@ -502,7 +502,7 @@ export function SettingsPage({
 								{activeSection === "jobs" ? (
 									<button
 										type="button"
-										className="ui-button-secondary inline-flex w-full items-center justify-center gap-2 border px-3 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[961px]:w-auto"
+										className="ui-settings-action-button inline-flex w-full items-center justify-center gap-2 rounded border px-3 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[961px]:w-auto"
 										onClick={onRefreshJobs}
 									>
 										{refreshIcon(isLoadingJobs)}
@@ -511,7 +511,7 @@ export function SettingsPage({
 								) : activeSection === "mcp" ? (
 									<button
 										type="button"
-										className="ui-button-secondary inline-flex w-full items-center justify-center gap-2 border px-3 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[961px]:w-auto"
+										className="ui-settings-action-button inline-flex w-full items-center justify-center gap-2 rounded border px-3 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 cursor-pointer min-[961px]:w-auto"
 										onClick={onRefreshMcpServers}
 										disabled={isLoadingMcpServers}
 									>

@@ -162,7 +162,7 @@ export function SettingsMcpSection({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="rounded"
+                  className="ui-settings-action-button rounded"
                   onClick={() => {
                     resetMcpForm();
                     setMcpFormError(null);
@@ -314,7 +314,7 @@ export function SettingsMcpSection({
 
               <Button
                 type="submit"
-                className="w-full rounded"
+                className="ui-settings-action-button w-full rounded"
                 disabled={mcpActionServerId !== null}
               >
                 {isFormBusy
@@ -341,7 +341,7 @@ export function SettingsMcpSection({
               type="button"
               variant="outline"
               size="sm"
-              className="rounded"
+              className="ui-settings-action-button rounded"
               onClick={onRefreshMcpServers}
               disabled={isLoadingMcpServers}
             >
@@ -392,7 +392,7 @@ export function SettingsMcpSection({
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="rounded"
+                          className="ui-settings-action-button rounded"
                           onClick={() => handleEditMcpServer(server)}
                           disabled={mcpActionServerId !== null}
                         >
@@ -402,7 +402,7 @@ export function SettingsMcpSection({
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="rounded"
+                          className="ui-settings-action-button rounded"
                           onClick={() => {
                             void handleToggleMcpServer(server);
                           }}
@@ -414,7 +414,7 @@ export function SettingsMcpSection({
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="rounded"
+                          className="ui-settings-danger-button rounded"
                           onClick={() => {
                             void handleDeleteSelectedMcpServer(server.id);
                           }}

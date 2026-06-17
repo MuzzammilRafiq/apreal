@@ -66,7 +66,7 @@ export function SettingsJobsSection({
 						type="button"
 						variant="outline"
 						size="sm"
-						className="rounded"
+						className="ui-settings-action-button rounded"
 						onClick={onRefreshJobs}
 						disabled={isLoadingJobs}
 					>

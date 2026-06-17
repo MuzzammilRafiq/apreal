@@ -265,7 +265,7 @@ export function JobsPanel({
 									</label>
 									<button
 										type="submit"
-										className="ui-button-primary w-full rounded-md border px-4 py-2.5 text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer min-[640px]:w-auto"
+										className="ui-settings-action-button w-full rounded-md border px-4 py-2.5 text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed cursor-pointer min-[640px]:w-auto"
 										disabled={isMutating || intervalMinutes.trim().length === 0}
 									>
 										{isMutating ? "Syncing..." : "Update Schedule"}
@@ -275,11 +275,7 @@ export function JobsPanel({
 								<div className="mt-3.5 flex flex-col gap-2.5 min-[520px]:flex-row min-[520px]:flex-wrap">
 									<button
 										type="button"
-									className={`w-full rounded-md border px-4 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer min-[520px]:w-auto ${
-										selectedJob.enabled
-											? "ui-button-secondary"
-											: "ui-button-primary"
-									}`}
+									className="ui-settings-action-button w-full rounded-md border px-4 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed cursor-pointer min-[520px]:w-auto"
 										onClick={() => { void handleToggleEnabled(); }}
 										disabled={isMutating}
 									>
@@ -287,7 +283,7 @@ export function JobsPanel({
 									</button>
 									<button
 										type="button"
-									className="ui-button-secondary w-full rounded-md border px-4 py-2.5 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer min-[520px]:w-auto"
+									className="ui-settings-danger-button w-full cursor-pointer rounded-md border px-4 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed min-[520px]:w-auto"
 										onClick={() => { void handleDeleteJob(); }}
 										disabled={isMutating}
 									>
@@ -333,7 +329,7 @@ export function JobsPanel({
 								{totalRuns > 0 ? <StatusBadge label={`${totalRuns} total`} tone="neutral" /> : null}
 								<button
 									type="button"
-									className="ui-button-secondary rounded-md border px-3 py-1.5 text-xs font-bold cursor-pointer"
+									className="ui-settings-action-button rounded-md border px-3 py-1.5 text-xs font-bold cursor-pointer"
 									onClick={() => {
 										if (!selectedJob) {
 											return;

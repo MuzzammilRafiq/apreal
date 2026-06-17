@@ -275,7 +275,7 @@ export function SettingsModelsSection({
                                           {provider.supportsOAuth ? (
                                             <button
                                               type="button"
-                                              className="ui-button-secondary border px-2.5 py-1.5 text-[0.72rem] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+                                              className="ui-settings-action-button border px-2.5 py-1.5 text-[0.72rem] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed"
                                               onPointerDown={stopPickerButtonEvent}
                                               onMouseDown={stopPickerButtonEvent}
                                               onClick={(event) => {
@@ -295,7 +295,7 @@ export function SettingsModelsSection({
                                           {provider.supportsApiKey ? (
                                             <button
                                               type="button"
-                                              className="ui-button-secondary border px-2.5 py-1.5 text-[0.72rem] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+                                              className="ui-settings-action-button border px-2.5 py-1.5 text-[0.72rem] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed"
                                               onPointerDown={stopPickerButtonEvent}
                                               onMouseDown={stopPickerButtonEvent}
                                               onClick={(event) => {
@@ -337,7 +337,7 @@ export function SettingsModelsSection({
                                           <span className="mt-2 flex flex-wrap items-center gap-2">
                                             <button
                                               type="button"
-                                              className="ui-button-primary border px-2.5 py-1.5 text-[0.72rem] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+                                              className="ui-settings-action-button border px-2.5 py-1.5 text-[0.72rem] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed"
                                               onPointerDown={stopPickerButtonEvent}
                                               onMouseDown={stopPickerButtonEvent}
                                               onClick={(event) => {
