@@ -22,6 +22,7 @@ import {
 	cloneTranscript,
 	createSummaryOnlyCacheEntry,
 	getErrorMessage,
+	isClientStreamRequiredError,
 	isScheduledSessionSummary,
 	navigateToRoute,
 	parseServerMessage,
@@ -33,6 +34,12 @@ import {
 	type AppRoute,
 	type ClientMessage,
 } from "./app-state";
+
+type PendingConnectionWaiter = {
+	resolve(): void;
+	reject(error: Error): void;
+	timer: number;
+};
 import { coerceRouteForCapabilities, type WebRuntime } from "./runtime";
 import { useAppAdmin } from "./useAppAdmin";
 
@@ -138,6 +145,13 @@ export function App({ runtime }: AppProps) {
 	const [abortingSessionId, setAbortingSessionId] = useState<string | null>(null);
 	const signedIn = Boolean(authSession?.user);
 	const signInRequired = !authSessionPending && !signedIn;
+	const connectedRef = useRef(connected);
+	const restartEventStream = useCallback(() => {
+		connectedRef.current = false;
+		setConnected(false);
+		setStreamRequested(true);
+		setStreamGeneration((current) => current + 1);
+	}, []);
 	const {
 		adminStatus, adminStatusError, transportStatusMessage, serverReady: relayReady, transportReady, providers, providersError, mcpServers, mcpServersError, loadingMcpServers,
 		authorizedSettingsSections,
@@ -147,7 +161,7 @@ export function App({ runtime }: AppProps) {
 		updateScheduledJob, toggleScheduledJobEnabled, deleteScheduledJob, handleSaveAppendSystemPrompt,
 		handleSetDefaultModel, handleStartProviderLogin, handleSaveProviderApiKey, handleCreateMcpServer, handleUpdateMcpServer, handleDeleteMcpServer,
 		handleServerMessage,
-	} = useAppAdmin({ route, runtime, enabled: signedIn, setConnected, setStreamRequested });
+	} = useAppAdmin({ route, runtime, enabled: signedIn, connected, restartEventStream, setConnected, setStreamRequested });
 	const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
 	const serverLoadedSessionCountRef = useRef(0);
 	const sessionsRef = useRef(sessions);
@@ -157,7 +171,7 @@ export function App({ runtime }: AppProps) {
 	const bufferedAssistantDeltasRef = useRef<Map<string, BufferedAssistantDelta[]>>(new Map());
 	const lastSeenSyncSeqRef = useRef(0);
 	const streamFlushTimerRef = useRef<number | null>(null);
-	const pendingConnectionResolversRef = useRef(new Set<() => void>());
+	const pendingConnectionResolversRef = useRef(new Set<PendingConnectionWaiter>());
 	const resolvePendingConnectionsRef = useRef<() => void>(() => {});
 	const ensureSessionLoadedRef = useRef<(sessionId: string | null) => void>(() => {});
 	const requestSessionPageRef = useRef<(offset?: number, limit?: number) => void>(() => {});
@@ -183,6 +197,10 @@ export function App({ runtime }: AppProps) {
 	useEffect(() => {
 		visibleSessionLimitRef.current = visibleSessionLimit;
 	}, [visibleSessionLimit]);
+
+	useEffect(() => {
+		connectedRef.current = connected;
+	}, [connected]);
 
 	const visibleSessions = sessions.slice(0, visibleSessionLimit);
 	const cachedActiveSession = activeSessionId ? sessionCache.get(activeSessionId)?.session ?? null : null;
@@ -330,8 +348,9 @@ export function App({ runtime }: AppProps) {
 	}, [scheduleBufferedAssistantDeltaFlush]);
 
 	const resolvePendingConnections = useCallback(() => {
-		for (const resolve of pendingConnectionResolversRef.current) {
-			resolve();
+		for (const waiter of pendingConnectionResolversRef.current) {
+			window.clearTimeout(waiter.timer);
+			waiter.resolve();
 		}
 		pendingConnectionResolversRef.current.clear();
 	}, []);
@@ -366,54 +385,58 @@ export function App({ runtime }: AppProps) {
 		}
 	}, []);
 
-	const waitForConnectionAttempt = useCallback((timeoutMs = 1200) => {
-		if (connected) {
+	const waitForConnectionAttempt = useCallback((timeoutMs = 8_000) => {
+		if (connectedRef.current) {
 			return Promise.resolve();
 		}
 
 		return new Promise<void>((resolve) => {
-			let timeoutId = 0;
-			const finish = () => {
-				window.clearTimeout(timeoutId);
-				pendingConnectionResolversRef.current.delete(finish);
+			let waiter: PendingConnectionWaiter;
+			const timer = window.setTimeout(() => {
+				pendingConnectionResolversRef.current.delete(waiter);
 				resolve();
+			}, timeoutMs);
+			waiter = {
+				timer,
+				resolve,
+				reject: () => {
+					pendingConnectionResolversRef.current.delete(waiter);
+					resolve();
+				},
 			};
-
-			timeoutId = window.setTimeout(finish, timeoutMs);
-			pendingConnectionResolversRef.current.add(finish);
+			pendingConnectionResolversRef.current.add(waiter);
 		});
-	}, [connected]);
-
-	const waitForNextConnectionAttempt = useCallback((timeoutMs = 1200) => new Promise<void>((resolve) => {
-		let timeoutId = 0;
-		const finish = () => {
-			window.clearTimeout(timeoutId);
-			pendingConnectionResolversRef.current.delete(finish);
-			resolve();
-		};
-
-		timeoutId = window.setTimeout(finish, timeoutMs);
-		pendingConnectionResolversRef.current.add(finish);
-	}), []);
-
-	const restartEventStream = useCallback(() => {
-		setConnected(false);
-		setStreamRequested(true);
-		setStreamGeneration((current) => current + 1);
 	}, []);
+
+	const waitForFreshConnection = useCallback((timeoutMs = 8_000) => new Promise<void>((resolve, reject) => {
+		let waiter: PendingConnectionWaiter;
+		const timer = window.setTimeout(() => {
+			pendingConnectionResolversRef.current.delete(waiter);
+			reject(new Error(STREAM_REQUIRED_MESSAGE));
+		}, timeoutMs);
+		waiter = {
+			timer,
+			resolve,
+			reject,
+		};
+		pendingConnectionResolversRef.current.add(waiter);
+	}), []);
 
 	const ensureClientTransport = useCallback(async () => {
 		if (!serverReady) {
 			throw new Error(adminStatusError ?? transportStatusMessage ?? runtime.transport.unavailableBody);
 		}
 
-		if (connected) {
+		if (connectedRef.current) {
 			return;
 		}
 
 		setStreamRequested(true);
 		await waitForConnectionAttempt();
-	}, [adminStatusError, connected, runtime, serverReady, transportStatusMessage, waitForConnectionAttempt]);
+		if (!connectedRef.current) {
+			throw new Error(STREAM_REQUIRED_MESSAGE);
+		}
+	}, [adminStatusError, runtime, serverReady, transportStatusMessage, waitForConnectionAttempt]);
 
 	const sendClientMessage = useCallback(async (message: ClientMessage) => {
 		if (!serverReady) {
@@ -425,15 +448,15 @@ export function App({ runtime }: AppProps) {
 		try {
 			await runtime.transport.sendMessage(message);
 		} catch (error) {
-			if (getErrorMessage(error) === STREAM_REQUIRED_MESSAGE) {
+			if (isClientStreamRequiredError(error)) {
 				restartEventStream();
-				await waitForNextConnectionAttempt(2_000);
+				await waitForFreshConnection();
 				await runtime.transport.sendMessage(message);
 				return;
 			}
 			throw error;
 		}
-	}, [adminStatusError, ensureClientTransport, restartEventStream, runtime, serverReady, transportStatusMessage, waitForNextConnectionAttempt]);
+	}, [adminStatusError, ensureClientTransport, restartEventStream, runtime, serverReady, transportStatusMessage, waitForFreshConnection]);
 
 	const requestSessionPage = useCallback((offset = 0, limit = SESSION_PAGE_SIZE) => {
 		void sendClientMessage({ type: "load_sessions_page", offset, limit }).catch((error) => {
@@ -621,6 +644,7 @@ export function App({ runtime }: AppProps) {
 				eventSource = await runtime.transport.openEventStream({ lastSeq: lastSeenSyncSeqRef.current });
 			} catch (error) {
 				if (!cancelled) {
+					connectedRef.current = false;
 					setConnected(false);
 					setConnectionError(getErrorMessage(error));
 				}
@@ -633,6 +657,7 @@ export function App({ runtime }: AppProps) {
 			}
 
 			eventSource.onopen = () => {
+				connectedRef.current = true;
 				setConnected(true);
 				setConnectionError(null);
 				resolvePendingConnectionsRef.current();
@@ -665,6 +690,7 @@ export function App({ runtime }: AppProps) {
 
 				switch (serverPayload.type) {
 				case "connected": {
+					connectedRef.current = true;
 					setConnected(true);
 					setConnectionError(null);
 					resolvePendingConnectionsRef.current();
@@ -678,6 +704,7 @@ export function App({ runtime }: AppProps) {
 					break;
 				}
 				case "disconnected": {
+					connectedRef.current = false;
 					setConnected(false);
 					setStreamRequested(false);
 					setConnectionError(serverPayload.message);
@@ -856,6 +883,7 @@ export function App({ runtime }: AppProps) {
 			};
 
 			eventSource.onerror = () => {
+				connectedRef.current = false;
 				setConnected(false);
 				setConnectionError((current) => current ?? STREAM_DISCONNECTED_MESSAGE);
 			};
@@ -866,6 +894,7 @@ export function App({ runtime }: AppProps) {
 		return () => {
 			cancelled = true;
 			eventSource?.close();
+			connectedRef.current = false;
 			setConnected(false);
 		};
 	}, [bufferAssistantDelta, chatTransportReady, clearBufferedAssistantDeltas, handleServerMessage, runtime, streamGeneration, streamRequested]);

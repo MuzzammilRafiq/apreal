@@ -5,6 +5,8 @@ import {
 	LOCAL_ADMIN_STATUS_REFRESH_INTERVAL_MS,
 	RELAY_STATUS_REFRESH_INTERVAL_MS,
 	getErrorMessage,
+	isClientStreamRequiredError,
+	STREAM_REQUIRED_MESSAGE,
 	type AppRoute,
 	type ClientMessage,
 	type ServerPayload,
@@ -31,11 +33,13 @@ type UseAppAdminOptions = {
 	route: AppRoute;
 	runtime: WebRuntime;
 	enabled: boolean;
+	connected: boolean;
+	restartEventStream: () => void;
 	setConnected: Dispatch<SetStateAction<boolean>>;
 	setStreamRequested: Dispatch<SetStateAction<boolean>>;
 };
 
-export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRequested }: UseAppAdminOptions) {
+export function useAppAdmin({ route, runtime, enabled, connected, restartEventStream, setConnected, setStreamRequested }: UseAppAdminOptions) {
 	const [adminStatus, setAdminStatus] = useState<LocalWebAdminStatus | null>(null);
 	const [adminStatusError, setAdminStatusError] = useState<string | null>(null);
 	const [transportStatusMessage, setTransportStatusMessage] = useState<string | null>(null);
@@ -61,6 +65,7 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 	const mcpServersRef = useRef(mcpServers);
 	const scheduledJobsRef = useRef(scheduledJobs);
 	const scheduledJobRunsRef = useRef(scheduledJobRuns);
+	const connectedRef = useRef(connected);
 
 	useEffect(() => {
 		providersRef.current = providers;
@@ -78,21 +83,51 @@ export function useAppAdmin({ route, runtime, enabled, setConnected, setStreamRe
 		scheduledJobRunsRef.current = scheduledJobRuns;
 	}, [scheduledJobRuns]);
 
-	const sendRemoteMessage = useCallback(async (message: ClientMessage) => {
+	useEffect(() => {
+		connectedRef.current = connected;
+	}, [connected]);
+
+	const waitForRemoteStream = useCallback(async (timeoutMs = 8_000) => {
+		if (runtime.target !== "remote" || connectedRef.current) {
+			return;
+		}
+
 		setStreamRequested(true);
+		await new Promise<void>((resolve, reject) => {
+			const startedAt = Date.now();
+			const check = () => {
+				if (connectedRef.current) {
+					resolve();
+					return;
+				}
+
+				if (Date.now() - startedAt >= timeoutMs) {
+					reject(new Error(STREAM_REQUIRED_MESSAGE));
+					return;
+				}
+
+				window.setTimeout(check, 50);
+			};
+
+			check();
+		});
+	}, [runtime.target, setStreamRequested]);
+
+	const sendRemoteMessage = useCallback(async (message: ClientMessage) => {
+		await waitForRemoteStream();
 		try {
 			await runtime.transport.sendMessage(message);
 		} catch (error) {
-			if (getErrorMessage(error) !== "browser client stream is not connected") {
+			if (!isClientStreamRequiredError(error)) {
 				throw error;
 			}
 
-			await new Promise((resolve) => {
-				window.setTimeout(resolve, 250);
-			});
+			connectedRef.current = false;
+			restartEventStream();
+			await waitForRemoteStream();
 			await runtime.transport.sendMessage(message);
 		}
-	}, [runtime, setStreamRequested]);
+	}, [restartEventStream, runtime, waitForRemoteStream]);
 
 	const refreshProviders = useCallback(async () => {
 		if (runtime.target === "remote") {
