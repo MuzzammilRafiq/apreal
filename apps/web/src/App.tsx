@@ -10,6 +10,7 @@ import {
 	readCachedSessionSnapshot,
 	readCachedSessionSummaries,
 	readCachedTranscriptRevisions,
+	replaceSessionSummaries,
 	writeSessionSnapshot,
 	writeSessionSummaries,
 	writeSessionSummary,
@@ -243,7 +244,11 @@ export function App({ runtime }: AppProps) {
 	const isBusy = pendingDraft || Boolean(activeSession?.busy);
 	const aborting = Boolean(activeSessionId && activeSessionId === abortingSessionId);
 
-	if (chatTransportReady !== previousChatTransportReadyRef.current) {
+	useEffect(() => {
+		if (chatTransportReady === previousChatTransportReadyRef.current) {
+			return;
+		}
+
 		previousChatTransportReadyRef.current = chatTransportReady;
 		if (chatTransportReady) {
 			setStreamRequested(true);
@@ -251,7 +256,7 @@ export function App({ runtime }: AppProps) {
 			setStreamRequested(false);
 			setConnected(false);
 		}
-	}
+	}, [chatTransportReady, setConnected, setStreamRequested]);
 
 	const focusPrompt = useCallback(() => {
 		window.requestAnimationFrame(() => {
@@ -724,13 +729,47 @@ export function App({ runtime }: AppProps) {
 						void clearCachedSessions();
 						break;
 					}
+					const pageSessions = serverPayload.sessions.filter((session) => !isScheduledSessionSummary(session));
+					const isCompleteSessionList = serverPayload.offset === 0 && serverPayload.sessions.length >= serverPayload.total;
+					if (isCompleteSessionList) {
+						const authoritativeSessions = pageSessions.map((session) => {
+							const existing = sessionsRef.current.find((entry) => entry.id === session.id);
+							return existing && existing.revision > session.revision ? existing : session;
+						});
+						const authoritativeIds = new Set(authoritativeSessions.map((session) => session.id));
+						setSessions(authoritativeSessions);
+						setSessionCache((previous) => {
+							const next = new Map<string, SessionCacheEntry>();
+							for (const session of authoritativeSessions) {
+								const cached = previous.get(session.id);
+								const latestSession = cached && cached.session.revision > session.revision ? cached.session : session;
+								next.set(session.id, cached
+									? { ...cached, session: latestSession }
+									: createSummaryOnlyCacheEntry(session));
+							}
+							return next;
+						});
+						setCachedTranscriptRevisions((previous) => new Map(
+							Array.from(previous.entries()).filter(([sessionId]) => authoritativeIds.has(sessionId)),
+						));
+						for (const sessionId of bufferedAssistantDeltasRef.current.keys()) {
+							if (!authoritativeIds.has(sessionId)) {
+								clearBufferedAssistantDeltas(sessionId);
+							}
+						}
+						if (activeSessionIdRef.current && !authoritativeIds.has(activeSessionIdRef.current)) {
+							activateSessionRef.current(null, { load: false });
+						} else if (activeSessionIdRef.current) {
+							ensureSessionLoadedRef.current(activeSessionIdRef.current);
+						}
+						void replaceSessionSummaries(authoritativeSessions);
+						break;
+					}
 					setSessions((previous) => {
 						let next = previous;
-						for (const session of serverPayload.sessions) {
-							if (!isScheduledSessionSummary(session)) {
-								const existing = next.find((entry) => entry.id === session.id);
-								next = upsertSessionInList(next, existing && existing.revision > session.revision ? existing : session);
-							}
+						for (const session of pageSessions) {
+							const existing = next.find((entry) => entry.id === session.id);
+							next = upsertSessionInList(next, existing && existing.revision > session.revision ? existing : session);
 						}
 						return next;
 					});

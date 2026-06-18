@@ -195,6 +195,40 @@ export async function writeSessionSummaries(sessions: SessionSummary[]): Promise
 	database.close();
 }
 
+export async function replaceSessionSummaries(sessions: SessionSummary[]): Promise<void> {
+	const database = await openDatabase();
+	if (!database) {
+		return;
+	}
+
+	const sessionIds = new Set(sessions.map((session) => session.id));
+	await runReadwriteTransaction(
+		database,
+		[SESSION_SUMMARIES_STORE, SESSION_TRANSCRIPTS_STORE, SESSION_TRANSCRIPT_METADATA_STORE],
+		(transaction) => {
+			const summariesStore = transaction.objectStore(SESSION_SUMMARIES_STORE);
+			const transcriptsStore = transaction.objectStore(SESSION_TRANSCRIPTS_STORE);
+			const metadataStore = transaction.objectStore(SESSION_TRANSCRIPT_METADATA_STORE);
+			const keysRequest = summariesStore.getAllKeys();
+			keysRequest.onsuccess = () => {
+				for (const key of keysRequest.result) {
+					if (typeof key !== "string" || sessionIds.has(key)) {
+						continue;
+					}
+
+					summariesStore.delete(key);
+					transcriptsStore.delete(key);
+					metadataStore.delete(key);
+				}
+			};
+			for (const session of sessions) {
+				summariesStore.put(session);
+			}
+		},
+	);
+	database.close();
+}
+
 export async function writeSessionSummary(session: SessionSummary): Promise<void> {
 	await writeSessionSummaries([session]);
 }

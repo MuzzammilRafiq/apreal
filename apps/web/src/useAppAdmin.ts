@@ -39,6 +39,18 @@ type UseAppAdminOptions = {
 	setStreamRequested: Dispatch<SetStateAction<boolean>>;
 };
 
+type RemoteSnapshot = Extract<ServerPayload, {
+	type: "providers_snapshot" | "mcp_servers_snapshot" | "jobs_snapshot" | "job_runs_snapshot";
+}>;
+
+type PendingRemoteSnapshot = {
+	type: RemoteSnapshot["type"];
+	matches: (message: RemoteSnapshot) => boolean;
+	resolve: (message: RemoteSnapshot) => void;
+	reject: (error: Error) => void;
+	timer: number;
+};
+
 export function useAppAdmin({ route, runtime, enabled, connected, restartEventStream, setConnected, setStreamRequested }: UseAppAdminOptions) {
 	const [adminStatus, setAdminStatus] = useState<LocalWebAdminStatus | null>(null);
 	const [adminStatusError, setAdminStatusError] = useState<string | null>(null);
@@ -61,27 +73,8 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 	const [appendPromptError, setAppendPromptError] = useState<string | null>(null);
 	const [savingAppendPrompt, setSavingAppendPrompt] = useState(false);
 	const [providerLoginRedirect, setProviderLoginRedirect] = useState<string | null>(null);
-	const providersRef = useRef(providers);
-	const mcpServersRef = useRef(mcpServers);
-	const scheduledJobsRef = useRef(scheduledJobs);
-	const scheduledJobRunsRef = useRef(scheduledJobRuns);
 	const connectedRef = useRef(connected);
-
-	useEffect(() => {
-		providersRef.current = providers;
-	}, [providers]);
-
-	useEffect(() => {
-		mcpServersRef.current = mcpServers;
-	}, [mcpServers]);
-
-	useEffect(() => {
-		scheduledJobsRef.current = scheduledJobs;
-	}, [scheduledJobs]);
-
-	useEffect(() => {
-		scheduledJobRunsRef.current = scheduledJobRuns;
-	}, [scheduledJobRuns]);
+	const pendingRemoteSnapshotsRef = useRef(new Set<PendingRemoteSnapshot>());
 
 	useEffect(() => {
 		connectedRef.current = connected;
@@ -129,10 +122,55 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 		}
 	}, [restartEventStream, runtime, waitForRemoteStream]);
 
+	const requestRemoteSnapshot = useCallback(async <T extends RemoteSnapshot["type"]>(
+		message: ClientMessage,
+		type: T,
+		matches: (snapshot: Extract<RemoteSnapshot, { type: T }>) => boolean = () => true,
+	): Promise<Extract<RemoteSnapshot, { type: T }>> => {
+		return await new Promise<Extract<RemoteSnapshot, { type: T }>>((resolve, reject) => {
+			const pending: PendingRemoteSnapshot = {
+				type,
+				matches: (snapshot) => snapshot.type === type && matches(snapshot as Extract<RemoteSnapshot, { type: T }>),
+				resolve: (snapshot) => resolve(snapshot as Extract<RemoteSnapshot, { type: T }>),
+				reject,
+				timer: window.setTimeout(() => {
+					pendingRemoteSnapshotsRef.current.delete(pending);
+					reject(new Error(`Timed out waiting for ${type.replaceAll("_", " ")}.`));
+				}, 8_000),
+			};
+			pendingRemoteSnapshotsRef.current.add(pending);
+			void sendRemoteMessage(message).catch((error) => {
+				window.clearTimeout(pending.timer);
+				pendingRemoteSnapshotsRef.current.delete(pending);
+				reject(error);
+			});
+		});
+	}, [sendRemoteMessage]);
+
+	const resolveRemoteSnapshots = useCallback((message: RemoteSnapshot) => {
+		for (const pending of pendingRemoteSnapshotsRef.current) {
+			if (pending.type !== message.type || !pending.matches(message)) {
+				continue;
+			}
+
+			window.clearTimeout(pending.timer);
+			pendingRemoteSnapshotsRef.current.delete(pending);
+			pending.resolve(message);
+		}
+	}, []);
+
+	useEffect(() => () => {
+		for (const pending of pendingRemoteSnapshotsRef.current) {
+			window.clearTimeout(pending.timer);
+			pending.reject(new Error("Remote snapshot request was cancelled."));
+		}
+		pendingRemoteSnapshotsRef.current.clear();
+	}, []);
+
 	const refreshProviders = useCallback(async () => {
 		if (runtime.target === "remote") {
-			await sendRemoteMessage({ type: "load_providers" });
-			return providersRef.current;
+			const snapshot = await requestRemoteSnapshot({ type: "load_providers" }, "providers_snapshot");
+			return snapshot;
 		}
 
 		try {
@@ -144,14 +182,14 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 			setProvidersError(error instanceof Error ? error.message : "Failed to load providers.");
 			throw error;
 		}
-	}, [runtime.target, sendRemoteMessage]);
+	}, [requestRemoteSnapshot, runtime.target]);
 
 	const refreshMcpServers = useCallback(async () => {
 		setLoadingMcpServers(true);
 		try {
 			if (runtime.target === "remote") {
-				await sendRemoteMessage({ type: "load_mcp_servers" });
-				return mcpServersRef.current;
+				const snapshot = await requestRemoteSnapshot({ type: "load_mcp_servers" }, "mcp_servers_snapshot");
+				return snapshot.servers;
 			}
 
 			const response = await readMcpServers();
@@ -164,14 +202,14 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 		} finally {
 			setLoadingMcpServers(false);
 		}
-	}, [runtime.target, sendRemoteMessage]);
+	}, [requestRemoteSnapshot, runtime.target]);
 
 	const reloadMcpServers = useCallback(async () => {
 		setLoadingMcpServers(true);
 		try {
 			if (runtime.target === "remote") {
-				await sendRemoteMessage({ type: "refresh_mcp_servers" });
-				return mcpServersRef.current;
+				const snapshot = await requestRemoteSnapshot({ type: "refresh_mcp_servers" }, "mcp_servers_snapshot");
+				return snapshot.servers;
 			}
 
 			const response = await refreshMcpServersRequest();
@@ -184,7 +222,7 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 		} finally {
 			setLoadingMcpServers(false);
 		}
-	}, [runtime.target, sendRemoteMessage]);
+	}, [requestRemoteSnapshot, runtime.target]);
 
 	const refreshAdminStatus = useCallback(async () => {
 		const nextStatus = await runtime.transport.readStatus();
@@ -266,8 +304,8 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 		setLoadingScheduledJobs(true);
 		try {
 			if (runtime.target === "remote") {
-				await sendRemoteMessage({ type: "load_jobs" });
-				return scheduledJobsRef.current;
+				const snapshot = await requestRemoteSnapshot({ type: "load_jobs" }, "jobs_snapshot");
+				return snapshot.jobs;
 			}
 
 			const jobs = await readScheduledJobs();
@@ -284,7 +322,7 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 		} finally {
 			setLoadingScheduledJobs(false);
 		}
-	}, [runtime.target, sendRemoteMessage]);
+	}, [requestRemoteSnapshot, runtime.target]);
 
 	const refreshScheduledJobRuns = useCallback(async (jobId: string) => {
 		setLoadingScheduledJobRuns(true);
@@ -292,8 +330,12 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 		setScheduledJobRunsError(null);
 		try {
 			if (runtime.target === "remote") {
-				await sendRemoteMessage({ type: "load_job_runs", jobId });
-				return scheduledJobRunsRef.current;
+				const snapshot = await requestRemoteSnapshot(
+					{ type: "load_job_runs", jobId },
+					"job_runs_snapshot",
+					(candidate) => candidate.jobId === jobId,
+				);
+				return snapshot.runs;
 			}
 
 			const runs = await readScheduledJobRuns(jobId);
@@ -306,7 +348,7 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 		} finally {
 			setLoadingScheduledJobRuns(false);
 		}
-	}, [runtime.target, sendRemoteMessage]);
+	}, [requestRemoteSnapshot, runtime.target]);
 
 	const updateScheduledJob = useCallback(async (jobId: string, intervalMinutes: number) => {
 		if (runtime.target === "remote") {
@@ -482,6 +524,7 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 				return true;
 			}
 			case "providers_snapshot": {
+				resolveRemoteSnapshots(message);
 				setProviders(message);
 				setProvidersError(null);
 				if (providerLoginRedirect) {
@@ -494,12 +537,14 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 				return true;
 			}
 			case "mcp_servers_snapshot": {
+				resolveRemoteSnapshots(message);
 				setMcpServers(message.servers);
 				setMcpServersError(null);
 				setLoadingMcpServers(false);
 				return true;
 			}
 			case "jobs_snapshot": {
+				resolveRemoteSnapshots(message);
 				setScheduledJobs(message.jobs);
 				setScheduledJobsError(null);
 				setLoadingScheduledJobs(false);
@@ -510,6 +555,7 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 				return true;
 			}
 			case "job_runs_snapshot": {
+				resolveRemoteSnapshots(message);
 				setScheduledJobRuns(message.runs);
 				setScheduledJobRunsError(null);
 				setLoadingScheduledJobRuns(false);
@@ -533,7 +579,7 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 			default:
 				return false;
 		}
-	}, [providerLoginRedirect]);
+	}, [providerLoginRedirect, resolveRemoteSnapshots]);
 
 	useEffect(() => {
 		if (route !== "jobs" && route !== "settings") {

@@ -63,6 +63,7 @@ export interface ClientActions {
 }
 
 const SYNC_EVENT_BUFFER_LIMIT = 1_000;
+const DISCONNECTED_CLIENT_SYNC_RETENTION_MS = 5 * 60_000;
 
 function describePayload(payload: ServerPayload): Record<string, string | number | boolean | null | undefined> {
 	const sessionId =
@@ -101,6 +102,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 	const { logger, clients, sessions, getToolsLabel } = state;
 	const clientSyncBuffers = new Map<string, Array<ServerSyncEnvelope<ServerPayload>>>();
 	const clientNextSyncSeqs = new Map<string, number>();
+	const clientSyncCleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 	function isScheduledSession(session: SharedSessionState): boolean {
 		return session.title.startsWith("[Scheduled:");
@@ -187,9 +189,20 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 		sendPayload: ClientConnection["send"],
 		close?: ClientConnection["close"],
 	) {
+		const cleanupTimer = clientSyncCleanupTimers.get(clientId);
+		if (cleanupTimer) {
+			clearTimeout(cleanupTimer);
+			clientSyncCleanupTimers.delete(clientId);
+		}
+
 		const existing = clients.get(clientId);
 		if (existing) {
 			existing.close?.("client_replaced");
+		}
+		const replacementCleanupTimer = clientSyncCleanupTimers.get(clientId);
+		if (replacementCleanupTimer) {
+			clearTimeout(replacementCleanupTimer);
+			clientSyncCleanupTimers.delete(clientId);
 		}
 
 		const connection: ClientConnection = {
@@ -218,6 +231,19 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 
 		client.closed = true;
 		clients.delete(clientId);
+		const existingCleanupTimer = clientSyncCleanupTimers.get(clientId);
+		if (existingCleanupTimer) {
+			clearTimeout(existingCleanupTimer);
+		}
+		const cleanupTimer = setTimeout(() => {
+			if (!clients.has(clientId)) {
+				clientSyncBuffers.delete(clientId);
+				clientNextSyncSeqs.delete(clientId);
+			}
+			clientSyncCleanupTimers.delete(clientId);
+		}, DISCONNECTED_CLIENT_SYNC_RETENTION_MS);
+		cleanupTimer.unref();
+		clientSyncCleanupTimers.set(clientId, cleanupTimer);
 		logger.info("client transport disconnected", {
 			clientId,
 			transport: client.transport,
