@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -44,13 +44,16 @@ function resolveAuthDatabasePath(): string {
 // and OAuth bookkeeping.
 function createAuthDatabase() {
 	const databasePath = resolveAuthDatabasePath();
-	mkdirSync(dirname(databasePath), { recursive: true });
+	const databaseDirectory = dirname(databasePath);
+	mkdirSync(databaseDirectory, { recursive: true, mode: 0o700 });
+	chmodSync(databaseDirectory, 0o700);
 
 	const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
 	const database = new DatabaseSync(databasePath);
 	if (!existsSync(databasePath)) {
 		throw new Error("Better Auth SQLite database could not be created.");
 	}
+	chmodSync(databasePath, 0o600);
 
 	return database;
 }
@@ -75,7 +78,7 @@ function createAuthOptions() {
 	return {
 		appName: "Apreal",
 		baseURL: authBaseUrl,
-		secret: readRequiredRelayEnv("BETTER_AUTH_SECRET", "JWT_SECRET"),
+		secret: readRequiredRelayEnv("BETTER_AUTH_SECRET"),
 		database: createAuthDatabase(),
 		socialProviders: {
 			google: {
@@ -124,7 +127,7 @@ let authReadyPromise: Promise<void> | null = null;
 // Reports whether enough env is present to enable Better Auth at all.
 export function isBetterAuthConfigured(): boolean {
 	return Boolean(
-		readOptionalRelayEnv("BETTER_AUTH_SECRET", "JWT_SECRET") &&
+		readOptionalRelayEnv("BETTER_AUTH_SECRET") &&
 		readOptionalRelayEnv("BETTER_AUTH_GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_ID") &&
 		readOptionalRelayEnv("BETTER_AUTH_GOOGLE_CLIENT_SECRET", "GOOGLE_CLIENT_SECRET"),
 	);

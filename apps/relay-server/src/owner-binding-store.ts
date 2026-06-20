@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 import { assertRelayPrincipalId } from "@apreal/shared";
@@ -156,12 +156,18 @@ export class RelayOwnerBindingStore {
 
 	// Rewrites the binding file with the supplied validated records.
 	private writeBindings(bindings: StoredOwnerAgentBinding[]) {
-		mkdirSync(dirname(this.filePath), { recursive: true });
+		const storeDirectory = dirname(this.filePath);
+		mkdirSync(storeDirectory, { recursive: true, mode: 0o700 });
+		chmodSync(storeDirectory, 0o700);
 
 		const payload: OwnerBindingStoreFile = {
 			agents: bindings,
 		};
 
-		writeFileSync(this.filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+		writeFileSync(this.filePath, `${JSON.stringify(payload, null, 2)}\n`, {
+			encoding: "utf8",
+			mode: 0o600,
+		});
+		chmodSync(this.filePath, 0o600);
 	}
 }

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import {
 	RELAY_AGENT_AUTH_PATH,
@@ -69,8 +69,14 @@ function readStoredRelayAgentIdentity(): StoredRelayAgentIdentity | null {
 }
 
 function writeStoredRelayAgentIdentity(identity: StoredRelayAgentIdentity) {
-	mkdirSync(dirname(APREAL_AGENT_RELAY_AUTH_PATH), { recursive: true });
-	writeFileSync(APREAL_AGENT_RELAY_AUTH_PATH, `${JSON.stringify(identity, null, 2)}\n`, "utf8");
+	const authDirectory = dirname(APREAL_AGENT_RELAY_AUTH_PATH);
+	mkdirSync(authDirectory, { recursive: true, mode: 0o700 });
+	chmodSync(authDirectory, 0o700);
+	writeFileSync(APREAL_AGENT_RELAY_AUTH_PATH, `${JSON.stringify(identity, null, 2)}\n`, {
+		encoding: "utf8",
+		mode: 0o600,
+	});
+	chmodSync(APREAL_AGENT_RELAY_AUTH_PATH, 0o600);
 }
 
 function createAgentIdentity(existing: StoredRelayAgentIdentity | null, relayUrl: string): StoredRelayAgentIdentity {

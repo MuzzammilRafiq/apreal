@@ -69,6 +69,16 @@ export interface HandlerActions {
 	handleClientMessage(clientId: string, message: ClientAppMessage): Promise<void>;
 }
 
+export function isRelayClientMessageAllowed(message: ClientAppMessage): boolean {
+	return message.type === "prompt" ||
+		message.type === "abort" ||
+		message.type === "delete_session" ||
+		message.type === "delete_all_sessions" ||
+		message.type === "load_session" ||
+		message.type === "load_sessions_page" ||
+		message.type === "ping";
+}
+
 export function createHandlers(
 	state: HandlerState,
 	clientActions: ClientActions,
@@ -768,6 +778,15 @@ export function createHandlers(
 
 		if (!client.ready) {
 			clientActions.sendError(clientId, "Client must send hello before other messages.");
+			return;
+		}
+
+		if (client.transport === "relay" && !isRelayClientMessageAllowed(message)) {
+			logger.warn("remote client attempted a local-only action", {
+				clientId,
+				type: message.type,
+			});
+			clientActions.sendError(clientId, "This action is only available from the local web app.");
 			return;
 		}
 

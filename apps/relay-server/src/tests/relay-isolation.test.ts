@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { rmSync, mkdtempSync } from "node:fs";
+import { rmSync, mkdtempSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import test, { type TestContext } from "node:test";
@@ -732,6 +732,8 @@ test("persists owner-agent binding without persisting issued relay tokens", asyn
 	const ownerGrant = generateOwnerAgentGrant("owner-restart").ownerGrant;
 	const initialAgent = await issueAgentAuth(firstServer.baseUrl, "agent-restart", "agent-key-restart", ownerGrant);
 	assert.equal(initialAgent.paired, true);
+	const bindingStoreMode = statSync(join(tempDir, "relay-owner-bindings.json")).mode & 0o777;
+	assert.equal(bindingStoreMode, 0o600);
 
 	const secondServer = await startRelayTestServer(t, { tempDir });
 	const restoredAgentResponse = await postJson<RelayAgentAuthResponse>(secondServer.baseUrl, RELAY_AGENT_AUTH_PATH, {
