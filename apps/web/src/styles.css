@@ -199,13 +199,19 @@
 	}
 
 	.ui-nav-item:hover {
-		background: rgba(0, 0, 0, 0.05);
+		background-color: rgba(0, 0, 0, 0.05) !important;
 		color: var(--color-brand-ink);
 	}
 
 	.ui-nav-item-active {
-		background: rgba(0, 0, 0, 0.08);
+		background-color: rgba(0, 0, 0, 0.05) !important;
 		color: var(--color-brand-ink);
+	}
+
+	.session-options-surface,
+	.session-options-button,
+	.session-options-button:hover {
+		background-color: transparent !important;
 	}
 
 	.ui-icon-button {

@@ -30,7 +30,7 @@ export function formatSessionState(session: SessionSummary | null, pendingDraft:
 
 export function getSessionCardClassName(isActive: boolean): string {
 	return [
-		"group relative flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-1.5 text-left transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring",
+		"group relative flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-1.5 text-left transition-colors duration-150",
 		isActive
 			? "ui-nav-item-active text-(--color-brand-ink)"
 			: "ui-nav-item text-slate-600",

@@ -164,6 +164,14 @@ function SidebarContent({
 								<div
 									key={session.id}
 									className={getSessionCardClassName(isActive)}
+									onClick={() => {
+										if (suppressSessionClick.current) {
+											suppressSessionClick.current = false;
+											return;
+										}
+										onActivateSession(session.id);
+										onClose?.();
+									}}
 									onTouchStart={(event) => startLongPress(session, event)}
 									onTouchMove={moveLongPress}
 									onTouchEnd={clearLongPress}
@@ -175,16 +183,9 @@ function SidebarContent({
 								>
 									<button
 										type="button"
-										className="min-w-0 flex-1 text-left"
+										className="min-w-0 flex-1 cursor-pointer text-left outline-none"
 										aria-pressed={isActive}
-										onClick={() => {
-											if (suppressSessionClick.current) {
-												suppressSessionClick.current = false;
-												return;
-											}
-											onActivateSession(session.id);
-											onClose?.();
-										}}
+										aria-current={isActive ? "page" : undefined}
 									>
 										<p
 											className={`truncate text-[0.9375rem] leading-snug tracking-tight ${needsSync ? "font-semibold text-ink" : "font-normal"}`}
@@ -202,10 +203,10 @@ function SidebarContent({
 											<LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden="true" />
 										</span>
 									) : null}
-									<div className="hidden h-7 w-7 shrink-0 items-center justify-center min-[721px]:flex">
+									<div className="session-options-surface hidden h-7 w-7 shrink-0 items-center justify-center min-[721px]:flex">
 										<button
 											type="button"
-											className="ui-icon-button flex h-7 w-7 items-center justify-center rounded-md text-slate-400 opacity-0 transition-[color,opacity] duration-150 hover:text-slate-700 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring group-hover:opacity-100 group-focus-within:opacity-100"
+											className="session-options-button ui-icon-button flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-slate-400 opacity-0 transition-[color,opacity] duration-150 hover:text-slate-700 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring group-hover:opacity-100 group-focus-within:opacity-100"
 											aria-label={`More options for ${session.title}`}
 											title="Chat options"
 											onClick={(event) => {
