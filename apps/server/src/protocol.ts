@@ -14,7 +14,13 @@ import type {
 } from "@apreal/shared";
 
 export type ClientAppMessage =
-	| { type: "prompt"; prompt: string; sessionId?: string | null }
+	| {
+		type: "prompt";
+		prompt: string;
+		sessionId?: string | null;
+		userMessageId?: string;
+		assistantMessageId?: string;
+	}
 	| { type: "abort"; sessionId: string }
 	| { type: "delete_session"; sessionId: string }
 	| { type: "delete_all_sessions" }
@@ -106,6 +112,12 @@ export function parseClientAppMessage(rawMessage: string | Buffer | unknown): Cl
 			type: "prompt",
 			prompt: value.prompt,
 			sessionId: typeof value.sessionId === "string" ? value.sessionId : null,
+			userMessageId: typeof value.userMessageId === "string" && value.userMessageId.trim()
+				? value.userMessageId
+				: undefined,
+			assistantMessageId: typeof value.assistantMessageId === "string" && value.assistantMessageId.trim()
+				? value.assistantMessageId
+				: undefined,
 		};
 	}
 

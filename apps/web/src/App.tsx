@@ -986,6 +986,8 @@ export function App({ runtime }: AppProps) {
 			type: "prompt",
 			prompt: trimmedPrompt,
 			sessionId: activeSessionId,
+			userMessageId: `${nextPendingPrompt.id}:user`,
+			assistantMessageId: `${nextPendingPrompt.id}:assistant`,
 		}).catch((error) => {
 			setPendingDraft(false);
 			setPendingPrompt((current) => current?.id === nextPendingPrompt.id ? null : current);

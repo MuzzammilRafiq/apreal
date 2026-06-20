@@ -545,6 +545,8 @@ export function createHandlers(
 		clientId: string,
 		prompt: string,
 		sessionId?: string | null,
+		userMessageId?: string,
+		assistantMessageId?: string,
 	) {
 		const trimmedPrompt = prompt.trim();
 		if (!trimmedPrompt) {
@@ -582,7 +584,7 @@ export function createHandlers(
 		session.abortRequested = false;
 		session.busy = true;
 		appendTranscriptMessage(session, {
-			id: crypto.randomUUID(),
+			id: userMessageId ?? crypto.randomUUID(),
 			role: "user",
 			body: trimmedPrompt,
 			thinking: "",
@@ -590,7 +592,7 @@ export function createHandlers(
 			segments: [],
 			pending: false,
 		});
-		createPendingAssistantMessage(session);
+		createPendingAssistantMessage(session, assistantMessageId);
 		clientActions.markSessionLoaded(clientId, session.id);
 		if (createdSession) {
 			chatStore.saveSession(session);
@@ -775,7 +777,13 @@ export function createHandlers(
 		}
 
 		if (message.type === "prompt") {
-			await handlePrompt(clientId, message.prompt, message.sessionId);
+			await handlePrompt(
+				clientId,
+				message.prompt,
+				message.sessionId,
+				message.userMessageId,
+				message.assistantMessageId,
+			);
 			return;
 		}
 

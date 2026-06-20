@@ -166,9 +166,12 @@ export function appendTranscriptMessage(
 	touchSession(session);
 }
 
-export function createPendingAssistantMessage(session: SharedSessionState): TranscriptMessage {
+export function createPendingAssistantMessage(
+	session: SharedSessionState,
+	messageId: string = crypto.randomUUID(),
+): TranscriptMessage {
 	const message: TranscriptMessage = {
-		id: crypto.randomUUID(),
+		id: messageId,
 		role: "assistant",
 		body: "",
 		thinking: "",

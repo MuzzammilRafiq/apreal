@@ -23,7 +23,13 @@ export const RELAY_STATUS_REFRESH_INTERVAL_MS = 15_000;
 export type AppRoute = "chat" | "settings" | "jobs";
 
 export type ClientMessage =
-	| { type: "prompt"; prompt: string; sessionId?: string | null }
+	| {
+		type: "prompt";
+		prompt: string;
+		sessionId?: string | null;
+		userMessageId?: string;
+		assistantMessageId?: string;
+	}
 	| { type: "abort"; sessionId: string }
 	| { type: "delete_session"; sessionId: string }
 	| { type: "delete_all_sessions" }
