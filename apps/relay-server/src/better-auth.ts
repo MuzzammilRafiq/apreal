@@ -3,11 +3,12 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { betterAuth } from "better-auth";
+import { betterAuth, type Session } from "better-auth";
 import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 import type { IncomingMessage } from "node:http";
 
 import { getRelayEnv, readOptionalRelayEnv, readRequiredRelayEnv } from "./env.ts";
+import { audit } from "./utils/audit.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -90,6 +91,26 @@ function createAuthOptions() {
 			},
 		},
 		trustedOrigins,
+		databaseHooks: {
+			session: {
+				create: {
+					async after(session: Session) {
+						audit("auth.sign_in", "success", {
+							actorType: "user",
+							actorId: session.userId,
+						});
+					},
+				},
+				delete: {
+					async after(session: Session) {
+						audit("auth.sign_out", "success", {
+							actorType: "user",
+							actorId: session.userId,
+						});
+					},
+				},
+			},
+		},
 		advanced: {
 			cookies: {
 				state: {

@@ -1,8 +1,5 @@
 # Security TODO
 
-- Add structured audit logging for auth and pairing events.
-  Record sign-in, sign-out, pairing, token issuance and refresh, and failed authorization attempts without leaking credentials.
-
 - Add distributed rate limits on public relay and auth endpoints.
   Cover `/api/auth/*`, relay client auth, heartbeat, and pairing endpoints with limits that work across multiple relay instances.
 

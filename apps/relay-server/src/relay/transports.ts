@@ -10,6 +10,7 @@ import { resolveClientRelayTarget } from "./authorization.ts";
 import { parseRelayAgentMessage } from "./parsing.ts";
 import { createSseChunk, createSseComment, createSseHeaders } from "./sse.ts";
 import { log } from "../utils/log.ts";
+import { audit, getAuditRequestFields } from "../utils/audit.ts";
 import type { RelayAgentConnection, RelayBrowserClientConnection } from "../utils/types.ts";
 
 // Builds the in-memory transport operations that attach browser and agent SSE
@@ -478,6 +479,13 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 			target = resolveClientRelayTarget(request);
 			lastSeq = readLastSeqFromRequest(request);
 		} catch (error) {
+			audit("authorization.failed", "failure", {
+				actorType: "client",
+				...getAuditRequestFields(request),
+				statusCode: 401,
+				reason: "request_rejected",
+				transport: "websocket",
+			});
 			log("warn", "relay browser websocket rejected", {
 				error: error instanceof Error ? error.message : "browser websocket authorization failed",
 			});
@@ -802,6 +810,13 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 			}
 			assertActiveAgentPrincipal(principal);
 		} catch (error) {
+			audit("authorization.failed", "failure", {
+				actorType: "agent",
+				...getAuditRequestFields(request),
+				statusCode: 401,
+				reason: "request_rejected",
+				transport: "websocket",
+			});
 			log("warn", "relay agent websocket rejected", {
 				error: error instanceof Error ? error.message : "agent websocket authorization failed",
 			});

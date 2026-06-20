@@ -38,6 +38,7 @@ import { getErrorMessage, sendJson, sendText, setHeaders } from "./http.ts";
 import { parseAgentAuthRequest, parseClientAuthRequest, parseRelayConnectionRequest } from "./parsing.ts";
 import { buildAgentAuthResponse, buildClientAuthResponse, buildClientHeartbeatResponse, buildHealthPayload } from "./responses.ts";
 import { log } from "../utils/log.ts";
+import { audit, getAuditRequestFields } from "../utils/audit.ts";
 
 // Completes a CORS preflight request for any relay endpoint.
 function endPreflight(response: ServerResponse, corsHeaders: Record<string, string>) {
@@ -145,6 +146,16 @@ export function createRelayRequestHandler(state: RelayServerState) {
 			}
 
 			setHeaders(response, corsHeaders);
+			response.once("finish", () => {
+				if (response.statusCode >= 400) {
+					audit("authorization.failed", "failure", {
+						...getAuditRequestFields(request),
+						statusCode: response.statusCode,
+						reason: "request_rejected",
+						transport: "http",
+					});
+				}
+			});
 			try {
 				await ensureBetterAuthReady();
 				getBetterAuthHandler()(request, response);
@@ -170,6 +181,12 @@ export function createRelayRequestHandler(state: RelayServerState) {
 
 			const clientAuthRequest = await parseClientAuthRequest(request);
 			if (!clientAuthRequest) {
+				audit("authorization.failed", "failure", {
+					...getAuditRequestFields(request),
+					statusCode: 400,
+					reason: "invalid_request",
+					transport: "http",
+				});
 				sendJson(response, 400, { message: "Invalid client auth request." }, corsHeaders);
 				return;
 			}
@@ -184,9 +201,32 @@ export function createRelayRequestHandler(state: RelayServerState) {
 					clientAuthRequest.clientKey,
 					ownerUserId,
 				);
+				audit("auth.token_issued", "success", {
+					actorType: "client",
+					actorId: issuedToken.payload.id,
+					ownerUserId: issuedToken.payload.ownerUserId,
+					targetType: issuedToken.payload.targetType,
+					targetId: issuedToken.payload.targetId,
+					...getAuditRequestFields(request),
+				});
+				if (issuedToken.payload.targetId) {
+					audit("pairing.client_resolved", "success", {
+						actorType: "client",
+						actorId: issuedToken.payload.id,
+						ownerUserId: issuedToken.payload.ownerUserId,
+						targetType: "agent",
+						targetId: issuedToken.payload.targetId,
+					});
+				}
 				sendJson(response, 200, buildClientAuthResponse(issuedToken), corsHeaders);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "client auth failed";
+				audit("authorization.failed", "failure", {
+					...getAuditRequestFields(request),
+					statusCode: error instanceof AuthError ? 401 : 500,
+					reason: error instanceof AuthError ? "request_rejected" : "unexpected_error",
+					transport: "http",
+				});
 				log("warn", "client auth failed", { error: message });
 				sendJson(response, error instanceof AuthError ? 401 : 500, { message }, corsHeaders);
 			}
@@ -202,6 +242,12 @@ export function createRelayRequestHandler(state: RelayServerState) {
 
 			const clientHeartbeatRequest = await parseClientAuthRequest(request);
 			if (!clientHeartbeatRequest) {
+				audit("authorization.failed", "failure", {
+					...getAuditRequestFields(request),
+					statusCode: 400,
+					reason: "invalid_request",
+					transport: "http",
+				});
 				sendJson(response, 400, { message: "Invalid relay heartbeat request." }, corsHeaders);
 				return;
 			}
@@ -216,6 +262,14 @@ export function createRelayRequestHandler(state: RelayServerState) {
 					clientHeartbeatRequest.clientKey,
 					ownerUserId,
 				);
+				audit("auth.token_refreshed", "success", {
+					actorType: "client",
+					actorId: issuedToken.payload.id,
+					ownerUserId: issuedToken.payload.ownerUserId,
+					targetType: issuedToken.payload.targetType,
+					targetId: issuedToken.payload.targetId,
+					...getAuditRequestFields(request),
+				});
 
 				sendJson(
 					response,
@@ -225,6 +279,12 @@ export function createRelayRequestHandler(state: RelayServerState) {
 				);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "relay heartbeat failed";
+				audit("authorization.failed", "failure", {
+					...getAuditRequestFields(request),
+					statusCode: error instanceof AuthError ? 401 : 500,
+					reason: error instanceof AuthError ? "request_rejected" : "unexpected_error",
+					transport: "http",
+				});
 				log("warn", "relay heartbeat failed", { error: message });
 				sendJson(response, error instanceof AuthError ? 401 : 500, { message }, corsHeaders);
 			}
@@ -244,9 +304,21 @@ export function createRelayRequestHandler(state: RelayServerState) {
 					throw new AuthError("signed-in user session is required");
 				}
 
-				sendJson(response, 200, generateOwnerAgentGrant(ownerUserId), corsHeaders);
+				const ownerGrant = generateOwnerAgentGrant(ownerUserId);
+				audit("auth.owner_grant_issued", "success", {
+					actorType: "user",
+					actorId: ownerUserId,
+					...getAuditRequestFields(request),
+				});
+				sendJson(response, 200, ownerGrant, corsHeaders);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "agent owner grant failed";
+				audit("authorization.failed", "failure", {
+					...getAuditRequestFields(request),
+					statusCode: error instanceof AuthError ? 401 : 500,
+					reason: error instanceof AuthError ? "session_required" : "unexpected_error",
+					transport: "http",
+				});
 				log("warn", "agent owner grant failed", { error: message });
 				sendJson(response, error instanceof AuthError ? 401 : 500, { message }, corsHeaders);
 			}
@@ -262,6 +334,12 @@ export function createRelayRequestHandler(state: RelayServerState) {
 
 			const agentAuthRequest = await parseAgentAuthRequest(request);
 			if (!agentAuthRequest) {
+				audit("authorization.failed", "failure", {
+					...getAuditRequestFields(request),
+					statusCode: 400,
+					reason: "invalid_request",
+					transport: "http",
+				});
 				sendJson(response, 400, { message: "Invalid agent auth request." }, corsHeaders);
 				return;
 			}
@@ -273,6 +351,14 @@ export function createRelayRequestHandler(state: RelayServerState) {
 				const ownerUserId = ownerGrantUserId
 					?? state.ownerBindingStore.findOwnerUserIdForAgent(agentAuthRequest.agentId, agentAuthRequest.agentKey);
 				if (!ownerUserId) {
+					audit("authorization.failed", "failure", {
+						actorType: "agent",
+						actorId: agentAuthRequest.agentId,
+						...getAuditRequestFields(request),
+						statusCode: 400,
+						reason: "missing_owner_binding",
+						transport: "http",
+					});
 					sendJson(response, 400, { message: "Sign in locally to authenticate the relay agent." }, corsHeaders);
 					return;
 				}
@@ -282,14 +368,35 @@ export function createRelayRequestHandler(state: RelayServerState) {
 						agentAuthRequest.agentKey,
 						ownerGrantUserId,
 					);
+					audit("pairing.agent_bound", "success", {
+						actorType: "agent",
+						actorId: agentAuthRequest.agentId,
+						ownerUserId: ownerGrantUserId,
+					});
 				}
+				const isTokenRefresh = state.agentSessions.has(agentAuthRequest.agentId);
 				const issuedToken = issueAgentToken(agentAuthRequest.agentId, agentAuthRequest.agentKey, ownerUserId);
+				audit(isTokenRefresh ? "auth.token_refreshed" : "auth.token_issued", "success", {
+					actorType: "agent",
+					actorId: issuedToken.payload.id,
+					ownerUserId,
+					...getAuditRequestFields(request),
+				});
 
 				sendJson(response, 200, buildAgentAuthResponse(issuedToken), corsHeaders);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "agent auth failed";
+				const statusCode = error instanceof AuthError ? 401 : 500;
+				audit("authorization.failed", "failure", {
+					actorType: "agent",
+					actorId: agentAuthRequest.agentId,
+					...getAuditRequestFields(request),
+					statusCode,
+					reason: error instanceof AuthError ? "request_rejected" : "unexpected_error",
+					transport: "http",
+				});
 				log("warn", "agent auth failed", { error: message });
-				sendJson(response, 500, { message }, corsHeaders);
+				sendJson(response, statusCode, { message }, corsHeaders);
 			}
 			return;
 		}
@@ -305,6 +412,13 @@ export function createRelayRequestHandler(state: RelayServerState) {
 			} catch (error) {
 				const message = getErrorMessage(error);
 				const statusCode = message === "only agent tokens may open relay agent transport" ? 403 : 401;
+				audit("authorization.failed", "failure", {
+					actorType: "agent",
+					...getAuditRequestFields(request),
+					statusCode,
+					reason: "request_rejected",
+					transport: "sse",
+				});
 				log("warn", "relay agent stream rejected", { error: message });
 				sendJson(response, statusCode, { message }, corsHeaders);
 			}
@@ -322,6 +436,13 @@ export function createRelayRequestHandler(state: RelayServerState) {
 			} catch (error) {
 				const message = getErrorMessage(error);
 				const statusCode = message === "only agent tokens may post relay agent messages" ? 403 : 401;
+				audit("authorization.failed", "failure", {
+					actorType: "agent",
+					...getAuditRequestFields(request),
+					statusCode,
+					reason: "request_rejected",
+					transport: "http",
+				});
 				log("warn", "relay agent message rejected", { error: message });
 				sendJson(response, statusCode, { message }, corsHeaders);
 			}
@@ -339,6 +460,15 @@ export function createRelayRequestHandler(state: RelayServerState) {
 			} catch (error) {
 				const statusCode = mapRelayProxyErrorStatus(error);
 				const message = getErrorMessage(error);
+				if (statusCode === 401 || statusCode === 403) {
+					audit("authorization.failed", "failure", {
+						actorType: "client",
+						...getAuditRequestFields(request),
+						statusCode,
+						reason: "request_rejected",
+						transport: "sse",
+					});
+				}
 				log("warn", "relay stream request rejected", { error: message });
 				sendJson(response, statusCode, { message }, corsHeaders);
 			}
@@ -356,6 +486,15 @@ export function createRelayRequestHandler(state: RelayServerState) {
 			} catch (error) {
 				const statusCode = mapRelayProxyErrorStatus(error);
 				const message = getErrorMessage(error);
+				if (statusCode === 401 || statusCode === 403) {
+					audit("authorization.failed", "failure", {
+						actorType: "client",
+						...getAuditRequestFields(request),
+						statusCode,
+						reason: "request_rejected",
+						transport: "http",
+					});
+				}
 				log("warn", "relay message request rejected", { error: message });
 				sendJson(response, statusCode, { message }, corsHeaders);
 			}
@@ -371,6 +510,12 @@ export function createRelayRequestHandler(state: RelayServerState) {
 
 			const connectionRequest = await parseRelayConnectionRequest(request);
 			if (!connectionRequest) {
+				audit("authorization.failed", "failure", {
+					...getAuditRequestFields(request),
+					statusCode: 400,
+					reason: "invalid_request",
+					transport: "http",
+				});
 				sendJson(response, 400, { message: "Invalid relay connection request." }, corsHeaders);
 				return;
 			}
@@ -383,6 +528,12 @@ export function createRelayRequestHandler(state: RelayServerState) {
 			} catch (error) {
 				const statusCode = mapRelayConnectionErrorStatus(error);
 				const message = error instanceof Error ? error.message : "relay connection authorization failed";
+				audit("authorization.failed", "failure", {
+					...getAuditRequestFields(request),
+					statusCode,
+					reason: "request_rejected",
+					transport: "http",
+				});
 				log("warn", "relay http connection rejected", {
 					error: message,
 				});
