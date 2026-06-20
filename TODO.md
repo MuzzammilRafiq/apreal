@@ -1,13 +1,12 @@
 # Security TODO
 
-- Add distributed rate limits on public relay and auth endpoints.
-  Cover `/api/auth/*`, relay client auth, heartbeat, and pairing endpoints with limits that work across multiple relay instances.
-
-- Move durable relay browser identity out of `localStorage`.
-  Choose a storage model that survives browser restarts without exposing reusable `clientId` and `clientKey` material to page JavaScript.
-
 - Add first-class credential revocation and rotation.
   Track and revoke individual browser, client, and agent credentials without relying on a global signing-secret rotation.
 
 - Do a final production security pass before launch.
   Re-check trusted origins, Google OAuth origins, cookie behavior, durable storage, relay authorization, filesystem locations, and secret rotation in the deployed environment.
+
+# Engineering TODO
+
+- Make `@apreal/shared` the single runtime-validated source of truth for the browser/server wire protocol.
+  Move the duplicated `ClientMessage`/`ClientAppMessage`, `ServerPayload`, session, and transcript contracts into shared schemas; derive TypeScript types from them; validate messages at every HTTP, SSE, WebSocket, and relay boundary; and add contract tests that exercise valid, malformed, and version-skewed messages across both local and remote transports.

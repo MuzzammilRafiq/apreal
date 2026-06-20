@@ -113,14 +113,11 @@ export type RelayAuthTarget = {
 };
 
 export type RelayClientAuthRequest = {
-	clientId: string;
-	clientKey: string;
 	ownerGrant?: string | null;
 };
 
 export type RelayClientAuthResponse = {
 	clientId: string;
-	clientKey: string;
 	token: string;
 	expiresAt: number;
 	target: RelayAuthTarget | null;

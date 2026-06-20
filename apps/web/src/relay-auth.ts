@@ -11,25 +11,18 @@ import {
 	type RemoteSettingsAuthorization,
 	type RemoteSettingsSection,
 } from "@apreal/shared";
-import { createBrowserUuid } from "./local-client";
 
 const RELAY_CLIENT_AUTH_STORAGE_KEY = "pi-browser-relay-auth";
 const RELAY_AUTH_REFRESH_WINDOW_MS = 60_000;
+const authCache = new Map<string, StoredRelayClientAuth>();
+let legacyRelayAuthRemoved = false;
 
 export type StoredRelayClientAuth = {
 	relayUrl: string;
 	clientId: string;
-	clientKey: string;
 	token: string;
 	expiresAt: number;
 	target: RelayAuthTarget | null;
-	updatedAt: number;
-};
-
-type StoredRelayClientIdentity = {
-	relayUrl: string;
-	clientId: string;
-	clientKey: string;
 	updatedAt: number;
 };
 
@@ -74,95 +67,29 @@ function parseStoredTarget(value: unknown): RelayAuthTarget | null {
 	};
 }
 
-function readStoredRelayClientIdentity(relayUrl: string): StoredRelayClientIdentity | null {
-	try {
-		const rawValue = window.localStorage.getItem(RELAY_CLIENT_AUTH_STORAGE_KEY);
-		if (!rawValue) {
-			return null;
-		}
-
-		const parsed: unknown = JSON.parse(rawValue);
-		if (!isObjectRecord(parsed)) {
-			return null;
-		}
-
-		const clientId = typeof parsed.clientId === "string" ? parsed.clientId.trim() : "";
-		const clientKey = typeof parsed.clientKey === "string" ? parsed.clientKey.trim() : "";
-		if (!clientId || !clientKey) {
-			return null;
-		}
-
-		return {
-			relayUrl: typeof parsed.relayUrl === "string" && parsed.relayUrl.trim() ? parsed.relayUrl.trim() : relayUrl,
-			clientId,
-			clientKey,
-			updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
-		};
-	} catch {
-		return null;
-	}
-}
-
-function writeStoredRelayClientIdentity(identity: StoredRelayClientIdentity) {
-	window.localStorage.setItem(RELAY_CLIENT_AUTH_STORAGE_KEY, JSON.stringify(identity));
-}
-
 function readStoredRelayClientAuth(relayUrl: string): StoredRelayClientAuth | null {
-	try {
-		const rawValue = window.localStorage.getItem(RELAY_CLIENT_AUTH_STORAGE_KEY);
-		if (!rawValue) {
-			return null;
-		}
-
-		const parsed: unknown = JSON.parse(rawValue);
-		if (!isObjectRecord(parsed)) {
-			return null;
-		}
-
-		const identity = readStoredRelayClientIdentity(relayUrl);
-		const token = typeof parsed.token === "string" ? parsed.token.trim() : "";
-		const expiresAt = typeof parsed.expiresAt === "number" ? parsed.expiresAt : 0;
-		if (!identity || !token || !Number.isFinite(expiresAt)) {
-			return null;
-		}
-
-		return {
-			...identity,
-			token,
-			expiresAt,
-			target: parsed.target === null ? null : parseStoredTarget(parsed.target),
-			updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : identity.updatedAt,
-		};
-	} catch {
-		return null;
-	}
+	return authCache.get(relayUrl) ?? null;
 }
 
 function writeStoredRelayClientAuth(auth: StoredRelayClientAuth) {
-	window.localStorage.setItem(RELAY_CLIENT_AUTH_STORAGE_KEY, JSON.stringify(auth));
+	authCache.set(auth.relayUrl, auth);
 }
 
 function isUsableRelayClientAuth(auth: StoredRelayClientAuth | null): auth is StoredRelayClientAuth {
 	return Boolean(auth?.target && auth.token && auth.expiresAt > Date.now() + RELAY_AUTH_REFRESH_WINDOW_MS);
 }
 
-function getIdentityFromAuth(auth: StoredRelayClientAuth): StoredRelayClientIdentity {
-	return {
-		relayUrl: auth.relayUrl,
-		clientId: auth.clientId,
-		clientKey: auth.clientKey,
-		updatedAt: auth.updatedAt,
-	};
-}
+function removeLegacyRelayAuthStorage() {
+	if (legacyRelayAuthRemoved) {
+		return;
+	}
 
-function createClientIdentity(relayUrl: string): StoredRelayClientIdentity {
-	const existing = readStoredRelayClientIdentity(relayUrl);
-	return {
-		relayUrl,
-		clientId: existing?.clientId ?? `client-${createBrowserUuid()}`,
-		clientKey: existing?.clientKey ?? `key-${createBrowserUuid()}`,
-		updatedAt: Date.now(),
-	};
+	legacyRelayAuthRemoved = true;
+	try {
+		window.localStorage.removeItem(RELAY_CLIENT_AUTH_STORAGE_KEY);
+	} catch {
+		// Storage can be unavailable in hardened browser contexts.
+	}
 }
 
 function parseClientAuthResponse(payload: unknown): RelayClientAuthResponse {
@@ -173,7 +100,6 @@ function parseClientAuthResponse(payload: unknown): RelayClientAuthResponse {
 	const target = payload.target === null ? null : parseStoredTarget(payload.target);
 	if (
 		typeof payload.clientId !== "string" ||
-		typeof payload.clientKey !== "string" ||
 		typeof payload.token !== "string" ||
 		typeof payload.expiresAt !== "number" ||
 		typeof payload.paired !== "boolean" ||
@@ -184,7 +110,6 @@ function parseClientAuthResponse(payload: unknown): RelayClientAuthResponse {
 
 	return {
 		clientId: payload.clientId,
-		clientKey: payload.clientKey,
 		token: payload.token,
 		expiresAt: payload.expiresAt,
 		target,
@@ -239,18 +164,13 @@ function parseClientHeartbeatResponse(payload: unknown): RelayClientHeartbeatRes
 }
 
 export async function ensureRelayClientAuth(relayUrl: string): Promise<StoredRelayClientAuth> {
+	removeLegacyRelayAuthStorage();
 	const cachedAuth = readStoredRelayClientAuth(relayUrl);
 	if (isUsableRelayClientAuth(cachedAuth)) {
 		return cachedAuth;
 	}
 
-	const identity = cachedAuth ? getIdentityFromAuth(cachedAuth) : createClientIdentity(relayUrl);
-	writeStoredRelayClientIdentity(identity);
-
-	const requestBody: RelayClientAuthRequest = {
-		clientId: identity.clientId,
-		clientKey: identity.clientKey,
-	};
+	const requestBody: RelayClientAuthRequest = {};
 
 	const response = await fetch(new URL(RELAY_CLIENT_AUTH_PATH, relayUrl), {
 		method: "POST",
@@ -279,7 +199,6 @@ export async function ensureRelayClientAuth(relayUrl: string): Promise<StoredRel
 	const nextAuth: StoredRelayClientAuth = {
 		relayUrl,
 		clientId: issuedAuth.clientId,
-		clientKey: issuedAuth.clientKey,
 		token: issuedAuth.token,
 		expiresAt: issuedAuth.expiresAt,
 		target: issuedAuth.target,
@@ -316,14 +235,8 @@ export async function requestRelayAgentOwnerGrant(relayUrl: string): Promise<Rel
 }
 
 export async function readRelayClientHeartbeat(relayUrl: string): Promise<RelayClientHeartbeatStatus> {
-	const cachedAuth = readStoredRelayClientAuth(relayUrl);
-	const identity = cachedAuth ? getIdentityFromAuth(cachedAuth) : createClientIdentity(relayUrl);
-	writeStoredRelayClientIdentity(identity);
-
-	const requestBody: RelayClientHeartbeatRequest = {
-		clientId: identity.clientId,
-		clientKey: identity.clientKey,
-	};
+	removeLegacyRelayAuthStorage();
+	const requestBody: RelayClientHeartbeatRequest = {};
 
 	const response = await fetch(new URL(RELAY_CLIENT_HEARTBEAT_PATH, relayUrl), {
 		method: "POST",
@@ -352,7 +265,6 @@ export async function readRelayClientHeartbeat(relayUrl: string): Promise<RelayC
 	const nextAuth: StoredRelayClientAuth = {
 		relayUrl,
 		clientId: heartbeat.clientId,
-		clientKey: heartbeat.clientKey,
 		token: heartbeat.token,
 		expiresAt: heartbeat.expiresAt,
 		target: heartbeat.target,

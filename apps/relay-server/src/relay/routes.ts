@@ -14,9 +14,11 @@ import {
 import {
 	AuthError,
 	generateOwnerAgentGrant,
+	issueRelayBrowserIdentity,
 	issueRelayToken,
 	readBearerTokenFromRequest,
 	readOwnerAgentGrant,
+	readRelayBrowserIdentity,
 	readRelayToken,
 	type IssuedRelayToken,
 } from "../auth.ts";
@@ -196,9 +198,10 @@ export function createRelayRequestHandler(state: RelayServerState) {
 					? readOwnerAgentGrant(clientAuthRequest.ownerGrant).ownerUserId
 					: undefined;
 				const ownerUserId = ownerGrantUserId ?? await readRequiredOwnerUserId(request);
+				const browserIdentity = issueRelayBrowserIdentity(readRelayBrowserIdentity(request) ?? undefined);
 				const issuedToken = issueClientToken(
-					clientAuthRequest.clientId,
-					clientAuthRequest.clientKey,
+					browserIdentity.identity.clientId,
+					browserIdentity.identity.clientKey,
 					ownerUserId,
 				);
 				audit("auth.token_issued", "success", {
@@ -218,7 +221,10 @@ export function createRelayRequestHandler(state: RelayServerState) {
 						targetId: issuedToken.payload.targetId,
 					});
 				}
-				sendJson(response, 200, buildClientAuthResponse(issuedToken), corsHeaders);
+				sendJson(response, 200, buildClientAuthResponse(issuedToken), {
+					...corsHeaders,
+					"set-cookie": browserIdentity.cookieHeader,
+				});
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "client auth failed";
 				audit("authorization.failed", "failure", {
@@ -257,9 +263,10 @@ export function createRelayRequestHandler(state: RelayServerState) {
 					? readOwnerAgentGrant(clientHeartbeatRequest.ownerGrant).ownerUserId
 					: undefined;
 				const ownerUserId = ownerGrantUserId ?? await readRequiredOwnerUserId(request);
+				const browserIdentity = issueRelayBrowserIdentity(readRelayBrowserIdentity(request) ?? undefined);
 				const issuedToken = issueClientToken(
-					clientHeartbeatRequest.clientId,
-					clientHeartbeatRequest.clientKey,
+					browserIdentity.identity.clientId,
+					browserIdentity.identity.clientKey,
 					ownerUserId,
 				);
 				audit("auth.token_refreshed", "success", {
@@ -275,7 +282,10 @@ export function createRelayRequestHandler(state: RelayServerState) {
 					response,
 					200,
 					buildClientHeartbeatResponse(issuedToken, state.agentSessions, state.agentConnections),
-					corsHeaders,
+					{
+						...corsHeaders,
+						"set-cookie": browserIdentity.cookieHeader,
+					},
 				);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "relay heartbeat failed";

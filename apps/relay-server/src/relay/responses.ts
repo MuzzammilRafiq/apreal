@@ -58,7 +58,6 @@ export function buildHealthPayload(corsHeaders: Record<string, string>, ownerBin
 export function buildClientAuthResponse(entry: IssuedRelayToken): RelayClientAuthResponse {
 	return {
 		clientId: entry.payload.id,
-		clientKey: entry.payload.key,
 		token: entry.token,
 		expiresAt: entry.payload.exp * 1000,
 		target: entry.payload.targetId
@@ -111,6 +110,10 @@ export function buildClientHeartbeatResponse(
 // Shapes the public agent auth response returned after the relay issues an
 // agent token.
 export function buildAgentAuthResponse(entry: IssuedRelayToken): RelayAgentAuthResponse {
+	if (!entry.payload.key) {
+		throw new Error("agent token is missing its credential key");
+	}
+
 	return {
 		agentId: entry.payload.id,
 		agentKey: entry.payload.key,

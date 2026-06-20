@@ -1,4 +1,5 @@
 import type { IncomingMessage } from "node:http";
+import { randomUUID } from "node:crypto";
 import {
 	assertRelayPrincipalId,
 	type RelayPrincipalType,
@@ -14,6 +15,8 @@ export const USER_TYPES = ["agent", "client"] as const;
 export const RELAY_JWT_EXPIRES_IN = "1h" as const;
 export const RELAY_JWT_TTL_MS = 60 * 60 * 1000;
 export const OWNER_AGENT_GRANT_EXPIRES_IN_SECONDS = 5 * 60;
+export const RELAY_BROWSER_IDENTITY_COOKIE_NAME = "__Secure-apreal_relay_identity";
+export const RELAY_BROWSER_IDENTITY_TTL_SECONDS = 400 * 24 * 60 * 60;
 
 export type UserType = RelayPrincipalType;
 
@@ -23,7 +26,7 @@ export type UserType = RelayPrincipalType;
 export type AuthTokenPayload = {
 	type: UserType;
 	id: string;
-	key: string;
+	key?: string;
 	targetId?: string;
 	targetType?: UserType;
 	serverUrl?: string;
@@ -39,6 +42,17 @@ export type OwnerAgentGrantPayload = {
 	exp: number;
 };
 
+export type RelayBrowserIdentity = {
+	clientId: string;
+	clientKey: string;
+};
+
+type RelayBrowserIdentityPayload = RelayBrowserIdentity & {
+	purpose: "browser_identity";
+	iat: number;
+	exp: number;
+};
+
 export type IssuedRelayToken = {
 	token: string;
 	payload: AuthTokenPayload;
@@ -47,7 +61,7 @@ export type IssuedRelayToken = {
 export type GenerateTokenInput = {
 	type: UserType;
 	id: string;
-	key: string;
+	key?: string;
 	targetId?: string;
 	targetType?: UserType;
 	serverUrl?: string;
@@ -137,10 +151,11 @@ function validateTokenPayload(payload: string | JwtPayload): AuthTokenPayload {
 		throw new AuthError("invalid token role");
 	}
 
+	const type = payload.type;
 	return {
-		type: payload.type,
+		type,
 		id: ensureString(payload.id, "id"),
-		key: ensureString(payload.key, "key"),
+		key: type === "agent" ? ensureString(payload.key, "key") : undefined,
 		targetId: payload.targetId === undefined ? undefined : ensureString(payload.targetId, "targetId"),
 		targetType:
 			payload.targetType === undefined
@@ -216,7 +231,9 @@ export function generateToken({ type, id, key, targetId, targetType, serverUrl, 
 	}
 
 	ensureString(id, "id");
-	ensureString(key, "key");
+	if (type === "agent") {
+		ensureString(key, "key");
+	}
 	if (targetId !== undefined) {
 		ensureString(targetId, "targetId");
 	}
@@ -230,7 +247,7 @@ export function generateToken({ type, id, key, targetId, targetType, serverUrl, 
 		ensureString(ownerUserId, "ownerUserId");
 	}
 
-	return jwt.sign({ type, id, key, targetId, targetType, serverUrl, ownerUserId }, getJwtSecret(), {
+	return jwt.sign({ type, id, ...(type === "agent" ? { key } : {}), targetId, targetType, serverUrl, ownerUserId }, getJwtSecret(), {
 		algorithm: "HS256",
 		expiresIn: RELAY_JWT_EXPIRES_IN,
 	});
@@ -302,4 +319,72 @@ export function readOwnerAgentGrant(ownerGrant: string): OwnerAgentGrantPayload 
 	}
 
 	return validateOwnerAgentGrantPayload(decoded);
+}
+
+function readCookie(request: IncomingMessage, name: string): string | null {
+	const cookieHeader = request.headers.cookie;
+	if (!cookieHeader) {
+		return null;
+	}
+
+	for (const part of cookieHeader.split(";")) {
+		const separator = part.indexOf("=");
+		if (separator < 0 || part.slice(0, separator).trim() !== name) {
+			continue;
+		}
+
+		return part.slice(separator + 1).trim() || null;
+	}
+
+	return null;
+}
+
+function validateRelayBrowserIdentityPayload(payload: string | JwtPayload): RelayBrowserIdentityPayload {
+	if (typeof payload === "string" || payload.purpose !== "browser_identity") {
+		throw new AuthError("invalid browser identity");
+	}
+
+	return {
+		purpose: "browser_identity",
+		clientId: ensureString(payload.clientId, "clientId"),
+		clientKey: ensureString(payload.clientKey, "clientKey"),
+		iat: ensureNumber(payload.iat, "iat"),
+		exp: ensureNumber(payload.exp, "exp"),
+	};
+}
+
+export function readRelayBrowserIdentity(request: IncomingMessage): RelayBrowserIdentity | null {
+	const cookie = readCookie(request, RELAY_BROWSER_IDENTITY_COOKIE_NAME);
+	if (!cookie) {
+		return null;
+	}
+
+	try {
+		const payload = validateRelayBrowserIdentityPayload(jwt.verify(cookie, getJwtSecret(), {
+			algorithms: ["HS256"],
+		}));
+		return { clientId: payload.clientId, clientKey: payload.clientKey };
+	} catch {
+		return null;
+	}
+}
+
+export function issueRelayBrowserIdentity(identity?: RelayBrowserIdentity): {
+	identity: RelayBrowserIdentity;
+	cookieHeader: string;
+} {
+	const nextIdentity = identity ?? {
+		clientId: `client-${randomUUID()}`,
+		clientKey: `key-${randomUUID()}`,
+	};
+	const value = jwt.sign(
+		{ purpose: "browser_identity", ...nextIdentity },
+		getJwtSecret(),
+		{ algorithm: "HS256", expiresIn: RELAY_BROWSER_IDENTITY_TTL_SECONDS },
+	);
+
+	return {
+		identity: nextIdentity,
+		cookieHeader: `${RELAY_BROWSER_IDENTITY_COOKIE_NAME}=${value}; Path=/; Max-Age=${RELAY_BROWSER_IDENTITY_TTL_SECONDS}; HttpOnly; Secure; SameSite=None; Priority=High`,
+	};
 }

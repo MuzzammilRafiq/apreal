@@ -85,16 +85,13 @@ export async function parseClientAuthRequest(request: IncomingMessage): Promise<
 		return null;
 	}
 
-	const clientId = readStringField(value.clientId);
-	const clientKey = readStringField(value.clientKey);
-	if (!clientId || !clientKey) {
+	const ownerGrant =
+		value.ownerGrant === undefined || value.ownerGrant === null ? null : readStringField(value.ownerGrant);
+	if (value.ownerGrant !== undefined && value.ownerGrant !== null && !ownerGrant) {
 		return null;
 	}
 
-	const ownerGrant =
-		value.ownerGrant === undefined || value.ownerGrant === null ? null : readStringField(value.ownerGrant);
-
-	return { clientId, clientKey, ownerGrant };
+	return { ownerGrant };
 }
 
 // Parses the local agent's auth payload, including its optional owner grant

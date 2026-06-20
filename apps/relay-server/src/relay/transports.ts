@@ -133,6 +133,10 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 			return;
 		}
 
+		if (principal.type !== "agent" || !principal.key) {
+			throw new AuthError("agent credential is missing");
+		}
+
 		const ownerUserId = state.ownerBindingStore.findOwnerUserIdForAgent(principal.id, principal.key);
 		if (ownerUserId !== principal.ownerUserId) {
 			throw new AuthError("agent session was replaced");

@@ -36,12 +36,15 @@ const { runRelayServer } = (await import(relayEntryPoint)) as RelayServerModule;
 const authEntryPoint = fileURLToPath(import.meta.url).includes(`${sep}dist${sep}`)
 	? "../auth.js"
 	: "../auth.ts";
-const { generateOwnerAgentGrant } = (await import(authEntryPoint)) as RelayAuthModule;
+const { generateOwnerAgentGrant, readRelayToken } = (await import(authEntryPoint)) as RelayAuthModule;
 
 type JsonResult<T> = {
 	status: number;
 	body: T;
+	headers: Headers;
 };
+
+type BrowserClientAuth = RelayClientAuthResponse & { identityCookie: string };
 
 type SseWaiter = {
 	resolve(value: unknown | null): void;
@@ -61,7 +64,7 @@ type WsStream = {
 };
 
 type PairContext = {
-	client: RelayClientAuthResponse;
+	client: BrowserClientAuth;
 	agent: RelayAgentAuthResponse;
 	clientStream: SseStream;
 	agentStream: SseStream;
@@ -85,6 +88,7 @@ async function postJson<T>(
 	return {
 		status: response.status,
 		body: text ? (JSON.parse(text) as T) : (null as T),
+		headers: response.headers,
 	};
 }
 
@@ -401,15 +405,20 @@ async function startRelayTestServer(t: TestContext, options?: { tempDir?: string
 	};
 }
 
-async function issueClientAuth(baseUrl: string, clientId: string, clientKey: string, ownerGrant: string) {
+async function issueClientAuth(baseUrl: string, clientId: string, _clientKey: string, ownerGrant: string) {
 	const response = await postJson<RelayClientAuthResponse>(baseUrl, RELAY_CLIENT_AUTH_PATH, {
-		clientId,
-		clientKey,
 		ownerGrant,
 	});
 	assert.equal(response.status, 200, `Expected client auth for ${clientId} to succeed.`);
 	assert.equal(response.body.paired, false, `Expected client ${clientId} to start unpaired.`);
-	return response.body;
+	const setCookie = response.headers.get("set-cookie");
+	assert.match(setCookie ?? "", /HttpOnly/i);
+	assert.match(setCookie ?? "", /Secure/i);
+	assert.match(setCookie ?? "", /SameSite=None/i);
+	assert.equal(readRelayToken(response.body.token).key, undefined, "Client access tokens must not expose the durable key.");
+	const identityCookie = setCookie?.split(";", 1)[0];
+	assert.ok(identityCookie, "Expected client auth to issue an HttpOnly identity cookie.");
+	return { ...response.body, identityCookie };
 }
 
 async function issueAgentAuth(baseUrl: string, agentId: string, agentKey: string, ownerGrant: string) {
@@ -422,25 +431,27 @@ async function issueAgentAuth(baseUrl: string, agentId: string, agentKey: string
 	return response.body;
 }
 
-async function refreshClientAuth(baseUrl: string, client: RelayClientAuthResponse, ownerGrant: string) {
+async function refreshClientAuth(baseUrl: string, client: BrowserClientAuth, ownerGrant: string) {
 	const response = await postJson<RelayClientAuthResponse>(baseUrl, RELAY_CLIENT_AUTH_PATH, {
-		clientId: client.clientId,
-		clientKey: client.clientKey,
 		ownerGrant,
+	}, {
+		headers: { cookie: client.identityCookie },
 	});
 	assert.equal(response.status, 200, `Expected client auth refresh for ${client.clientId} to succeed.`);
 	assert.equal(response.body.paired, true, `Expected client ${client.clientId} to be paired after agent auth.`);
 	assert.ok(response.body.target, `Expected client ${client.clientId} to expose its paired target.`);
-	return response.body;
+	assert.equal(response.body.clientId, client.clientId, "Expected the browser identity cookie to preserve client id.");
+	return { ...response.body, identityCookie: client.identityCookie };
 }
 
-async function assertClientSettingsAuthorization(baseUrl: string, client: RelayClientAuthResponse, ownerGrant: string) {
+async function assertClientSettingsAuthorization(baseUrl: string, client: BrowserClientAuth, ownerGrant: string) {
 	const response = await postJson<RelayClientHeartbeatResponse>(baseUrl, RELAY_CLIENT_HEARTBEAT_PATH, {
-		clientId: client.clientId,
-		clientKey: client.clientKey,
 		ownerGrant,
+	}, {
+		headers: { cookie: client.identityCookie },
 	});
 	assert.equal(response.status, 200, `Expected client heartbeat for ${client.clientId} to succeed.`);
+	assert.equal(response.body.clientId, client.clientId);
 	assert.deepEqual(response.body.settingsAuthorization, { sections: ["account"] });
 }
 
@@ -745,8 +756,6 @@ test("persists owner-agent binding without persisting issued relay tokens", asyn
 	assert.equal(restoredAgentResponse.body.paired, true);
 
 	const pairedClientResponse = await postJson<RelayClientAuthResponse>(secondServer.baseUrl, RELAY_CLIENT_AUTH_PATH, {
-		clientId: "client-restart",
-		clientKey: "client-key-restart",
 		ownerGrant,
 	});
 	assert.equal(pairedClientResponse.status, 200);
@@ -789,8 +798,6 @@ test("replaces the active owner agent when the same owner signs in elsewhere", a
 	assert.equal(restoredFirstAgent.status, 400);
 
 	const pairedClientResponse = await postJson<RelayClientAuthResponse>(baseUrl, RELAY_CLIENT_AUTH_PATH, {
-		clientId: "client-after-agent-replacement",
-		clientKey: "client-key-after-agent-replacement",
 		ownerGrant,
 	});
 	assert.equal(pairedClientResponse.status, 200);
@@ -837,8 +844,6 @@ test("allows multiple owner browser clients to stay connected", async (t) => {
 	});
 
 	const firstClientResponse = await postJson<RelayClientAuthResponse>(baseUrl, RELAY_CLIENT_AUTH_PATH, {
-		clientId: "client-first",
-		clientKey: "client-key-first",
 		ownerGrant,
 	});
 	assert.equal(firstClientResponse.status, 200);
@@ -853,12 +858,10 @@ test("allows multiple owner browser clients to stay connected", async (t) => {
 	});
 	assert.deepEqual(await agentStream.next<RelayAgentCommand>(), {
 		type: "client_connect",
-		clientId: "client-first",
+		clientId: firstClient.clientId,
 	});
 
 	const secondClientResponse = await postJson<RelayClientAuthResponse>(baseUrl, RELAY_CLIENT_AUTH_PATH, {
-		clientId: "client-second",
-		clientKey: "client-key-second",
 		ownerGrant,
 	});
 	assert.equal(secondClientResponse.status, 200);
@@ -875,7 +878,7 @@ test("allows multiple owner browser clients to stay connected", async (t) => {
 
 	assert.deepEqual(await agentStream.next<RelayAgentCommand>(), {
 		type: "client_connect",
-		clientId: "client-second",
+		clientId: secondClientResponse.body.clientId,
 	});
 
 	const firstMessage = {
@@ -890,7 +893,7 @@ test("allows multiple owner browser clients to stay connected", async (t) => {
 	assert.equal(firstMessageResponse.status, 202);
 	assert.deepEqual(await agentStream.next<RelayAgentCommand>(), {
 		type: "client_message",
-		clientId: "client-first",
+		clientId: firstClient.clientId,
 		message: firstMessage,
 	});
 
@@ -906,7 +909,7 @@ test("allows multiple owner browser clients to stay connected", async (t) => {
 	assert.equal(secondMessageResponse.status, 202);
 	assert.deepEqual(await agentStream.next<RelayAgentCommand>(), {
 		type: "client_message",
-		clientId: "client-second",
+		clientId: secondClientResponse.body.clientId,
 		message: secondMessage,
 	});
 });
