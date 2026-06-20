@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState, type TouchEvent } from "react";
-import { ArrowLeft, Menu, MessageSquarePlus, Settings, Trash2 } from "lucide-react";
+import { ArrowLeft, CloudSync, Menu, MessageSquarePlus, Settings, Trash } from "lucide-react";
 import type { SessionSummary } from "../chatTypes";
 import { formatRelativeTime, getSessionCardClassName } from "../chatView";
 import { ConnectionSidebarFooter } from "./ConnectionSidebarFooter";
@@ -124,15 +124,16 @@ function SidebarContent({
 									{needsSync ? (
 										<span
 											className={[
-												"flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[0.625rem] font-bold leading-none",
+												"flex h-4.5 w-4.5 shrink-0 items-center justify-center",
 												isActive
-													? "border-slate-400 text-slate-700"
-													: "border-slate-300 text-slate-500 group-hover:border-slate-400 group-hover:text-slate-700",
+													? "text-slate-700"
+													: "text-slate-400 group-hover:text-slate-600",
 											].join(" ")}
 											title="Transcript updates when opened"
 											aria-label="Transcript updates when opened"
+											role="img"
 										>
-											!
+											<CloudSync className="h-4.5 w-4.5" strokeWidth={1.9} aria-hidden="true" />
 										</span>
 									) : null}
 									<div className="relative flex items-center justify-end shrink-0 min-w-14 h-7">
@@ -160,7 +161,7 @@ function SidebarContent({
 												});
 											}}
 										>
-											<Trash2 className="h-4 w-4" strokeWidth={1.9} aria-hidden="true" />
+											<Trash className="h-4 w-4" strokeWidth={1.9} aria-hidden="true" />
 										</button>
 									</div>
 								</div>
