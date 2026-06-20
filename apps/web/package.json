@@ -16,7 +16,8 @@
 		"preview": "pnpm preview:local",
 		"preview:local": "vite preview --mode web-local",
 		"preview:remote": "vite preview --mode remote",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"test": "node --conditions=development --import tsx --test src/tests/*.test.ts"
 	},
 	"dependencies": {
 		"@apreal/shared": "workspace:*",

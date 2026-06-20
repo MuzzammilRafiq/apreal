@@ -26,6 +26,11 @@
     "start:server": "pnpm --dir apps/server start",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
+    "test": "pnpm test:server && pnpm test:relay && pnpm test:web",
+    "test:server": "pnpm --dir apps/server test",
+    "test:relay": "pnpm --dir apps/relay-server test",
+    "test:relay:production": "pnpm --dir apps/relay-server test:production",
+    "test:web": "pnpm --dir apps/web test",
     "clean": "rm -rf node_modules apps/*/node_modules apps/*/dist .turbo"
   },
   "devDependencies": {

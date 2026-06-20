@@ -39,6 +39,7 @@ const deployPackage = {
 	type: relayPackage.type,
 	scripts: {
 		start: "node src/index.js",
+		test: "node --test src/tests/*.test.js",
 	},
 	dependencies: Object.fromEntries(
 		Object.entries(relayPackage.dependencies ?? {}).filter(([name]) => name !== "@apreal/shared"),
