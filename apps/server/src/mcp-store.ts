@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import type {
 	CreateMcpServerRequest,
 	McpServerConfig,
+	McpServerOrigin,
 	McpServerTransport,
 	McpServersResponse,
 	UpdateMcpServerRequest,
@@ -12,12 +13,18 @@ type McpStorePayload = {
 	servers: McpServerConfig[];
 };
 
+export type BuiltInMcpServerDefinition = Omit<McpServerConfig, "createdAt" | "updatedAt" | "runtime" | "origin">;
+
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isTransport(value: unknown): value is McpServerTransport {
 	return value === "stdio" || value === "http" || value === "sse";
+}
+
+function isOrigin(value: unknown): value is McpServerOrigin {
+	return value === "user" || value === "built_in";
 }
 
 function normalizeStringRecord(value: unknown, label: string): Record<string, string> {
@@ -127,6 +134,7 @@ function normalizeServerPayload(
 
 	return {
 		name,
+		origin: current?.origin ?? "user",
 		transport,
 		enabled,
 		command: transport === "stdio" ? command : null,
@@ -168,6 +176,7 @@ function parseStoredServer(value: unknown): McpServerConfig {
 			url: normalizeOptionalString(value.url),
 			headers: normalizeStringRecord(value.headers, "headers"),
 		}),
+		origin: isOrigin(value.origin) ? value.origin : "user",
 	};
 }
 
@@ -216,6 +225,32 @@ export class McpStore {
 		return { servers: sortServers(payload.servers) };
 	}
 
+	async upsertBuiltIn(definition: BuiltInMcpServerDefinition): Promise<McpServersResponse> {
+		const payload = await this.readPayload();
+		const now = Date.now();
+		const index = payload.servers.findIndex((server) => server.id === definition.id);
+		if (index === -1) {
+			payload.servers.push({
+				...definition,
+				origin: "built_in",
+				createdAt: now,
+				updatedAt: now,
+			});
+		} else {
+			const current = payload.servers[index]!;
+			payload.servers[index] = {
+				...definition,
+				origin: "built_in",
+				enabled: current.enabled,
+				createdAt: current.createdAt,
+				updatedAt: current.updatedAt,
+			};
+		}
+
+		await this.writePayload(payload);
+		return { servers: sortServers(payload.servers) };
+	}
+
 	async update(id: string, input: UpdateMcpServerRequest): Promise<McpServersResponse> {
 		const payload = await this.readPayload();
 		const index = payload.servers.findIndex((server) => server.id === id);
@@ -224,6 +259,9 @@ export class McpStore {
 		}
 
 		const current = payload.servers[index]!;
+		if (current.origin === "built_in" && Object.keys(input).some((key) => key !== "enabled")) {
+			throw new Error("Built-in MCP servers can only be enabled or disabled.");
+		}
 		payload.servers[index] = {
 			...current,
 			...normalizeServerPayload(input, current),
@@ -235,6 +273,9 @@ export class McpStore {
 
 	async delete(id: string): Promise<McpServersResponse> {
 		const payload = await this.readPayload();
+		if (payload.servers.some((server) => server.id === id && server.origin === "built_in")) {
+			throw new Error("Built-in MCP servers cannot be deleted.");
+		}
 		const nextServers = payload.servers.filter((server) => server.id !== id);
 		if (nextServers.length === payload.servers.length) {
 			throw new Error("MCP server not found.");

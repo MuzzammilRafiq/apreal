@@ -52,10 +52,12 @@ export type AvailableSkill = {
 };
 
 export type McpServerTransport = "stdio" | "http" | "sse";
+export type McpServerOrigin = "user" | "built_in";
 
 export type McpServerConfig = {
 	id: string;
 	name: string;
+	origin: McpServerOrigin;
 	transport: McpServerTransport;
 	enabled: boolean;
 	command: string | null;

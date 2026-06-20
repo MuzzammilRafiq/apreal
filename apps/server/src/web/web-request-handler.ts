@@ -9,7 +9,7 @@ import {
 	hasLocalBrowserAuthSession,
 } from "./local-browser-auth.ts";
 export function createWebRequestHandler(context: any) {
-	const { logger, authenticateBrowserRequest, clientManager, handleHttpClientMessage, assertLocalAdminRequest, buildStatusPayload, writeAppendSystemPrompt, recycleIdleSessionControllers, saveProviderApiKey, startProviderLogin, buildProvidersPayloadWithLoginState, cwd, readProviderLoginState, refreshMcpServers, readMcpServers, createMcpServer, rebuildCustomTools, updateMcpServer, deleteMcpServer, ADMIN_JOBS_PATH, parseAdminMcpRoute, parseAdminJobRoute, listScheduledJobRuns, jobStore, sessions, scheduler, relay, createStaticResponse, createMissingWebUiResponse, webUiReady, getListeningPort } = context;
+	const { logger, authenticateBrowserRequest, clientManager, handleHttpClientMessage, assertLocalAdminRequest, buildStatusPayload, writeAppendSystemPrompt, recycleIdleSessionControllers, saveProviderApiKey, startProviderLogin, buildProvidersPayloadWithLoginState, cwd, readProviderLoginState, refreshMcpServers, readMcpServers, createMcpServer, updateMcpServer, deleteMcpServer, ADMIN_JOBS_PATH, parseAdminMcpRoute, parseAdminJobRoute, listScheduledJobRuns, jobStore, sessions, scheduler, relay, createStaticResponse, createMissingWebUiResponse, webUiReady, getListeningPort } = context;
 	return async (request: Request) => {
 	const url = new URL(request.url);
 	const corsHeaders = createCorsHeaders(request);
@@ -393,7 +393,6 @@ export function createWebRequestHandler(context: any) {
 			}
 			try {
 				await createMcpServer(payload as CreateMcpServerRequest);
-				await rebuildCustomTools();
 				return json(await readMcpServers(), { headers: corsHeaders });
 			} catch (error) {
 				return json(
@@ -437,7 +436,6 @@ export function createWebRequestHandler(context: any) {
 			}
 			try {
 				await updateMcpServer(adminMcpRoute.serverId, payload as UpdateMcpServerRequest);
-				await rebuildCustomTools();
 				return json(await readMcpServers(), { headers: corsHeaders });
 			} catch (error) {
 				return json(
@@ -449,7 +447,6 @@ export function createWebRequestHandler(context: any) {
 		if (request.method === "DELETE") {
 			try {
 				await deleteMcpServer(adminMcpRoute.serverId);
-				await rebuildCustomTools();
 				return json(await readMcpServers(), { headers: corsHeaders });
 			} catch (error) {
 				return json(

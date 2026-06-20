@@ -15,6 +15,7 @@
 		"@modelcontextprotocol/sdk": "^1.29.0",
 		"@t3-oss/env-core": "^0.13.11",
 		"dotenv": "^17.4.2",
+		"open-computer-use": "0.1.53",
 		"ws": "^8.21.0",
 		"zod": "^4.4.3"
 	},

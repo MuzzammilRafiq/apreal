@@ -357,6 +357,7 @@ export function SettingsMcpSection({
             <ul className="space-y-2">
               {mcpServers.map((server) => {
                 const isBusy = mcpActionServerId === server.id;
+                const isBuiltIn = server.origin === "built_in";
                 return (
                   <li
                     key={server.id}
@@ -376,6 +377,11 @@ export function SettingsMcpSection({
                           <span className="rounded border border-slate-300 bg-white px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-widest text-slate-500">
                             {server.transport}
                           </span>
+                          {isBuiltIn ? (
+                            <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 font-mono text-[0.6rem] font-semibold uppercase tracking-widest text-amber-800">
+                              Built in
+                            </span>
+                          ) : null}
                           <StatusPill
                             label={getMcpRuntimeLabel(server)}
                             tone={getMcpRuntimeTone(server)}
@@ -388,16 +394,18 @@ export function SettingsMcpSection({
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="ui-settings-action-button rounded"
-                          onClick={() => handleEditMcpServer(server)}
-                          disabled={mcpActionServerId !== null}
-                        >
-                          Edit
-                        </Button>
+                        {!isBuiltIn ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="ui-settings-action-button rounded"
+                            onClick={() => handleEditMcpServer(server)}
+                            disabled={mcpActionServerId !== null}
+                          >
+                            Edit
+                          </Button>
+                        ) : null}
                         <Button
                           type="button"
                           variant="outline"
@@ -410,20 +418,27 @@ export function SettingsMcpSection({
                         >
                           {isBusy ? "Saving..." : server.enabled ? "Disable" : "Enable"}
                         </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="ui-settings-danger-button rounded"
-                          onClick={() => {
-                            void handleDeleteSelectedMcpServer(server.id);
-                          }}
-                          disabled={mcpActionServerId !== null}
-                        >
-                          {isBusy ? "Deleting..." : "Delete"}
-                        </Button>
+                        {!isBuiltIn ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="ui-settings-danger-button rounded"
+                            onClick={() => {
+                              void handleDeleteSelectedMcpServer(server.id);
+                            }}
+                            disabled={mcpActionServerId !== null}
+                          >
+                            {isBusy ? "Deleting..." : "Delete"}
+                          </Button>
+                        ) : null}
                       </div>
                     </div>
+                    {isBuiltIn ? (
+                      <p className="mt-2 text-[0.78rem] leading-relaxed text-slate-600">
+                        Bundled desktop automation for macOS, Windows, and Linux. On macOS, grant Accessibility and Screen Recording permissions before the first task.
+                      </p>
+                    ) : null}
                     <div className="mt-2.5 grid gap-2 text-[0.76rem] text-slate-600 min-[720px]:grid-cols-2">
                       <div>
                         <FieldTitle className="font-mono text-[0.66rem] uppercase tracking-[0.12em] text-slate-400">

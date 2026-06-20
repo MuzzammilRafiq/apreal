@@ -24,6 +24,7 @@ import {
 	type UpdateMcpServerRequest,
 } from "@apreal/shared";
 import { createChatStore } from "../chat-store.ts";
+import { createComputerUseMcpDefinition } from "../computer-use-mcp.ts";
 import { getConfiguredToolInventory, getConfiguredToolsLabel } from "../agent-tools.ts";
 import { getAprealAgentPath, getAprealServerDatabasePath } from "../agent-dir.ts";
 import { getServerEnv } from "../env.ts";
@@ -135,6 +136,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	const chatStore = createChatStore(dbPath);
 	const jobStore = new JobStore(dbPath);
 	const mcpStore = new McpStore(APREAL_AGENT_MCP_PATH);
+	await mcpStore.upsertBuiltIn(createComputerUseMcpDefinition());
 	const mcpToolRegistry = new McpToolRegistry(cwd, createLogger("mcp"));
 	const webUiReady = await fileExists(WEB_INDEX_PATH);
 	for (const [sessionId, session] of chatStore.loadSessions()) {
@@ -267,9 +269,18 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		servers: mcpToolRegistry.withRuntime(response.servers),
 	});
 	const readMcpServers = async (): Promise<McpServersResponse> => withMcpRuntime(await mcpStore.list());
-	const createMcpServer = async (requestBody: CreateMcpServerRequest): Promise<McpServersResponse> => withMcpRuntime(await mcpStore.create(requestBody));
-	const updateMcpServer = async (serverId: string, requestBody: UpdateMcpServerRequest): Promise<McpServersResponse> => withMcpRuntime(await mcpStore.update(serverId, requestBody));
-	const deleteMcpServer = async (serverId: string): Promise<McpServersResponse> => withMcpRuntime(await mcpStore.delete(serverId));
+	const mutateMcpServers = async (mutation: () => Promise<McpServersResponse>): Promise<McpServersResponse> => {
+		await mutation();
+		await rebuildCustomTools();
+		recycleIdleSessionControllers();
+		return readMcpServers();
+	};
+	const createMcpServer = async (requestBody: CreateMcpServerRequest): Promise<McpServersResponse> =>
+		mutateMcpServers(() => mcpStore.create(requestBody));
+	const updateMcpServer = async (serverId: string, requestBody: UpdateMcpServerRequest): Promise<McpServersResponse> =>
+		mutateMcpServers(() => mcpStore.update(serverId, requestBody));
+	const deleteMcpServer = async (serverId: string): Promise<McpServersResponse> =>
+		mutateMcpServers(() => mcpStore.delete(serverId));
 	const refreshMcpServers = async (): Promise<McpServersResponse> => {
 		await rebuildCustomTools();
 		return readMcpServers();
@@ -350,7 +361,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		logger, authenticateBrowserRequest, clientManager, handleHttpClientMessage, assertLocalAdminRequest, buildStatusPayload,
 		writeAppendSystemPrompt, recycleIdleSessionControllers, saveProviderApiKey: providerLogin.saveProviderApiKey,
 		startProviderLogin: providerLogin.startProviderLogin, buildProvidersPayloadWithLoginState: providerLogin.buildProvidersPayloadWithLoginState,
-		cwd, readProviderLoginState: providerLogin.readProviderLoginState, refreshMcpServers, readMcpServers, createMcpServer, rebuildCustomTools, updateMcpServer, deleteMcpServer,
+		cwd, readProviderLoginState: providerLogin.readProviderLoginState, refreshMcpServers, readMcpServers, createMcpServer, updateMcpServer, deleteMcpServer,
 		ADMIN_JOBS_PATH, parseAdminMcpRoute, parseAdminJobRoute, listScheduledJobRuns,
 		jobStore, sessions, scheduler, relay, createStaticResponse, createMissingWebUiResponse, webUiReady, getListeningPort: () => listeningPort,
 	});
