@@ -5,11 +5,11 @@ import { setDefaultProviderModel, getErrorMessage } from "../session.ts";
 import { createCorsHeaders, getCorsOriginErrorMessage, json } from "./utils.ts";
 import {
 	createClearedLocalBrowserAuthSessionCookieHeader,
-	createLocalBrowserAuthSessionCookieHeader,
+	createLocalBrowserAuthSession,
 	hasLocalBrowserAuthSession,
 } from "./local-browser-auth.ts";
 export function createWebRequestHandler(context: any) {
-	const { logger, authenticateBrowserRequest, clientManager, handleHttpClientMessage, assertLocalAdminRequest, buildStatusPayload, writeAppendSystemPrompt, recycleIdleSessionControllers, saveProviderApiKey, startProviderLogin, buildProvidersPayloadWithLoginState, cwd, readProviderLoginState, refreshMcpServers, readMcpServers, createMcpServer, updateMcpServer, deleteMcpServer, ADMIN_JOBS_PATH, parseAdminMcpRoute, parseAdminJobRoute, listScheduledJobRuns, jobStore, sessions, scheduler, relay, createStaticResponse, createMissingWebUiResponse, webUiReady, getListeningPort } = context;
+	const { logger, authenticateBrowserRequest, clientManager, handleHttpClientMessage, assertLocalAdminRequest, assertLocalBrowserLocation, buildStatusPayload, writeAppendSystemPrompt, recycleIdleSessionControllers, saveProviderApiKey, startProviderLogin, buildProvidersPayloadWithLoginState, cwd, readProviderLoginState, refreshMcpServers, readMcpServers, createMcpServer, updateMcpServer, deleteMcpServer, ADMIN_JOBS_PATH, parseAdminMcpRoute, parseAdminJobRoute, listScheduledJobRuns, jobStore, sessions, scheduler, relay, createStaticResponse, createMissingWebUiResponse, webUiReady, getListeningPort } = context;
 	return async (request: Request) => {
 	const url = new URL(request.url);
 	const corsHeaders = createCorsHeaders(request);
@@ -58,7 +58,7 @@ export function createWebRequestHandler(context: any) {
 		}
 	}
 	if (url.pathname === LOCAL_AUTH_SESSION_PATH) {
-		const localOnlyResponse = assertLocalAdminRequest(request);
+		const localOnlyResponse = assertLocalBrowserLocation(request);
 		if (localOnlyResponse) {
 			return localOnlyResponse;
 		}
@@ -77,6 +77,12 @@ export function createWebRequestHandler(context: any) {
 			});
 		}
 		if (request.method === "DELETE") {
+			if (!hasLocalBrowserAuthSession(request)) {
+				return json(
+					{ message: "A valid local browser session is required." },
+					{ status: 401, headers: corsHeaders },
+				);
+			}
 			return json(
 				{ ok: true },
 				{
@@ -625,7 +631,7 @@ export function createWebRequestHandler(context: any) {
 		});
 	}
 	if (url.pathname === ADMIN_RELAY_AUTHENTICATE_PATH) {
-		const localOnlyResponse = assertLocalAdminRequest(request);
+		const localOnlyResponse = assertLocalBrowserLocation(request);
 		if (localOnlyResponse) {
 			return localOnlyResponse;
 		}
@@ -661,13 +667,15 @@ export function createWebRequestHandler(context: any) {
 		}
 		try {
 			await relay.authenticateWithOwnerGrant(ownerGrant);
+			const localSession = createLocalBrowserAuthSession();
 			const response: RelayAuthenticateResponse = {
 				status: await buildStatusPayload(),
+				sessionSecret: localSession.sessionSecret,
 			};
 			return json(response, {
 				headers: {
 					...corsHeaders,
-					"set-cookie": createLocalBrowserAuthSessionCookieHeader(),
+					"set-cookie": localSession.cookieHeader,
 				},
 			});
 		} catch (error) {

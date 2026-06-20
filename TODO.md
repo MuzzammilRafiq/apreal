@@ -3,9 +3,6 @@
 - Add distributed rate limits on public relay and auth endpoints.
   Cover `/api/auth/*`, relay client auth, heartbeat, and pairing endpoints with limits that work across multiple relay instances.
 
-- Replace the local browser's cookie-plus-client-ID authentication with CSRF-resistant sessions.
-  Issue an unguessable per-browser session secret and require it on every browser-facing local endpoint without breaking SSE reconnects or private-network access.
-
 - Move durable relay browser identity out of `localStorage`.
   Choose a storage model that survives browser restarts without exposing reusable `clientId` and `clientKey` material to page JavaScript.
 

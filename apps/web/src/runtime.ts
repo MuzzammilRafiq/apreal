@@ -4,6 +4,7 @@ import {
 	CLIENT_MESSAGE_PATH,
 	LOCAL_CLIENT_ID_HEADER,
 	LOCAL_CLIENT_ID_QUERY_PARAM,
+	LOCAL_AUTH_SESSION_QUERY_PARAM,
 	SYNC_LAST_SEQ_QUERY_PARAM,
 	type LocalWebAdminStatus,
 	type RemoteSettingsSection,
@@ -11,6 +12,7 @@ import {
 import { authBaseUrl } from "./auth/auth-client";
 import { ensureLocalBrowserAuthSession } from "./local-auth";
 import { readOrCreateLocalClientId } from "./local-client";
+import { localSessionFetch, readLocalBrowserSessionSecret } from "./local-session";
 import { ensureRelayClientAuth, readRelayClientHeartbeat } from "./relay-auth";
 import { readLocalAdminStatus } from "./server-admin";
 import { isObjectRecord, type AppRoute, type ClientMessage } from "./app-state";
@@ -205,6 +207,7 @@ export function createLocalWebRuntime(): WebRuntime {
 			unavailableBody: "Start the local server to expose the browser UI and chat API.",
 			connectingBody: "Reconnecting to the local server event stream.",
 			readStatus: async () => {
+				await ensureLocalBrowserAuthSession();
 				const adminStatus = await readLocalAdminStatus(statusUrl);
 				return {
 					serverReady: true,
@@ -218,6 +221,11 @@ export function createLocalWebRuntime(): WebRuntime {
 				await ensureLocalBrowserAuthSession();
 				const eventStreamUrl = new URL(streamUrl);
 				eventStreamUrl.searchParams.set(LOCAL_CLIENT_ID_QUERY_PARAM, localClientId);
+				const sessionSecret = readLocalBrowserSessionSecret();
+				if (!sessionSecret) {
+					throw new Error("Local browser session was not available after authentication.");
+				}
+				eventStreamUrl.searchParams.set(LOCAL_AUTH_SESSION_QUERY_PARAM, sessionSecret);
 				if (typeof options?.lastSeq === "number") {
 					eventStreamUrl.searchParams.set(SYNC_LAST_SEQ_QUERY_PARAM, `${options.lastSeq}`);
 				}
@@ -225,7 +233,7 @@ export function createLocalWebRuntime(): WebRuntime {
 			},
 			sendMessage: async (message) => {
 				await ensureLocalBrowserAuthSession();
-				const response = await fetch(messageUrl, {
+				const response = await localSessionFetch(messageUrl, {
 					method: "POST",
 					headers: {
 						"content-type": "application/json",

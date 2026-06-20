@@ -1,4 +1,8 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import {
+	LOCAL_AUTH_SESSION_HEADER,
+	LOCAL_AUTH_SESSION_QUERY_PARAM,
+} from "@apreal/shared";
 
 const LOCAL_AUTH_COOKIE_NAME = "apreal_local_auth";
 const LOCAL_AUTH_TTL_MS = 30 * 60 * 1000;
@@ -7,6 +11,12 @@ const LOCAL_AUTH_SECRET = randomBytes(32);
 type LocalAuthPayload = {
 	exp: number;
 	sid: string;
+	secretHash: string;
+};
+
+export type IssuedLocalBrowserAuthSession = {
+	cookieHeader: string;
+	sessionSecret: string;
 };
 
 function encodePayload(payload: LocalAuthPayload): string {
@@ -21,6 +31,7 @@ function decodePayload(value: string): LocalAuthPayload | null {
 			parsed === null ||
 			Array.isArray(parsed) ||
 			typeof (parsed as Record<string, unknown>).sid !== "string" ||
+			typeof (parsed as Record<string, unknown>).secretHash !== "string" ||
 			typeof (parsed as Record<string, unknown>).exp !== "number"
 		) {
 			return null;
@@ -28,6 +39,7 @@ function decodePayload(value: string): LocalAuthPayload | null {
 
 		return {
 			sid: (parsed as Record<string, unknown>).sid as string,
+			secretHash: (parsed as Record<string, unknown>).secretHash as string,
 			exp: (parsed as Record<string, unknown>).exp as number,
 		};
 	} catch {
@@ -37,6 +49,10 @@ function decodePayload(value: string): LocalAuthPayload | null {
 
 function signPayload(encodedPayload: string): string {
 	return createHmac("sha256", LOCAL_AUTH_SECRET).update(encodedPayload).digest("base64url");
+}
+
+function hashSessionSecret(sessionSecret: string): string {
+	return createHash("sha256").update(sessionSecret).digest("base64url");
 }
 
 function createCookie(name: string, value: string, options?: { expiresAt?: number; maxAgeSeconds?: number }) {
@@ -106,23 +122,49 @@ function readLocalAuthPayload(request: Request): LocalAuthPayload | null {
 	return payload;
 }
 
-export function hasLocalBrowserAuthSession(request: Request): boolean {
-	return readLocalAuthPayload(request) !== null;
+function readRequestSessionSecret(request: Request, allowQuery: boolean): string | null {
+	const headerSecret = request.headers.get(LOCAL_AUTH_SESSION_HEADER)?.trim();
+	if (headerSecret) {
+		return headerSecret;
+	}
+
+	if (!allowQuery) {
+		return null;
+	}
+
+	return new URL(request.url).searchParams.get(LOCAL_AUTH_SESSION_QUERY_PARAM)?.trim() || null;
 }
 
-export function createLocalBrowserAuthSessionCookieHeader(): string {
+export function hasLocalBrowserAuthSession(request: Request, options?: { allowQuery?: boolean }): boolean {
+	const payload = readLocalAuthPayload(request);
+	const sessionSecret = readRequestSessionSecret(request, options?.allowQuery === true);
+	if (!payload || !sessionSecret) {
+		return false;
+	}
+
+	const actualHash = Buffer.from(hashSessionSecret(sessionSecret), "utf8");
+	const expectedHash = Buffer.from(payload.secretHash, "utf8");
+	return actualHash.length === expectedHash.length && timingSafeEqual(actualHash, expectedHash);
+}
+
+export function createLocalBrowserAuthSession(): IssuedLocalBrowserAuthSession {
 	const expiresAt = Date.now() + LOCAL_AUTH_TTL_MS;
+	const sessionSecret = randomBytes(32).toString("base64url");
 	const payload: LocalAuthPayload = {
 		sid: crypto.randomUUID(),
+		secretHash: hashSessionSecret(sessionSecret),
 		exp: expiresAt,
 	};
 	const encodedPayload = encodePayload(payload);
 	const cookieValue = `${encodedPayload}.${signPayload(encodedPayload)}`;
 
-	return createCookie(LOCAL_AUTH_COOKIE_NAME, cookieValue, {
-		expiresAt,
-		maxAgeSeconds: LOCAL_AUTH_TTL_MS / 1000,
-	});
+	return {
+		cookieHeader: createCookie(LOCAL_AUTH_COOKIE_NAME, cookieValue, {
+			expiresAt,
+			maxAgeSeconds: LOCAL_AUTH_TTL_MS / 1000,
+		}),
+		sessionSecret,
+	};
 }
 
 export function createClearedLocalBrowserAuthSessionCookieHeader(): string {

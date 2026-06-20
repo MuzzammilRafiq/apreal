@@ -319,7 +319,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	}
 
 	const allowPrivateNetworkAdmin = env.APREAL_ALLOW_PRIVATE_NETWORK_ADMIN === "true";
-	const assertLocalAdminRequest = (request: Request): Response | null => {
+	const assertLocalBrowserLocation = (request: Request): Response | null => {
 		if (isLoopbackClientRequest(request)) {
 			return null;
 		}
@@ -337,18 +337,37 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 			{ status: 403, headers: createCorsHeaders(request) },
 		);
 	};
+	const assertLocalAdminRequest = (request: Request): Response | null => {
+		const locationResponse = assertLocalBrowserLocation(request);
+		if (locationResponse || request.method === "OPTIONS") {
+			return locationResponse;
+		}
+
+		if (!hasLocalBrowserAuthSession(request)) {
+			return json(
+				{ message: "A valid local browser session is required." },
+				{ status: 401, headers: createCorsHeaders(request) },
+			);
+		}
+
+		return null;
+	};
 
 	const authenticateBrowserRequest = async (request: Request): Promise<{ clientId: string }> => {
 		const localClientId = readLocalClientId(request);
 		if (localClientId && isLoopbackClientRequest(request)) {
-			if (!hasLocalBrowserAuthSession(request)) {
+			if (!hasLocalBrowserAuthSession(request, {
+				allowQuery: new URL(request.url).pathname === CLIENT_EVENT_STREAM_PATH,
+			})) {
 				throw new Error("Sign in locally before using chat.");
 			}
 			return { clientId: localClientId };
 		}
 
 		if (localClientId && allowPrivateNetworkAdmin && isPrivateNetworkClientRequest(request)) {
-			if (!hasLocalBrowserAuthSession(request)) {
+			if (!hasLocalBrowserAuthSession(request, {
+				allowQuery: new URL(request.url).pathname === CLIENT_EVENT_STREAM_PATH,
+			})) {
 				throw new Error("Sign in locally before using chat.");
 			}
 			return { clientId: localClientId };
@@ -358,7 +377,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	};
 	try {
 	const handleWebRequest = createWebRequestHandler({
-		logger, authenticateBrowserRequest, clientManager, handleHttpClientMessage, assertLocalAdminRequest, buildStatusPayload,
+		logger, authenticateBrowserRequest, clientManager, handleHttpClientMessage, assertLocalAdminRequest, assertLocalBrowserLocation, buildStatusPayload,
 		writeAppendSystemPrompt, recycleIdleSessionControllers, saveProviderApiKey: providerLogin.saveProviderApiKey,
 		startProviderLogin: providerLogin.startProviderLogin, buildProvidersPayloadWithLoginState: providerLogin.buildProvidersPayloadWithLoginState,
 		cwd, readProviderLoginState: providerLogin.readProviderLoginState, refreshMcpServers, readMcpServers, createMcpServer, updateMcpServer, deleteMcpServer,

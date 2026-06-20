@@ -31,6 +31,7 @@ import {
 	type UpdateMcpServerRequest,
 } from "@apreal/shared";
 import type { ScheduledJobDetails, SessionSummary } from "./chatTypes";
+import { localSessionFetch } from "./local-session";
 
 const ADMIN_JOBS_PATH = "/api/admin/jobs";
 const ADMIN_JOB_RUNS_PATH_SUFFIX = "/runs";
@@ -208,7 +209,7 @@ function parseSessionSummaries(payload: unknown): SessionSummary[] {
 }
 
 export async function readLocalAdminStatus(statusUrl: string): Promise<LocalWebAdminStatus> {
-	const response = await fetch(statusUrl, {
+	const response = await localSessionFetch(statusUrl, {
 		method: "GET",
 		headers: {
 			accept: "application/json",
@@ -227,7 +228,7 @@ export async function authenticateRelayWithOwnerGrant(
 	requestUrl = ADMIN_RELAY_AUTHENTICATE_PATH,
 ): Promise<RelayAuthenticateResponse> {
 	const requestBody: RelayAuthenticateRequest = { ownerGrant };
-	const response = await fetch(requestUrl, {
+	const response = await localSessionFetch(requestUrl, {
 		method: "POST",
 		headers: {
 			"content-type": "application/json",
@@ -240,19 +241,20 @@ export async function authenticateRelayWithOwnerGrant(
 		throw new Error(getResponseMessage(payload, `Relay authentication failed with status ${response.status}`));
 	}
 
-	if (!isObjectRecord(payload) || !("status" in payload)) {
+	if (!isObjectRecord(payload) || !("status" in payload) || typeof payload.sessionSecret !== "string") {
 		throw new Error("Relay authentication returned an invalid response.");
 	}
 
 	return {
 		status: parseStatus(payload.status),
+		sessionSecret: payload.sessionSecret,
 	};
 }
 
 export async function readLocalAuthSession(
 	requestUrl = LOCAL_AUTH_SESSION_PATH,
 ): Promise<LocalAuthSessionResponse> {
-	const response = await fetch(requestUrl, {
+	const response = await localSessionFetch(requestUrl, {
 		method: "GET",
 		headers: {
 			accept: "application/json",
@@ -273,7 +275,7 @@ export async function readLocalAuthSession(
 }
 
 export async function clearLocalAuthSession(requestUrl = LOCAL_AUTH_SESSION_PATH): Promise<void> {
-	const response = await fetch(requestUrl, {
+	const response = await localSessionFetch(requestUrl, {
 		method: "DELETE",
 		headers: {
 			accept: "application/json",
@@ -290,7 +292,7 @@ export async function saveAppendSystemPrompt(
 	requestUrl = ADMIN_APPEND_SYSTEM_PROMPT_PATH,
 ): Promise<UpdateAppendSystemPromptResponse> {
 	const requestBody: UpdateAppendSystemPromptRequest = { appendSystemPrompt };
-	const response = await fetch(requestUrl, {
+	const response = await localSessionFetch(requestUrl, {
 		method: "POST",
 		headers: {
 			"content-type": "application/json",
@@ -313,7 +315,7 @@ export async function saveAppendSystemPrompt(
 }
 
 export async function readScheduledJobs(requestUrl = ADMIN_JOBS_PATH): Promise<ScheduledJobDetails[]> {
-	const response = await fetch(requestUrl, {
+	const response = await localSessionFetch(requestUrl, {
 		method: "GET",
 		headers: {
 			accept: "application/json",
@@ -328,7 +330,7 @@ export async function readScheduledJobs(requestUrl = ADMIN_JOBS_PATH): Promise<S
 }
 
 export async function readScheduledJobRuns(jobId: string): Promise<SessionSummary[]> {
-	const response = await fetch(`${ADMIN_JOBS_PATH}/${encodeURIComponent(jobId)}${ADMIN_JOB_RUNS_PATH_SUFFIX}`, {
+	const response = await localSessionFetch(`${ADMIN_JOBS_PATH}/${encodeURIComponent(jobId)}${ADMIN_JOB_RUNS_PATH_SUFFIX}`, {
 		method: "GET",
 		headers: {
 			accept: "application/json",
@@ -346,7 +348,7 @@ export async function updateScheduledJob(
 	jobId: string,
 	requestBody: { intervalMinutes?: number; enabled?: boolean },
 ): Promise<ScheduledJobDetails> {
-	const response = await fetch(`${ADMIN_JOBS_PATH}/${encodeURIComponent(jobId)}`, {
+	const response = await localSessionFetch(`${ADMIN_JOBS_PATH}/${encodeURIComponent(jobId)}`, {
 		method: "PATCH",
 		headers: {
 			"content-type": "application/json",
@@ -367,7 +369,7 @@ export async function updateScheduledJob(
 }
 
 export async function deleteScheduledJob(jobId: string): Promise<void> {
-	const response = await fetch(`${ADMIN_JOBS_PATH}/${encodeURIComponent(jobId)}`, {
+	const response = await localSessionFetch(`${ADMIN_JOBS_PATH}/${encodeURIComponent(jobId)}`, {
 		method: "DELETE",
 		headers: {
 			accept: "application/json",
@@ -512,7 +514,7 @@ function parseMcpServersResponse(payload: unknown): McpServersResponse {
 }
 
 export async function readProviders(): Promise<ProvidersResponse> {
-	const response = await fetch(ADMIN_PROVIDERS_PATH, {
+	const response = await localSessionFetch(ADMIN_PROVIDERS_PATH, {
 		method: "GET",
 		headers: { accept: "application/json" },
 	});
@@ -525,7 +527,7 @@ export async function readProviders(): Promise<ProvidersResponse> {
 }
 
 export async function updateDefaultModel(requestBody: SetDefaultModelRequest): Promise<ProvidersResponse> {
-	const response = await fetch(ADMIN_PROVIDERS_PATH, {
+	const response = await localSessionFetch(ADMIN_PROVIDERS_PATH, {
 		method: "PATCH",
 		headers: {
 			"content-type": "application/json",
@@ -543,7 +545,7 @@ export async function updateDefaultModel(requestBody: SetDefaultModelRequest): P
 
 export async function startProviderLogin(provider: string): Promise<ProviderLoginResponse> {
 	const requestBody: ProviderLoginRequest = { provider };
-	const response = await fetch(ADMIN_PROVIDER_LOGIN_PATH, {
+	const response = await localSessionFetch(ADMIN_PROVIDER_LOGIN_PATH, {
 		method: "POST",
 		headers: {
 			"content-type": "application/json",
@@ -569,7 +571,7 @@ export async function startProviderLogin(provider: string): Promise<ProviderLogi
 
 export async function saveProviderApiKey(provider: string, apiKey: string): Promise<ProviderApiKeyResponse> {
 	const requestBody: ProviderApiKeyRequest = { provider, apiKey };
-	const response = await fetch(ADMIN_PROVIDER_API_KEY_PATH, {
+	const response = await localSessionFetch(ADMIN_PROVIDER_API_KEY_PATH, {
 		method: "POST",
 		headers: {
 			"content-type": "application/json",
@@ -593,7 +595,7 @@ export async function saveProviderApiKey(provider: string, apiKey: string): Prom
 }
 
 export async function readMcpServers(): Promise<McpServersResponse> {
-	const response = await fetch(ADMIN_MCP_PATH, {
+	const response = await localSessionFetch(ADMIN_MCP_PATH, {
 		method: "GET",
 		headers: { accept: "application/json" },
 	});
@@ -606,7 +608,7 @@ export async function readMcpServers(): Promise<McpServersResponse> {
 }
 
 export async function createMcpServer(requestBody: CreateMcpServerRequest): Promise<McpServersResponse> {
-	const response = await fetch(ADMIN_MCP_PATH, {
+	const response = await localSessionFetch(ADMIN_MCP_PATH, {
 		method: "POST",
 		headers: {
 			"content-type": "application/json",
@@ -623,7 +625,7 @@ export async function createMcpServer(requestBody: CreateMcpServerRequest): Prom
 }
 
 export async function updateMcpServer(serverId: string, requestBody: UpdateMcpServerRequest): Promise<McpServersResponse> {
-	const response = await fetch(`${ADMIN_MCP_PATH_PREFIX}${encodeURIComponent(serverId)}`, {
+	const response = await localSessionFetch(`${ADMIN_MCP_PATH_PREFIX}${encodeURIComponent(serverId)}`, {
 		method: "PATCH",
 		headers: {
 			"content-type": "application/json",
@@ -640,7 +642,7 @@ export async function updateMcpServer(serverId: string, requestBody: UpdateMcpSe
 }
 
 export async function deleteMcpServer(serverId: string): Promise<McpServersResponse> {
-	const response = await fetch(`${ADMIN_MCP_PATH_PREFIX}${encodeURIComponent(serverId)}`, {
+	const response = await localSessionFetch(`${ADMIN_MCP_PATH_PREFIX}${encodeURIComponent(serverId)}`, {
 		method: "DELETE",
 		headers: {
 			accept: "application/json",
@@ -655,7 +657,7 @@ export async function deleteMcpServer(serverId: string): Promise<McpServersRespo
 }
 
 export async function refreshMcpServers(): Promise<McpServersResponse> {
-	const response = await fetch(ADMIN_MCP_REFRESH_PATH, {
+	const response = await localSessionFetch(ADMIN_MCP_REFRESH_PATH, {
 		method: "POST",
 		headers: {
 			accept: "application/json",

@@ -18,6 +18,8 @@ export const RELAY_CONNECTION_PATH = "/api/relay/connection";
 export const RELAY_PRINCIPAL_TYPES = ["agent", "client"] as const;
 export const LOCAL_CLIENT_ID_HEADER = "x-pi-local-client-id";
 export const LOCAL_CLIENT_ID_QUERY_PARAM = "clientId";
+export const LOCAL_AUTH_SESSION_HEADER = "x-apreal-local-session";
+export const LOCAL_AUTH_SESSION_QUERY_PARAM = "localSession";
 export const SYNC_LAST_SEQ_QUERY_PARAM = "lastSeq";
 
 export type ServerSyncScope = "global" | `session:${string}` | `client:${string}`;
@@ -306,6 +308,7 @@ export type ServerStatusMessage =
 
 export type RelayAuthenticateResponse = {
 	status: LocalWebAdminStatus;
+	sessionSecret: string;
 };
 
 export type LocalAuthSessionResponse = {

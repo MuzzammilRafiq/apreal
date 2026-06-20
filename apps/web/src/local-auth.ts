@@ -5,6 +5,10 @@ import {
 	clearLocalAuthSession,
 	readLocalAuthSession,
 } from "./server-admin";
+import {
+	clearStoredLocalBrowserSessionSecret,
+	storeLocalBrowserSessionSecret,
+} from "./local-session";
 
 let pendingLocalBrowserAuthSessionPromise: Promise<void> | null = null;
 
@@ -19,8 +23,10 @@ export async function ensureLocalBrowserAuthSession(): Promise<void> {
 			return;
 		}
 
+		clearStoredLocalBrowserSessionSecret();
 		const ownerGrant = await requestRelayAgentOwnerGrant(authBaseUrl);
-		await authenticateRelayWithOwnerGrant(ownerGrant.ownerGrant);
+		const authenticated = await authenticateRelayWithOwnerGrant(ownerGrant.ownerGrant);
+		storeLocalBrowserSessionSecret(authenticated.sessionSecret);
 	})().finally(() => {
 		pendingLocalBrowserAuthSessionPromise = null;
 	});
@@ -29,5 +35,9 @@ export async function ensureLocalBrowserAuthSession(): Promise<void> {
 }
 
 export async function clearLocalBrowserAuthSession(): Promise<void> {
-	await clearLocalAuthSession();
+	try {
+		await clearLocalAuthSession();
+	} finally {
+		clearStoredLocalBrowserSessionSecret();
+	}
 }

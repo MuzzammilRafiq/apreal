@@ -209,7 +209,7 @@ export function createCorsHeaders(request?: Request): Record<string, string> {
 	return {
 		...(allowOrigin ? { "access-control-allow-origin": allowOrigin } : {}),
 		"access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
-		"access-control-allow-headers": "authorization, content-type, x-pi-local-client-id",
+		"access-control-allow-headers": "authorization, content-type, x-apreal-local-session, x-pi-local-client-id",
 		vary: "origin",
 	};
 }
