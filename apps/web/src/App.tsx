@@ -576,7 +576,7 @@ export function App({ runtime }: AppProps) {
 	}, []);
 
 	const activateSession = useCallback((sessionId: string | null, options: { load?: boolean; focus?: boolean } = {}) => {
-		const { load = true, focus = true } = options;
+		const { load = true, focus = false } = options;
 		activeSessionIdRef.current = sessionId;
 		setActiveSessionId(sessionId);
 		setPendingDraft(false);
@@ -635,7 +635,7 @@ export function App({ runtime }: AppProps) {
 	}, [upsertSessionSnapshot]);
 
 	const handleStartNewChat = useCallback(() => {
-		activateSession(null, { load: false });
+		activateSession(null, { load: false, focus: true });
 	}, [activateSession]);
 
 	useEffect(() => {
