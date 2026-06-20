@@ -1,8 +1,5 @@
 # Security TODO
 
-- Add first-class credential revocation and rotation.
-  Track and revoke individual browser, client, and agent credentials without relying on a global signing-secret rotation.
-
 - Do a final production security pass before launch.
   Re-check trusted origins, Google OAuth origins, cookie behavior, durable storage, relay authorization, filesystem locations, and secret rotation in the deployed environment.
 

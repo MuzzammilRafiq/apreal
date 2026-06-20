@@ -8,6 +8,7 @@ import {
 } from "../auth.ts";
 import { resolveRequestOrigin } from "./cors.ts";
 import { getErrorMessage } from "./http.ts";
+import type { RelayCredentialStore } from "../credential-store.ts";
 
 // Computes the opposite peer role a token is expected to target by default.
 export function getDefaultTargetType(type: UserType): RelayPrincipalType {
@@ -97,9 +98,9 @@ export function readClientTokenFromProxyRequest(request: IncomingMessage): strin
 }
 
 // Resolves the paired agent target encoded into a browser client's relay token.
-export function resolveClientRelayTarget(request: IncomingMessage) {
+export function resolveClientRelayTarget(request: IncomingMessage, credentialStore?: RelayCredentialStore) {
 	const clientToken = readClientTokenFromProxyRequest(request);
-	const principal = readRelayToken(clientToken);
+	const principal = readRelayToken(clientToken, { credentialStore });
 	if (principal.type !== "client") {
 		throw new AuthError("only client tokens may access browser relay transport");
 	}

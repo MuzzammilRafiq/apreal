@@ -91,7 +91,11 @@ export async function parseClientAuthRequest(request: IncomingMessage): Promise<
 		return null;
 	}
 
-	return { ownerGrant };
+	if (value.rotateCredential !== undefined && typeof value.rotateCredential !== "boolean") {
+		return null;
+	}
+
+	return { ownerGrant, rotateCredential: value.rotateCredential === true };
 }
 
 // Parses the local agent's auth payload, including its optional owner grant
@@ -118,12 +122,19 @@ export async function parseAgentAuthRequest(request: IncomingMessage): Promise<R
 
 	const ownerGrant =
 		value.ownerGrant === undefined || value.ownerGrant === null ? null : readStringField(value.ownerGrant);
+	if (
+		(value.ownerGrant !== undefined && value.ownerGrant !== null && !ownerGrant) ||
+		(value.rotateCredential !== undefined && typeof value.rotateCredential !== "boolean")
+	) {
+		return null;
+	}
 
 	return {
 		agentId,
 		agentKey,
 		...(serverUrl ? { serverUrl } : {}),
 		ownerGrant,
+		rotateCredential: value.rotateCredential === true,
 	};
 }
 

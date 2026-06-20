@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
+import { randomUUID } from "node:crypto";
 import {
 	CLIENT_EVENT_STREAM_PATH,
 	CLIENT_MESSAGE_PATH,
@@ -10,6 +11,8 @@ import {
 	RELAY_CLIENT_AUTH_PATH,
 	RELAY_CLIENT_HEARTBEAT_PATH,
 	RELAY_CONNECTION_PATH,
+	RELAY_CREDENTIALS_PATH,
+	RELAY_CREDENTIAL_REVOKE_PATH,
 } from "@apreal/shared";
 import {
 	AuthError,
@@ -36,8 +39,8 @@ import {
 	mapRelayProxyErrorStatus,
 } from "./authorization.ts";
 import { createCorsHeaders } from "./cors.ts";
-import { getErrorMessage, sendJson, sendText, setHeaders } from "./http.ts";
-import { parseAgentAuthRequest, parseClientAuthRequest, parseRelayConnectionRequest } from "./parsing.ts";
+import { getErrorMessage, readRequestBody, sendJson, sendText, setHeaders } from "./http.ts";
+import { isObjectRecord, parseAgentAuthRequest, parseClientAuthRequest, parseRelayConnectionRequest, readStringField } from "./parsing.ts";
 import { buildAgentAuthResponse, buildClientAuthResponse, buildClientHeartbeatResponse, buildHealthPayload } from "./responses.ts";
 import { log } from "../utils/log.ts";
 import { audit, getAuditRequestFields } from "../utils/audit.ts";
@@ -92,7 +95,7 @@ export function createRelayRequestHandler(state: RelayServerState) {
 	// most recently bound agent.
 	function issueClientToken(
 		clientId: string,
-		clientKey: string,
+		credentialId: string,
 		ownerUserId: string | undefined,
 	): IssuedRelayToken {
 		const ownerAgent = ownerUserId
@@ -102,11 +105,50 @@ export function createRelayRequestHandler(state: RelayServerState) {
 		return issueRelayToken({
 			type: "client",
 			id: clientId,
-			key: clientKey,
+			credentialId,
 			targetId: ownerAgent?.agentId,
 			targetType: ownerAgent ? "agent" : undefined,
 			ownerUserId,
-		});
+		}, state.credentialStore);
+	}
+
+	function resolveBrowserIdentity(request: IncomingMessage, ownerUserId: string | undefined, rotate = false) {
+		if (!ownerUserId) {
+			throw new AuthError("signed-in user session is required");
+		}
+		// Read the signed identity before checking its credential status. A revoked
+		// cookie must remain distinguishable from a missing/legacy cookie so an
+		// automatic heartbeat cannot silently enroll a replacement credential.
+		const existing = readRelayBrowserIdentity(request);
+		if (existing && !rotate) {
+			const credential = state.credentialStore.get(existing.credentialId);
+			if (credential?.ownerUserId === ownerUserId && credential.revokedAt === null) {
+				return issueRelayBrowserIdentity(existing);
+			}
+			if (credential?.ownerUserId === ownerUserId) {
+				throw new AuthError("relay browser credential is revoked");
+			}
+		}
+		if (existing && rotate) {
+			const credential = state.credentialStore.get(existing.credentialId);
+			if (credential?.ownerUserId === ownerUserId) {
+				state.credentialStore.revoke(existing.credentialId, ownerUserId);
+				transports.closeBrowserClient(existing.clientId, "client_credential_rotated");
+				audit("auth.credential_rotated", "success", {
+					actorType: "client",
+					actorId: existing.clientId,
+					ownerUserId,
+				});
+			}
+		}
+
+		const identity = {
+			clientId: `client-${randomUUID()}`,
+			clientKey: `key-${randomUUID()}`,
+			credentialId: "",
+		};
+		identity.credentialId = state.credentialStore.create("client", identity.clientId, ownerUserId).credentialId;
+		return issueRelayBrowserIdentity(identity);
 	}
 
 	// Issues an agent token and records its active session payload in memory so
@@ -115,6 +157,7 @@ export function createRelayRequestHandler(state: RelayServerState) {
 		agentId: string,
 		agentKey: string,
 		ownerUserId: string,
+		credentialId: string,
 	): IssuedRelayToken {
 		for (const [sessionAgentId, session] of Array.from(state.agentSessions.entries())) {
 			if (session.ownerUserId === ownerUserId && sessionAgentId !== agentId) {
@@ -126,9 +169,10 @@ export function createRelayRequestHandler(state: RelayServerState) {
 		const issuedToken = issueRelayToken({
 			type: "agent",
 			id: agentId,
+			credentialId,
 			key: agentKey,
 			ownerUserId,
-		});
+		}, state.credentialStore);
 		state.agentSessions.set(agentId, issuedToken.payload);
 		return issuedToken;
 	}
@@ -175,6 +219,86 @@ export function createRelayRequestHandler(state: RelayServerState) {
 			return;
 		}
 
+		if (pathname === RELAY_CREDENTIALS_PATH) {
+			if (!requireMethod(request, response, corsHeaders, "GET")) {
+				return;
+			}
+			try {
+				const ownerUserId = await readRequiredOwnerUserId(request);
+				if (!ownerUserId) {
+					throw new AuthError("signed-in user session is required");
+				}
+				const credentials = state.credentialStore.listForOwner(ownerUserId).map(({ ownerUserId: _owner, ...credential }) => credential);
+				sendJson(response, 200, { credentials }, corsHeaders);
+			} catch (error) {
+				const message = getErrorMessage(error);
+				sendJson(response, error instanceof AuthError ? 401 : 500, { message }, corsHeaders);
+			}
+			return;
+		}
+
+		if (pathname === RELAY_CREDENTIAL_REVOKE_PATH) {
+			if (!requireMethod(request, response, corsHeaders, "POST")) {
+				return;
+			}
+			try {
+				const ownerUserId = await readRequiredOwnerUserId(request);
+				if (!ownerUserId) {
+					throw new AuthError("signed-in user session is required");
+				}
+				let body: unknown;
+				try {
+					body = JSON.parse(await readRequestBody(request));
+				} catch {
+					body = null;
+				}
+				const credentialId = isObjectRecord(body) ? readStringField(body.credentialId) : null;
+				if (!credentialId) {
+					sendJson(response, 400, { message: "Invalid credential revocation request." }, corsHeaders);
+					return;
+				}
+				const existingCredential = state.credentialStore.get(credentialId);
+				const credential = state.credentialStore.revoke(credentialId, ownerUserId);
+				if (!credential) {
+					sendJson(response, 404, { message: "Relay credential not found." }, corsHeaders);
+					return;
+				}
+				if (existingCredential && existingCredential.revokedAt !== null) {
+					sendJson(response, 200, { ok: true }, corsHeaders);
+					return;
+				}
+				if (credential.type === "agent") {
+					const binding = state.ownerBindingStore.findAgent(credential.principalId);
+					if (binding?.credentialId === credential.credentialId) {
+						state.ownerBindingStore.removeAgent(credential.principalId);
+						for (const client of transports.listBrowserClientsForAgent(credential.principalId)) {
+							client.close("agent_credential_revoked");
+						}
+					}
+					if (state.agentSessions.get(credential.principalId)?.credentialId === credential.credentialId) {
+						state.agentSessions.delete(credential.principalId);
+					}
+					const connection = state.agentConnections.get(credential.principalId);
+					if (connection?.credentialId === credential.credentialId) {
+						connection.close("agent_credential_revoked");
+					}
+				} else {
+					transports.closeBrowserClient(credential.principalId, "client_credential_revoked");
+				}
+				audit("auth.credential_revoked", "success", {
+					actorType: credential.type,
+					actorId: credential.principalId,
+					ownerUserId,
+					...getAuditRequestFields(request),
+				});
+				sendJson(response, 200, { ok: true }, corsHeaders);
+			} catch (error) {
+				const message = getErrorMessage(error);
+				sendJson(response, error instanceof AuthError ? 401 : 500, { message }, corsHeaders);
+			}
+			return;
+		}
+
 		// Browser token issuance for hosted clients.
 		if (pathname === RELAY_CLIENT_AUTH_PATH) {
 			if (!requireMethod(request, response, corsHeaders, "POST")) {
@@ -198,10 +322,10 @@ export function createRelayRequestHandler(state: RelayServerState) {
 					? readOwnerAgentGrant(clientAuthRequest.ownerGrant).ownerUserId
 					: undefined;
 				const ownerUserId = ownerGrantUserId ?? await readRequiredOwnerUserId(request);
-				const browserIdentity = issueRelayBrowserIdentity(readRelayBrowserIdentity(request) ?? undefined);
+				const browserIdentity = resolveBrowserIdentity(request, ownerUserId, clientAuthRequest.rotateCredential);
 				const issuedToken = issueClientToken(
 					browserIdentity.identity.clientId,
-					browserIdentity.identity.clientKey,
+					browserIdentity.identity.credentialId,
 					ownerUserId,
 				);
 				audit("auth.token_issued", "success", {
@@ -263,10 +387,10 @@ export function createRelayRequestHandler(state: RelayServerState) {
 					? readOwnerAgentGrant(clientHeartbeatRequest.ownerGrant).ownerUserId
 					: undefined;
 				const ownerUserId = ownerGrantUserId ?? await readRequiredOwnerUserId(request);
-				const browserIdentity = issueRelayBrowserIdentity(readRelayBrowserIdentity(request) ?? undefined);
+				const browserIdentity = resolveBrowserIdentity(request, ownerUserId, clientHeartbeatRequest.rotateCredential);
 				const issuedToken = issueClientToken(
 					browserIdentity.identity.clientId,
-					browserIdentity.identity.clientKey,
+					browserIdentity.identity.credentialId,
 					ownerUserId,
 				);
 				audit("auth.token_refreshed", "success", {
@@ -358,6 +482,9 @@ export function createRelayRequestHandler(state: RelayServerState) {
 				const ownerGrantUserId = agentAuthRequest.ownerGrant
 					? readOwnerAgentGrant(agentAuthRequest.ownerGrant).ownerUserId
 					: undefined;
+				if (agentAuthRequest.rotateCredential && !ownerGrantUserId) {
+					throw new AuthError("owner grant is required to rotate an agent credential");
+				}
 				const ownerUserId = ownerGrantUserId
 					?? state.ownerBindingStore.findOwnerUserIdForAgent(agentAuthRequest.agentId, agentAuthRequest.agentKey);
 				if (!ownerUserId) {
@@ -372,20 +499,71 @@ export function createRelayRequestHandler(state: RelayServerState) {
 					sendJson(response, 400, { message: "Sign in locally to authenticate the relay agent." }, corsHeaders);
 					return;
 				}
+				let binding = state.ownerBindingStore.findLatestAgentByOwnerUserId(ownerUserId);
+				const displacedBinding = state.ownerBindingStore.findAgent(agentAuthRequest.agentId);
+				const agentKey = agentAuthRequest.rotateCredential ? `key-${randomUUID()}` : agentAuthRequest.agentKey;
 				if (ownerGrantUserId) {
+					if (displacedBinding && displacedBinding.ownerUserId !== ownerUserId) {
+						if (displacedBinding.credentialId) {
+							state.credentialStore.revoke(displacedBinding.credentialId, displacedBinding.ownerUserId);
+						}
+						if (state.agentSessions.get(displacedBinding.agentId)?.credentialId === displacedBinding.credentialId) {
+							state.agentSessions.delete(displacedBinding.agentId);
+						}
+						const connection = state.agentConnections.get(displacedBinding.agentId);
+						if (!displacedBinding.credentialId || connection?.credentialId === displacedBinding.credentialId) {
+							connection?.close("agent_owner_reassigned");
+						}
+						for (const client of transports.listBrowserClientsForAgent(displacedBinding.agentId)) {
+							if (client.ownerUserId === displacedBinding.ownerUserId) {
+								client.close("agent_owner_reassigned");
+							}
+						}
+					}
+					if (binding && (agentAuthRequest.rotateCredential || binding.agentId !== agentAuthRequest.agentId || binding.agentKey !== agentKey)) {
+						if (binding.credentialId) {
+							state.credentialStore.revoke(binding.credentialId, ownerUserId);
+						}
+					}
+					const credentialId = binding?.agentId === agentAuthRequest.agentId
+						&& binding.agentKey === agentKey
+						&& !agentAuthRequest.rotateCredential
+						&& binding.credentialId
+						&& state.credentialStore.get(binding.credentialId)?.revokedAt === null
+						? binding.credentialId
+						: state.credentialStore.create("agent", agentAuthRequest.agentId, ownerUserId).credentialId;
 					state.ownerBindingStore.bindAgentToOwner(
 						agentAuthRequest.agentId,
-						agentAuthRequest.agentKey,
+						agentKey,
 						ownerGrantUserId,
+						credentialId,
 					);
+					binding = state.ownerBindingStore.findLatestAgentByOwnerUserId(ownerUserId);
 					audit("pairing.agent_bound", "success", {
 						actorType: "agent",
 						actorId: agentAuthRequest.agentId,
 						ownerUserId: ownerGrantUserId,
 					});
+					if (agentAuthRequest.rotateCredential) {
+						transports.closeAgentConnection(agentAuthRequest.agentId, "agent_credential_rotated");
+						audit("auth.credential_rotated", "success", {
+							actorType: "agent",
+							actorId: agentAuthRequest.agentId,
+							ownerUserId,
+						});
+					}
 				}
+				if (!binding || binding.agentId !== agentAuthRequest.agentId || binding.agentKey !== agentKey) {
+					throw new AuthError("agent credential is revoked");
+				}
+				let credentialId = binding.credentialId;
+				if (!credentialId) {
+					credentialId = state.credentialStore.create("agent", agentAuthRequest.agentId, ownerUserId).credentialId;
+					state.ownerBindingStore.bindAgentToOwner(agentAuthRequest.agentId, agentKey, ownerUserId, credentialId);
+				}
+				state.credentialStore.assertActive(credentialId, "agent", agentAuthRequest.agentId);
 				const isTokenRefresh = state.agentSessions.has(agentAuthRequest.agentId);
-				const issuedToken = issueAgentToken(agentAuthRequest.agentId, agentAuthRequest.agentKey, ownerUserId);
+				const issuedToken = issueAgentToken(agentAuthRequest.agentId, agentKey, ownerUserId, credentialId);
 				audit(isTokenRefresh ? "auth.token_refreshed" : "auth.token_issued", "success", {
 					actorType: "agent",
 					actorId: issuedToken.payload.id,
@@ -532,7 +710,7 @@ export function createRelayRequestHandler(state: RelayServerState) {
 
 			try {
 				const token = readBearerTokenFromRequest(request);
-				const principal = readRelayToken(token);
+				const principal = readRelayToken(token, { credentialStore: state.credentialStore });
 				const payload = authorizeRelayConnection(principal, connectionRequest);
 				sendJson(response, 200, payload, corsHeaders);
 			} catch (error) {

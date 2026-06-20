@@ -22,6 +22,8 @@ export function runRelayServer(options?: { port?: number | string }) {
 		transport: "http",
 		ownerBindingStorePath: state.ownerBindingStore.getFilePath(),
 		ownerBindingCount: state.ownerBindingStore.countBindings(),
+		credentialStorePath: state.credentialStore.getFilePath(),
+		activeCredentialCount: state.credentialStore.countActive(),
 	});
 
 	return server;

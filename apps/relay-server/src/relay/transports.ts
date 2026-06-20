@@ -188,7 +188,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		response: ServerResponse,
 		corsHeaders: Record<string, string>,
 	) {
-		const target = resolveClientRelayTarget(request);
+		const target = resolveClientRelayTarget(request, state.credentialStore);
 		const lastSeq = readLastSeqFromRequest(request);
 		response.statusCode = 200;
 		setHeaders(response, createSseHeaders(corsHeaders));
@@ -480,7 +480,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		let target: ReturnType<typeof resolveClientRelayTarget>;
 		let lastSeq: number | undefined;
 		try {
-			target = resolveClientRelayTarget(request);
+			target = resolveClientRelayTarget(request, state.credentialStore);
 			lastSeq = readLastSeqFromRequest(request);
 		} catch (error) {
 			audit("authorization.failed", "failure", {
@@ -509,7 +509,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		response: ServerResponse,
 		corsHeaders: Record<string, string>,
 	) {
-		const target = resolveClientRelayTarget(request);
+		const target = resolveClientRelayTarget(request, state.credentialStore);
 		const browserClient = state.browserClients.get(target.clientId);
 		if (!browserClient || browserClient.closed) {
 			log("warn", "relay client message rejected; browser stream not connected", {
@@ -544,7 +544,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		corsHeaders: Record<string, string>,
 	) {
 		const token = readBearerTokenFromRequest(request);
-		const principal = readRelayToken(token);
+		const principal = readRelayToken(token, { credentialStore: state.credentialStore });
 		if (principal.type !== "agent") {
 			throw new AuthError("only agent tokens may open relay agent transport");
 		}
@@ -594,6 +594,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		// The runtime handle the relay uses to deliver commands to this agent.
 		const connection: RelayAgentConnection = {
 			agentId: principal.id,
+			credentialId: principal.credentialId,
 			ownerUserId: principal.ownerUserId ?? null,
 			closed: false,
 			send(command) {
@@ -702,6 +703,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 
 		const connection: RelayAgentConnection = {
 			agentId: principal.id,
+			credentialId: principal.credentialId,
 			ownerUserId: principal.ownerUserId ?? null,
 			closed: false,
 			send(command) {
@@ -808,7 +810,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		let principal: ReturnType<typeof readRelayToken>;
 		try {
 			const token = readBearerTokenFromRequest(request);
-			principal = readRelayToken(token);
+			principal = readRelayToken(token, { credentialStore: state.credentialStore });
 			if (principal.type !== "agent") {
 				throw new AuthError("only agent tokens may open relay agent transport");
 			}
@@ -841,7 +843,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		corsHeaders: Record<string, string>,
 	) {
 		const token = readBearerTokenFromRequest(request);
-		const principal = readRelayToken(token);
+		const principal = readRelayToken(token, { credentialStore: state.credentialStore });
 		if (principal.type !== "agent") {
 			throw new AuthError("only agent tokens may post relay agent messages");
 		}

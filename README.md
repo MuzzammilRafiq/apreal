@@ -98,7 +98,7 @@ pnpm build:web:remote
 - Relay auth env: `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `BETTER_AUTH_GOOGLE_CLIENT_ID`, and `BETTER_AUTH_GOOGLE_CLIENT_SECRET`.
 - Optional relay auth env: `BETTER_AUTH_SQLITE_PATH` and comma-separated `BETTER_AUTH_TRUSTED_ORIGINS`.
 - `JWT_SECRET` signs one-hour relay client and agent tokens. `BETTER_AUTH_SECRET` separately signs Better Auth sessions and is always required when hosted authentication is enabled; use independent high-entropy values for both.
-- Pairing owner grants expire after five minutes. Relay tokens are refreshed by clients before expiry and are revoked operationally by rotating `JWT_SECRET`; Better Auth session expiry and revocation follow the configured Better Auth policy.
+- Pairing owner grants expire after five minutes. Relay browser and agent credentials are tracked in a permission-restricted credential store, can be revoked individually through the owner-authenticated relay credential API, and are rotated during explicit browser or agent reauthentication. `JWT_SECRET` rotation remains available for emergency global invalidation.
 - When Better Auth is configured, relay client auth and heartbeat require a signed-in user session. Pairing a laptop server through that client code binds both client and agent relay tokens to the same Better Auth user id.
 - Browser chats stay shared in memory across tabs while the server is running.
 - CLI mode was removed; configuration now flows through the web client only.

@@ -13,6 +13,7 @@ type OwnerBindingStoreFile = {
 export type StoredOwnerAgentBinding = {
 	agentId: string;
 	agentKey: string;
+	credentialId?: string;
 	ownerUserId: string;
 	updatedAt: number;
 };
@@ -61,6 +62,7 @@ function parseStoredBinding(value: unknown): StoredOwnerAgentBinding | null {
 		return {
 			agentId,
 			agentKey,
+			credentialId: typeof value.credentialId === "string" ? ensureId(value.credentialId, "credentialId") : undefined,
 			ownerUserId,
 			updatedAt,
 		};
@@ -92,11 +94,12 @@ export class RelayOwnerBindingStore {
 
 	// Upserts the binding for one agent and removes any previous agent for the
 	// same owner so the relay keeps a single active agent per account.
-	bindAgentToOwner(agentId: string, agentKey: string, ownerUserId: string): StoredOwnerAgentBinding {
+	bindAgentToOwner(agentId: string, agentKey: string, ownerUserId: string, credentialId?: string): StoredOwnerAgentBinding {
 		const binding: StoredOwnerAgentBinding = {
 			agentId: ensureId(agentId, "agentId"),
 			agentKey: ensureId(agentKey, "agentKey"),
 			ownerUserId: ensureId(ownerUserId, "ownerUserId"),
+			credentialId: credentialId === undefined ? undefined : ensureId(credentialId, "credentialId"),
 			updatedAt: Date.now(),
 		};
 
@@ -108,6 +111,17 @@ export class RelayOwnerBindingStore {
 		return binding;
 	}
 
+	removeAgent(agentId: string): boolean {
+		const normalizedAgentId = ensureId(agentId, "agentId");
+		const bindings = this.readBindings();
+		const nextBindings = bindings.filter((binding) => binding.agentId !== normalizedAgentId);
+		if (nextBindings.length === bindings.length) {
+			return false;
+		}
+		this.writeBindings(nextBindings);
+		return true;
+	}
+
 	// Looks up which owner previously authenticated a specific agent id/key pair.
 	findOwnerUserIdForAgent(agentId: string, agentKey: string): string | null {
 		for (const binding of this.readBindings()) {
@@ -117,6 +131,11 @@ export class RelayOwnerBindingStore {
 		}
 
 		return null;
+	}
+
+	findAgent(agentId: string): StoredOwnerAgentBinding | null {
+		const normalizedAgentId = ensureId(agentId, "agentId");
+		return this.readBindings().find((binding) => binding.agentId === normalizedAgentId) ?? null;
 	}
 
 	// Returns the most recently updated agent binding for a given owner.

@@ -1,5 +1,4 @@
 import type { IncomingMessage } from "node:http";
-import { randomUUID } from "node:crypto";
 import {
 	assertRelayPrincipalId,
 	type RelayPrincipalType,
@@ -7,6 +6,7 @@ import {
 import jwt, { type JwtPayload } from "jsonwebtoken";
 
 import { getRelayEnv } from "./env.ts";
+import type { RelayCredentialStore } from "./credential-store.ts";
 
 // The relay accepts only two authenticated peer roles.
 // Keeping the role set explicit prevents accidental support for extra values
@@ -26,6 +26,7 @@ export type UserType = RelayPrincipalType;
 export type AuthTokenPayload = {
 	type: UserType;
 	id: string;
+	credentialId: string;
 	key?: string;
 	targetId?: string;
 	targetType?: UserType;
@@ -45,6 +46,7 @@ export type OwnerAgentGrantPayload = {
 export type RelayBrowserIdentity = {
 	clientId: string;
 	clientKey: string;
+	credentialId: string;
 };
 
 type RelayBrowserIdentityPayload = RelayBrowserIdentity & {
@@ -61,6 +63,7 @@ export type IssuedRelayToken = {
 export type GenerateTokenInput = {
 	type: UserType;
 	id: string;
+	credentialId: string;
 	key?: string;
 	targetId?: string;
 	targetType?: UserType;
@@ -155,6 +158,7 @@ function validateTokenPayload(payload: string | JwtPayload): AuthTokenPayload {
 	return {
 		type,
 		id: ensureString(payload.id, "id"),
+		credentialId: ensureString(payload.credentialId, "credentialId"),
 		key: type === "agent" ? ensureString(payload.key, "key") : undefined,
 		targetId: payload.targetId === undefined ? undefined : ensureString(payload.targetId, "targetId"),
 		targetType:
@@ -194,7 +198,10 @@ function extractBearerToken(headerValue: string | string[] | undefined): string 
 
 // Verifies a relay JWT signature and then validates the payload shape the
 // relay code expects to trust.
-export function readRelayToken(token: string, options?: { ignoreExpiration?: boolean }): AuthTokenPayload {
+export function readRelayToken(token: string, options?: {
+	ignoreExpiration?: boolean;
+	credentialStore?: RelayCredentialStore;
+}): AuthTokenPayload {
 	let decoded: string | JwtPayload;
 	try {
 		decoded = jwt.verify(token, getJwtSecret(), {
@@ -209,7 +216,15 @@ export function readRelayToken(token: string, options?: { ignoreExpiration?: boo
 		throw new AuthError(error instanceof Error ? error.message : "invalid token");
 	}
 
-	return validateTokenPayload(decoded);
+	const payload = validateTokenPayload(decoded);
+	if (options?.credentialStore) {
+		try {
+			options.credentialStore.assertActive(payload.credentialId, payload.type, payload.id);
+		} catch (error) {
+			throw new AuthError(error instanceof Error ? error.message : "relay credential is revoked");
+		}
+	}
+	return payload;
 }
 
 // Convenience wrapper for the common "Authorization: Bearer ..." request path.
@@ -225,12 +240,13 @@ export function authenticateHttpRequest(request: IncomingMessage): AuthTokenPayl
 
 // Helper used for provisioning and local testing. Keeping the helper here
 // ensures token creation and token validation share one contract.
-export function generateToken({ type, id, key, targetId, targetType, serverUrl, ownerUserId }: GenerateTokenInput): string {
+export function generateToken({ type, id, credentialId, key, targetId, targetType, serverUrl, ownerUserId }: GenerateTokenInput): string {
 	if (!isUserType(type)) {
 		throw new AuthError("invalid token role");
 	}
 
 	ensureString(id, "id");
+	ensureString(credentialId, "credentialId");
 	if (type === "agent") {
 		ensureString(key, "key");
 	}
@@ -247,17 +263,17 @@ export function generateToken({ type, id, key, targetId, targetType, serverUrl, 
 		ensureString(ownerUserId, "ownerUserId");
 	}
 
-	return jwt.sign({ type, id, ...(type === "agent" ? { key } : {}), targetId, targetType, serverUrl, ownerUserId }, getJwtSecret(), {
+	return jwt.sign({ type, id, credentialId, ...(type === "agent" ? { key } : {}), targetId, targetType, serverUrl, ownerUserId }, getJwtSecret(), {
 		algorithm: "HS256",
 		expiresIn: RELAY_JWT_EXPIRES_IN,
 	});
 }
 
-export function issueRelayToken(input: GenerateTokenInput): IssuedRelayToken {
+export function issueRelayToken(input: GenerateTokenInput, credentialStore?: RelayCredentialStore): IssuedRelayToken {
 	const token = generateToken(input);
 	return {
 		token,
-		payload: readRelayToken(token),
+		payload: readRelayToken(token, { credentialStore }),
 	};
 }
 
@@ -348,12 +364,16 @@ function validateRelayBrowserIdentityPayload(payload: string | JwtPayload): Rela
 		purpose: "browser_identity",
 		clientId: ensureString(payload.clientId, "clientId"),
 		clientKey: ensureString(payload.clientKey, "clientKey"),
+		credentialId: ensureString(payload.credentialId, "credentialId"),
 		iat: ensureNumber(payload.iat, "iat"),
 		exp: ensureNumber(payload.exp, "exp"),
 	};
 }
 
-export function readRelayBrowserIdentity(request: IncomingMessage): RelayBrowserIdentity | null {
+export function readRelayBrowserIdentity(
+	request: IncomingMessage,
+	credentialStore?: RelayCredentialStore,
+): RelayBrowserIdentity | null {
 	const cookie = readCookie(request, RELAY_BROWSER_IDENTITY_COOKIE_NAME);
 	if (!cookie) {
 		return null;
@@ -363,20 +383,20 @@ export function readRelayBrowserIdentity(request: IncomingMessage): RelayBrowser
 		const payload = validateRelayBrowserIdentityPayload(jwt.verify(cookie, getJwtSecret(), {
 			algorithms: ["HS256"],
 		}));
-		return { clientId: payload.clientId, clientKey: payload.clientKey };
+		if (credentialStore) {
+			credentialStore.assertActive(payload.credentialId, "client", payload.clientId);
+		}
+		return { clientId: payload.clientId, clientKey: payload.clientKey, credentialId: payload.credentialId };
 	} catch {
 		return null;
 	}
 }
 
-export function issueRelayBrowserIdentity(identity?: RelayBrowserIdentity): {
+export function issueRelayBrowserIdentity(identity: RelayBrowserIdentity): {
 	identity: RelayBrowserIdentity;
 	cookieHeader: string;
 } {
-	const nextIdentity = identity ?? {
-		clientId: `client-${randomUUID()}`,
-		clientKey: `key-${randomUUID()}`,
-	};
+	const nextIdentity = identity;
 	const value = jwt.sign(
 		{ purpose: "browser_identity", ...nextIdentity },
 		getJwtSecret(),

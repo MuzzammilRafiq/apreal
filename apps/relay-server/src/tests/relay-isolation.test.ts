@@ -21,6 +21,7 @@ import {
 	type RelayClientAuthResponse,
 	type RelayClientHeartbeatResponse,
 } from "@apreal/shared";
+import { RelayCredentialStore } from "../credential-store.ts";
 
 type RelayServerModule = typeof import("../index.ts");
 type RelayAuthModule = typeof import("../auth.ts");
@@ -912,4 +913,113 @@ test("allows multiple owner browser clients to stay connected", async (t) => {
 		clientId: secondClientResponse.body.clientId,
 		message: secondMessage,
 	});
+});
+
+test("rotates one browser credential and rejects its previously issued token", async (t) => {
+	const { baseUrl } = await startRelayTestServer(t);
+	const ownerGrant = generateOwnerAgentGrant("owner-browser-rotation").ownerGrant;
+	const original = await issueClientAuth(baseUrl, "ignored", "ignored", ownerGrant);
+
+	const rotated = await postJson<RelayClientAuthResponse>(baseUrl, RELAY_CLIENT_AUTH_PATH, {
+		ownerGrant,
+		rotateCredential: true,
+	}, {
+		headers: { cookie: original.identityCookie },
+	});
+	assert.equal(rotated.status, 200);
+	assert.notEqual(rotated.body.clientId, original.clientId);
+
+	const oldTokenResponse = await postJson<{ message: string }>(baseUrl, CLIENT_MESSAGE_PATH, {
+		type: "prompt",
+		prompt: "must not be delivered",
+	}, {
+		headers: { authorization: `Bearer ${original.token}` },
+	});
+	assert.equal(oldTokenResponse.status, 401);
+	assert.match(oldTokenResponse.body.message, /revoked/i);
+});
+
+test("does not silently replace a revoked browser credential during heartbeat", async (t) => {
+	const { baseUrl, tempDir } = await startRelayTestServer(t);
+	const ownerUserId = "owner-browser-revoked";
+	const ownerGrant = generateOwnerAgentGrant(ownerUserId).ownerGrant;
+	const original = await issueClientAuth(baseUrl, "ignored", "ignored", ownerGrant);
+	const credentialId = readRelayToken(original.token).credentialId;
+	const credentialStore = new RelayCredentialStore(join(tempDir, "relay-credentials.json"));
+	assert.ok(credentialStore.revoke(credentialId, ownerUserId));
+
+	const heartbeat = await postJson<{ message: string }>(baseUrl, RELAY_CLIENT_HEARTBEAT_PATH, {
+		ownerGrant,
+	}, {
+		headers: { cookie: original.identityCookie },
+	});
+	assert.equal(heartbeat.status, 401);
+	assert.match(heartbeat.body.message, /revoked/i);
+
+	const explicitlyRotated = await postJson<RelayClientAuthResponse>(baseUrl, RELAY_CLIENT_AUTH_PATH, {
+		ownerGrant,
+		rotateCredential: true,
+	}, {
+		headers: { cookie: original.identityCookie },
+	});
+	assert.equal(explicitlyRotated.status, 200);
+	assert.notEqual(explicitlyRotated.body.clientId, original.clientId);
+});
+
+test("rotates an agent key and invalidates both its old token and durable key", async (t) => {
+	const { baseUrl } = await startRelayTestServer(t);
+	const ownerGrant = generateOwnerAgentGrant("owner-agent-rotation").ownerGrant;
+	const original = await issueAgentAuth(baseUrl, "agent-rotation", "agent-key-original", ownerGrant);
+
+	const rotated = await postJson<RelayAgentAuthResponse>(baseUrl, RELAY_AGENT_AUTH_PATH, {
+		agentId: original.agentId,
+		agentKey: original.agentKey,
+		ownerGrant,
+		rotateCredential: true,
+	});
+	assert.equal(rotated.status, 200);
+	assert.notEqual(rotated.body.agentKey, original.agentKey);
+
+	const oldTokenResponse = await fetch(`${baseUrl}${RELAY_AGENT_STREAM_PATH}`, {
+		headers: { authorization: `Bearer ${original.token}` },
+	});
+	assert.equal(oldTokenResponse.status, 401);
+
+	const oldKeyResponse = await postJson<RelayAgentAuthResponse>(baseUrl, RELAY_AGENT_AUTH_PATH, {
+		agentId: original.agentId,
+		agentKey: original.agentKey,
+	});
+	assert.equal(oldKeyResponse.status, 400);
+
+	const restored = await postJson<RelayAgentAuthResponse>(baseUrl, RELAY_AGENT_AUTH_PATH, {
+		agentId: rotated.body.agentId,
+		agentKey: rotated.body.agentKey,
+	});
+	assert.equal(restored.status, 200);
+});
+
+test("revokes the former owner credential when an agent is reassigned", async (t) => {
+	const { baseUrl } = await startRelayTestServer(t);
+	const firstOwnerGrant = generateOwnerAgentGrant("owner-agent-first").ownerGrant;
+	const secondOwnerGrant = generateOwnerAgentGrant("owner-agent-second").ownerGrant;
+	const original = await issueAgentAuth(baseUrl, "agent-reassigned", "agent-key-shared", firstOwnerGrant);
+
+	const reassigned = await postJson<RelayAgentAuthResponse>(baseUrl, RELAY_AGENT_AUTH_PATH, {
+		agentId: original.agentId,
+		agentKey: original.agentKey,
+		ownerGrant: secondOwnerGrant,
+	});
+	assert.equal(reassigned.status, 200);
+
+	const oldTokenResponse = await fetch(`${baseUrl}${RELAY_AGENT_STREAM_PATH}`, {
+		headers: { authorization: `Bearer ${original.token}` },
+	});
+	assert.equal(oldTokenResponse.status, 401);
+	assert.match(await oldTokenResponse.text(), /revoked/i);
+
+	const newTokenResponse = await fetch(`${baseUrl}${RELAY_AGENT_STREAM_PATH}`, {
+		headers: { authorization: `Bearer ${reassigned.body.token}` },
+	});
+	assert.equal(newTokenResponse.status, 200);
+	await newTokenResponse.body?.cancel();
 });

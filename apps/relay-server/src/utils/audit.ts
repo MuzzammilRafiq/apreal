@@ -8,6 +8,8 @@ export const AUDIT_EVENTS = [
 	"auth.owner_grant_issued",
 	"auth.token_issued",
 	"auth.token_refreshed",
+	"auth.credential_revoked",
+	"auth.credential_rotated",
 	"pairing.agent_bound",
 	"pairing.client_resolved",
 	"authorization.failed",

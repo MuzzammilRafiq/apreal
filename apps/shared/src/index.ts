@@ -15,6 +15,8 @@ export const RELAY_AGENT_OWNER_GRANT_PATH = "/api/relay/auth/agent/owner-grant";
 export const RELAY_AGENT_STREAM_PATH = "/api/relay/agent/stream";
 export const RELAY_AGENT_MESSAGE_PATH = "/api/relay/agent/message";
 export const RELAY_CONNECTION_PATH = "/api/relay/connection";
+export const RELAY_CREDENTIALS_PATH = "/api/relay/credentials";
+export const RELAY_CREDENTIAL_REVOKE_PATH = "/api/relay/credentials/revoke";
 export const RELAY_PRINCIPAL_TYPES = ["agent", "client"] as const;
 export const LOCAL_CLIENT_ID_HEADER = "x-pi-local-client-id";
 export const LOCAL_CLIENT_ID_QUERY_PARAM = "clientId";
@@ -114,6 +116,7 @@ export type RelayAuthTarget = {
 
 export type RelayClientAuthRequest = {
 	ownerGrant?: string | null;
+	rotateCredential?: boolean;
 };
 
 export type RelayClientAuthResponse = {
@@ -129,6 +132,24 @@ export type RelayAgentAuthRequest = {
 	agentKey: string;
 	serverUrl?: string;
 	ownerGrant?: string | null;
+	rotateCredential?: boolean;
+};
+
+export type RelayCredentialSummary = {
+	credentialId: string;
+	type: RelayPrincipalType;
+	principalId: string;
+	createdAt: number;
+	updatedAt: number;
+	revokedAt: number | null;
+};
+
+export type RelayCredentialsResponse = {
+	credentials: RelayCredentialSummary[];
+};
+
+export type RevokeRelayCredentialRequest = {
+	credentialId: string;
 };
 
 export type RelayAgentAuthResponse = {

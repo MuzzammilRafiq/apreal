@@ -194,11 +194,13 @@ export async function authenticateRelayAgentWithOwnerGrant(
 		agentId: storedIdentity.agentId,
 		agentKey: storedIdentity.agentKey,
 		ownerGrant,
+		rotateCredential: true,
 	});
 
-	writeStoredRelayAgentIdentity(storedIdentity);
+	const rotatedIdentity = { ...storedIdentity, agentKey: issued.agentKey, updatedAt: Date.now() };
+	writeStoredRelayAgentIdentity(rotatedIdentity);
 	const nextAuth: StoredRelayAgentAuth = {
-		...storedIdentity,
+		...rotatedIdentity,
 		token: issued.token,
 		expiresAt: issued.expiresAt,
 		targetId: issued.target?.id ?? null,

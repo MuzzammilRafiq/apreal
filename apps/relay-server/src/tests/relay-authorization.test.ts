@@ -14,6 +14,7 @@ function createPrincipal(overrides: Partial<AuthTokenPayload> = {}): AuthTokenPa
 	return {
 		type: "client",
 		id: "client-one",
+		credentialId: "credential-client-one",
 		key: "client-key",
 		targetId: "agent-one",
 		targetType: "agent",

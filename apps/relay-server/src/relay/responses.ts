@@ -7,6 +7,8 @@ import {
 	RELAY_CLIENT_AUTH_PATH,
 	RELAY_CLIENT_HEARTBEAT_PATH,
 	RELAY_CONNECTION_PATH,
+	RELAY_CREDENTIALS_PATH,
+	RELAY_CREDENTIAL_REVOKE_PATH,
 	type RelayAgentAuthResponse,
 	type RelayClientAuthResponse,
 	type RelayClientHeartbeatResponse,
@@ -49,6 +51,8 @@ export function buildHealthPayload(corsHeaders: Record<string, string>, ownerBin
 			agentStream: RELAY_AGENT_STREAM_PATH,
 			agentMessage: RELAY_AGENT_MESSAGE_PATH,
 			connection: RELAY_CONNECTION_PATH,
+			credentials: RELAY_CREDENTIALS_PATH,
+			credentialRevoke: RELAY_CREDENTIAL_REVOKE_PATH,
 		},
 	};
 }

@@ -13,6 +13,7 @@ export type RelayBrowserClientConnection = {
 // Runtime handle for one agent's SSE command stream through the relay.
 export type RelayAgentConnection = {
 	agentId: string;
+	credentialId: string;
 	ownerUserId: string | null;
 	closed: boolean;
 	send(command: RelayAgentCommand): boolean;
