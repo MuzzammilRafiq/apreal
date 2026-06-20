@@ -1,5 +1,5 @@
-import { memo, useEffect, useState } from "react";
-import { Menu, MessageSquarePlus, Settings, Trash2, X } from "lucide-react";
+import { memo, useEffect, useRef, useState, type TouchEvent } from "react";
+import { ArrowLeft, Menu, MessageSquarePlus, Settings, Trash2 } from "lucide-react";
 import type { SessionSummary } from "../chatTypes";
 import { formatRelativeTime, getSessionCardClassName } from "../chatView";
 import { ConnectionSidebarFooter } from "./ConnectionSidebarFooter";
@@ -45,6 +45,16 @@ function SidebarContent({
 }: SidebarProps & { onClose?: () => void }) {
 	return (
 		<>
+			{onClose ? (
+				<button
+					type="button"
+					className="absolute left-3 top-[calc(env(safe-area-inset-top)+0.5rem)] z-10 flex h-9 w-9 items-center justify-center rounded-full text-muted transition-colors duration-150 hover:bg-ink-soft hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+					onClick={onClose}
+					aria-label="Back to chat"
+				>
+					<ArrowLeft className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
+				</button>
+			) : null}
 			<ConnectionSidebarFooter
 				target={target}
 				clientConnected={clientConnected}
@@ -53,19 +63,6 @@ function SidebarContent({
 				placement="top"
 			/>
 			<div className="shrink-0 px-2 pt-2 pb-1.5">
-			{onClose ? (
-				<div className="mb-0.5 flex justify-end px-1">
-						<button
-							type="button"
-							className="flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors duration-150 hover:bg-ink-soft hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
-							onClick={onClose}
-							aria-label="Close chat menu"
-						>
-							<X className="h-4.5 w-4.5" strokeWidth={2.2} aria-hidden="true" />
-						</button>
-					</div>
-				) : null}
-
 				<nav className="flex flex-col gap-px" aria-label="Sidebar actions">
 					<button
 						type="button"
@@ -204,6 +201,92 @@ export const Sidebar = memo(function Sidebar({
 	hostConnected,
 }: SidebarProps) {
 	const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+	const [mobileDragX, setMobileDragX] = useState(0);
+	const [mobileDragging, setMobileDragging] = useState(false);
+	const [mobileClosing, setMobileClosing] = useState(false);
+	const swipeStart = useRef<{
+		x: number;
+		y: number;
+		startedAt: number;
+		axis: "horizontal" | "vertical" | null;
+	} | null>(null);
+
+	const closeMobileMenu = () => {
+		if (mobileClosing) {
+			return;
+		}
+		setMobileDragging(false);
+		setMobileClosing(true);
+		setMobileDragX(-window.innerWidth);
+	};
+
+	const openMobileMenu = () => {
+		setMobileDragX(0);
+		setMobileClosing(false);
+		setMobileMenuOpen(true);
+	};
+
+	const handleTouchStart = (event: TouchEvent<HTMLElement>) => {
+		if (mobileClosing) {
+			return;
+		}
+		const touch = event.touches[0];
+		if (touch) {
+			swipeStart.current = {
+				x: touch.clientX,
+				y: touch.clientY,
+				startedAt: performance.now(),
+				axis: null,
+			};
+		}
+	};
+
+	const handleTouchMove = (event: TouchEvent<HTMLElement>) => {
+		const start = swipeStart.current;
+		const touch = event.touches[0];
+		if (!start || !touch) {
+			return;
+		}
+
+		const deltaX = touch.clientX - start.x;
+		const deltaY = touch.clientY - start.y;
+		if (!start.axis && Math.max(Math.abs(deltaX), Math.abs(deltaY)) >= 8) {
+			start.axis = Math.abs(deltaX) > Math.abs(deltaY) ? "horizontal" : "vertical";
+		}
+		if (start.axis !== "horizontal") {
+			return;
+		}
+
+		event.preventDefault();
+		setMobileDragging(true);
+		setMobileDragX(Math.max(-window.innerWidth, Math.min(0, deltaX)));
+	};
+
+	const handleTouchEnd = (event: TouchEvent<HTMLElement>) => {
+		const start = swipeStart.current;
+		const touch = event.changedTouches[0];
+		swipeStart.current = null;
+		if (!start || !touch || start.axis !== "horizontal") {
+			return;
+		}
+
+		const distance = Math.max(0, start.x - touch.clientX);
+		const elapsed = Math.max(1, performance.now() - start.startedAt);
+		const velocity = distance / elapsed;
+		if (distance >= window.innerWidth * 0.25 || (distance >= 32 && velocity >= 0.5)) {
+			closeMobileMenu();
+			return;
+		}
+
+		setMobileDragging(false);
+		setMobileDragX(0);
+	};
+
+	const handleTouchCancel = () => {
+		swipeStart.current = null;
+		setMobileDragging(false);
+		setMobileDragX(0);
+	};
 
 	useEffect(() => {
 		if (!mobileMenuOpen) {
@@ -223,7 +306,7 @@ export const Sidebar = memo(function Sidebar({
 				<button
 					type="button"
 					className="ui-icon-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
-					onClick={() => setMobileMenuOpen(true)}
+					onClick={openMobileMenu}
 					aria-label="Open chat menu"
 				>
 					<Menu className="h-4.5 w-4.5" strokeWidth={2.2} aria-hidden="true" />
@@ -248,14 +331,26 @@ export const Sidebar = memo(function Sidebar({
 			</div>
 
 			{mobileMenuOpen ? (
-				<div className="fixed inset-0 z-50 bg-black/25 min-[721px]:hidden" aria-hidden="true">
-					<button
-						type="button"
-						className="absolute inset-0 h-full w-full cursor-default"
-						onClick={() => setMobileMenuOpen(false)}
-						aria-label="Close chat menu"
-					/>
-					<aside className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col overflow-hidden border-r border-(--color-brand-line) bg-white text-ink shadow-[0_24px_60px_var(--color-brand-shadow)]">
+				<div className="fixed inset-0 z-50 min-[721px]:hidden">
+					<aside
+						className="absolute inset-0 flex w-full touch-pan-y flex-col overflow-hidden bg-white text-ink shadow-[12px_0_30px_rgba(0,0,0,0.12)]"
+						style={{
+							transform: `translate3d(${mobileDragX}px, 0, 0)`,
+							transition: mobileDragging ? "none" : "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)",
+						}}
+						onTouchStart={handleTouchStart}
+						onTouchMove={handleTouchMove}
+						onTouchEnd={handleTouchEnd}
+						onTouchCancel={handleTouchCancel}
+						onTransitionEnd={(event) => {
+							if (event.target === event.currentTarget && mobileClosing) {
+								setMobileMenuOpen(false);
+								setMobileClosing(false);
+								setMobileDragX(0);
+							}
+						}}
+						aria-label="Chat menu"
+					>
 						<SidebarContent
 							pendingDraft={pendingDraft}
 							sessions={sessions}
@@ -272,7 +367,7 @@ export const Sidebar = memo(function Sidebar({
 							clientConnected={clientConnected}
 							clientConnecting={clientConnecting}
 							hostConnected={hostConnected}
-							onClose={() => setMobileMenuOpen(false)}
+							onClose={closeMobileMenu}
 						/>
 					</aside>
 				</div>
