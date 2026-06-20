@@ -71,6 +71,15 @@ function mergeConsecutiveAssistantMessages(transcript: TranscriptMessage[]): Tra
 			continue;
 		}
 
+		// Content indexes are local to each assistant message and restart after a
+		// tool call. Preserve the message boundary order before assigning indexes
+		// for the combined display message; otherwise a continuation's thinking at
+		// index 0 can be sorted ahead of the preceding tool call at index 1.
+		const segments = [
+			...getOrderedSegments(previous.segments),
+			...getOrderedSegments(item.segments),
+		].map((segment, contentIndex) => ({ ...segment, contentIndex }));
+
 		merged[merged.length - 1] = {
 			...previous,
 			body: [previous.body, item.body].filter(Boolean).join(""),
@@ -78,7 +87,7 @@ function mergeConsecutiveAssistantMessages(transcript: TranscriptMessage[]): Tra
 			modelLabel: item.modelLabel ?? previous.modelLabel,
 			modelSource: item.modelSource ?? previous.modelSource,
 			toolCalls: [...previous.toolCalls, ...item.toolCalls],
-			segments: getOrderedSegments([...previous.segments, ...item.segments]),
+			segments,
 			pending: previous.pending || item.pending,
 			createdAt: Math.min(previous.createdAt, item.createdAt),
 		};
