@@ -188,9 +188,16 @@ function SidebarContent({
 										aria-current={isActive ? "page" : undefined}
 									>
 										<p
-											className={`truncate text-[0.9375rem] leading-snug tracking-tight ${needsSync ? "font-semibold text-ink" : "font-normal"}`}
+											className={`flex min-w-0 items-center gap-2 text-[0.9375rem] leading-snug tracking-tight ${needsSync ? "font-semibold text-ink" : "font-normal"}`}
 										>
-											{session.title}
+											<span className="truncate">{session.title}</span>
+											{needsSync && !isActive ? (
+												<span
+													className="h-2 w-2 shrink-0 rounded-full bg-blue-500"
+													aria-label="New activity"
+													title="New activity"
+												/>
+											) : null}
 										</p>
 									</button>
 									{session.busy ? (

@@ -137,6 +137,7 @@ export function App({ runtime }: AppProps) {
 	const [sessionCache, setSessionCache] = useState<Map<string, SessionCacheEntry>>(() => new Map());
 	const [liveTranscriptOverrides, setLiveTranscriptOverrides] = useState<Map<string, TranscriptMessage[]>>(() => new Map());
 	const [cachedTranscriptRevisions, setCachedTranscriptRevisions] = useState<Map<string, number>>(() => new Map());
+	const [sessionIdsWithInactiveUpdates, setSessionIdsWithInactiveUpdates] = useState<Set<string>>(() => new Set());
 	const [visibleSessionLimit, setVisibleSessionLimit] = useState(SESSION_PAGE_SIZE);
 	const [totalSessionCount, setTotalSessionCount] = useState<number | null>(null);
 	const [loadingMoreSessions, setLoadingMoreSessions] = useState(false);
@@ -219,7 +220,7 @@ export function App({ runtime }: AppProps) {
 			: null;
 	const displayedActiveTranscript = createOptimisticTranscript(activeTranscript, activePendingPrompt);
 	const sessionIdsNeedingSync = useMemo(() => {
-		const ids = new Set<string>();
+		const ids = new Set(sessionIdsWithInactiveUpdates);
 		for (const session of sessions) {
 			const cached = sessionCache.get(session.id);
 			const cachedRevision = Math.max(
@@ -231,7 +232,7 @@ export function App({ runtime }: AppProps) {
 			}
 		}
 		return ids;
-	}, [cachedTranscriptRevisions, sessionCache, sessions]);
+	}, [cachedTranscriptRevisions, sessionCache, sessionIdsWithInactiveUpdates, sessions]);
 	const serverReady = transportReady;
 	const effectiveCapabilities = useMemo(() => ({
 		...runtime.capabilities,
@@ -579,6 +580,16 @@ export function App({ runtime }: AppProps) {
 		const { load = true, focus = false } = options;
 		activeSessionIdRef.current = sessionId;
 		setActiveSessionId(sessionId);
+		if (sessionId) {
+			setSessionIdsWithInactiveUpdates((previous) => {
+				if (!previous.has(sessionId)) {
+					return previous;
+				}
+				const next = new Set(previous);
+				next.delete(sessionId);
+				return next;
+			});
+		}
 		setPendingDraft(false);
 		storeActiveSessionId(sessionId);
 		if (load && sessionId) {
@@ -797,6 +808,16 @@ export function App({ runtime }: AppProps) {
 				}
 				case "session_summary_updated": {
 					if (!isScheduledSessionSummary(serverPayload.session)) {
+						if (activeSessionIdRef.current !== serverPayload.session.id) {
+							setSessionIdsWithInactiveUpdates((previous) => {
+								if (previous.has(serverPayload.session.id)) {
+									return previous;
+								}
+								const next = new Set(previous);
+								next.add(serverPayload.session.id);
+								return next;
+							});
+						}
 						setSessions((previous) => {
 							const existing = previous.find((entry) => entry.id === serverPayload.session.id);
 							return upsertSessionInList(
@@ -835,6 +856,14 @@ export function App({ runtime }: AppProps) {
 				}
 				case "session_deleted": {
 					clearBufferedAssistantDeltas(serverPayload.sessionId);
+					setSessionIdsWithInactiveUpdates((previous) => {
+						if (!previous.has(serverPayload.sessionId)) {
+							return previous;
+						}
+						const next = new Set(previous);
+						next.delete(serverPayload.sessionId);
+						return next;
+					});
 					setSessions((previous) => previous.filter((session) => session.id !== serverPayload.sessionId));
 					setSessionCache((previous) => {
 						if (!previous.has(serverPayload.sessionId)) {
