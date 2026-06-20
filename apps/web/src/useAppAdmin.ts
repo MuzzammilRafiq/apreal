@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import type { CreateMcpServerRequest, LocalWebAdminStatus, McpServerConfig, ProvidersResponse, UpdateMcpServerRequest } from "@apreal/shared";
-import type { ScheduledJobDetails, SessionSummary } from "./chatTypes";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { CreateMcpServerRequest, LocalWebAdminStatus, UpdateMcpServerRequest } from "@apreal/shared";
+import type { ScheduledJobDetails } from "./chatTypes";
 import {
 	LOCAL_ADMIN_STATUS_REFRESH_INTERVAL_MS,
 	RELAY_STATUS_REFRESH_INTERVAL_MS,
@@ -51,24 +52,34 @@ type PendingRemoteSnapshot = {
 	timer: number;
 };
 
+const adminQueryKeys = {
+	all: (target: WebRuntime["target"]) => ["admin", target] as const,
+	providers: (target: WebRuntime["target"]) => [...adminQueryKeys.all(target), "providers"] as const,
+	mcpServers: (target: WebRuntime["target"]) => [...adminQueryKeys.all(target), "mcp-servers"] as const,
+	scheduledJobs: (target: WebRuntime["target"]) => [...adminQueryKeys.all(target), "scheduled-jobs"] as const,
+	scheduledJobRuns: (target: WebRuntime["target"], jobId: string) => [
+		...adminQueryKeys.all(target),
+		"scheduled-job-runs",
+		jobId,
+	] as const,
+};
+
+function upsertScheduledJob(jobs: ScheduledJobDetails[], job: ScheduledJobDetails): ScheduledJobDetails[] {
+	const next = jobs.filter((candidate) => candidate.id !== job.id);
+	next.push(job);
+	next.sort((left, right) => left.name.localeCompare(right.name));
+	return next;
+}
+
 export function useAppAdmin({ route, runtime, enabled, connected, restartEventStream, setConnected, setStreamRequested }: UseAppAdminOptions) {
+	const queryClient = useQueryClient();
 	const [adminStatus, setAdminStatus] = useState<LocalWebAdminStatus | null>(null);
 	const [adminStatusError, setAdminStatusError] = useState<string | null>(null);
 	const [transportStatusMessage, setTransportStatusMessage] = useState<string | null>(null);
 	const [serverReady, setServerReady] = useState(false);
 	const [transportReady, setTransportReady] = useState(false);
 	const [authorizedSettingsSections, setAuthorizedSettingsSections] = useState(runtime.capabilities.settingsSections);
-	const [providers, setProviders] = useState<ProvidersResponse | null>(null);
-	const [providersError, setProvidersError] = useState<string | null>(null);
-	const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([]);
-	const [mcpServersError, setMcpServersError] = useState<string | null>(null);
-	const [loadingMcpServers, setLoadingMcpServers] = useState(false);
-	const [scheduledJobs, setScheduledJobs] = useState<ScheduledJobDetails[]>([]);
-	const [scheduledJobsError, setScheduledJobsError] = useState<string | null>(null);
-	const [loadingScheduledJobs, setLoadingScheduledJobs] = useState(false);
-	const [scheduledJobRuns, setScheduledJobRuns] = useState<SessionSummary[]>([]);
-	const [scheduledJobRunsError, setScheduledJobRunsError] = useState<string | null>(null);
-	const [loadingScheduledJobRuns, setLoadingScheduledJobRuns] = useState(false);
+	const [activeJobRunsId, setActiveJobRunsId] = useState<string | null>(null);
 	const [appendPromptMessage, setAppendPromptMessage] = useState<string | null>(null);
 	const [appendPromptError, setAppendPromptError] = useState<string | null>(null);
 	const [savingAppendPrompt, setSavingAppendPrompt] = useState(false);
@@ -167,62 +178,102 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 		pendingRemoteSnapshotsRef.current.clear();
 	}, []);
 
-	const refreshProviders = useCallback(async () => {
+	const loadProviders = useCallback(async () => {
 		if (runtime.target === "remote") {
 			const snapshot = await requestRemoteSnapshot({ type: "load_providers" }, "providers_snapshot");
 			return snapshot;
 		}
 
-		try {
-			const data = await readProviders();
-			setProviders(data);
-			setProvidersError(null);
-			return data;
-		} catch (error) {
-			setProvidersError(error instanceof Error ? error.message : "Failed to load providers.");
-			throw error;
-		}
+		return await readProviders();
 	}, [requestRemoteSnapshot, runtime.target]);
 
-	const refreshMcpServers = useCallback(async () => {
-		setLoadingMcpServers(true);
-		try {
-			if (runtime.target === "remote") {
-				const snapshot = await requestRemoteSnapshot({ type: "load_mcp_servers" }, "mcp_servers_snapshot");
-				return snapshot.servers;
+	const loadMcpServers = useCallback(async (refresh = false) => {
+		if (runtime.target === "remote") {
+			const snapshot = await requestRemoteSnapshot(
+				{ type: refresh ? "refresh_mcp_servers" : "load_mcp_servers" },
+				"mcp_servers_snapshot",
+			);
+			return snapshot.servers;
+		}
+
+		const response = refresh ? await refreshMcpServersRequest() : await readMcpServers();
+		return response.servers;
+	}, [requestRemoteSnapshot, runtime.target]);
+
+	const loadScheduledJobs = useCallback(async () => {
+		if (runtime.target === "remote") {
+			const snapshot = await requestRemoteSnapshot({ type: "load_jobs" }, "jobs_snapshot");
+			return snapshot.jobs;
+		}
+
+		return await readScheduledJobs();
+	}, [requestRemoteSnapshot, runtime.target]);
+
+	const loadScheduledJobRuns = useCallback(async (jobId: string) => {
+		if (runtime.target === "remote") {
+			const snapshot = await requestRemoteSnapshot(
+				{ type: "load_job_runs", jobId },
+				"job_runs_snapshot",
+				(candidate) => candidate.jobId === jobId,
+			);
+			return snapshot.runs;
+		}
+
+		return await readScheduledJobRuns(jobId);
+	}, [requestRemoteSnapshot, runtime.target]);
+
+	const providersQuery = useQuery({
+		queryKey: adminQueryKeys.providers(runtime.target),
+		queryFn: loadProviders,
+		enabled: enabled && runtime.capabilities.providers && route !== "jobs",
+		retry: runtime.target === "remote" ? false : 1,
+		refetchInterval: (query) => {
+			const providers = query.state.data?.providers;
+			if (route === "settings" && providers?.some((provider) => provider.loginState.status === "pending")) {
+				return 2_000;
 			}
 
-			const response = await readMcpServers();
-			setMcpServers(response.servers);
-			setMcpServersError(null);
-			return response.servers;
-		} catch (error) {
-			setMcpServersError(getErrorMessage(error));
-			throw error;
-		} finally {
-			setLoadingMcpServers(false);
-		}
-	}, [requestRemoteSnapshot, runtime.target]);
+			return runtime.target === "local" ? LOCAL_ADMIN_STATUS_REFRESH_INTERVAL_MS : false;
+		},
+	});
+	const mcpServersQuery = useQuery({
+		queryKey: adminQueryKeys.mcpServers(runtime.target),
+		queryFn: () => loadMcpServers(false),
+		enabled: enabled && route === "settings" && runtime.capabilities.mcpServers,
+		retry: runtime.target === "remote" ? false : 1,
+	});
+	const scheduledJobsQuery = useQuery({
+		queryKey: adminQueryKeys.scheduledJobs(runtime.target),
+		queryFn: loadScheduledJobs,
+		enabled: enabled && (route === "jobs" || route === "settings") && runtime.capabilities.jobs,
+		retry: runtime.target === "remote" ? false : 1,
+	});
+	const scheduledJobRunsQuery = useQuery({
+		queryKey: adminQueryKeys.scheduledJobRuns(runtime.target, activeJobRunsId ?? "none"),
+		queryFn: () => loadScheduledJobRuns(activeJobRunsId!),
+		enabled: enabled && route === "jobs" && runtime.capabilities.jobs && activeJobRunsId !== null,
+		retry: runtime.target === "remote" ? false : 1,
+	});
+
+	const providers = providersQuery.data ?? null;
+	const providersError = providersQuery.error ? getErrorMessage(providersQuery.error) : null;
+	const mcpServers = mcpServersQuery.data ?? [];
+	const mcpServersError = mcpServersQuery.error ? getErrorMessage(mcpServersQuery.error) : null;
+	const loadingMcpServers = mcpServersQuery.isFetching;
+	const scheduledJobs = scheduledJobsQuery.data ?? [];
+	const scheduledJobsError = scheduledJobsQuery.error ? getErrorMessage(scheduledJobsQuery.error) : null;
+	const loadingScheduledJobs = scheduledJobsQuery.isFetching;
+	const scheduledJobRuns = scheduledJobRunsQuery.data ?? [];
+	const scheduledJobRunsError = scheduledJobRunsQuery.error ? getErrorMessage(scheduledJobRunsQuery.error) : null;
+	const loadingScheduledJobRuns = scheduledJobRunsQuery.isFetching;
 
 	const reloadMcpServers = useCallback(async () => {
-		setLoadingMcpServers(true);
-		try {
-			if (runtime.target === "remote") {
-				const snapshot = await requestRemoteSnapshot({ type: "refresh_mcp_servers" }, "mcp_servers_snapshot");
-				return snapshot.servers;
-			}
-
-			const response = await refreshMcpServersRequest();
-			setMcpServers(response.servers);
-			setMcpServersError(null);
-			return response.servers;
-		} catch (error) {
-			setMcpServersError(getErrorMessage(error));
-			throw error;
-		} finally {
-			setLoadingMcpServers(false);
-		}
-	}, [requestRemoteSnapshot, runtime.target]);
+		return await queryClient.fetchQuery({
+			queryKey: adminQueryKeys.mcpServers(runtime.target),
+			queryFn: () => loadMcpServers(true),
+			staleTime: 0,
+		});
+	}, [loadMcpServers, queryClient, runtime.target]);
 
 	const refreshAdminStatus = useCallback(async () => {
 		const nextStatus = await runtime.transport.readStatus();
@@ -234,16 +285,13 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 		setServerReady(nextStatus.serverReady);
 		setTransportReady(nextStatus.transportReady);
 		setAuthorizedSettingsSections(nextStatus.settingsSections);
-		if (runtime.target !== "remote" && runtime.capabilities.providers) {
-			void refreshProviders().catch(() => {
-				// Provider errors are already captured in UI state.
-			});
-		}
 		return nextStatus;
-	}, [refreshProviders, runtime, sendRemoteMessage]);
+	}, [runtime]);
 
 	useEffect(() => {
 		if (!enabled) {
+			queryClient.removeQueries({ queryKey: adminQueryKeys.all(runtime.target) });
+			setActiveJobRunsId(null);
 			setAdminStatus(null);
 			setAdminStatusError(null);
 			setTransportStatusMessage(null);
@@ -298,103 +346,75 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 				window.clearTimeout(refreshTimer);
 			}
 		};
-	}, [enabled, refreshAdminStatus, runtime.capabilities.settingsSections, runtime.target, setConnected, setStreamRequested]);
+	}, [enabled, queryClient, refreshAdminStatus, runtime.capabilities.settingsSections, runtime.target, setConnected, setStreamRequested]);
 
-	const refreshScheduledJobs = useCallback(async () => {
-		setLoadingScheduledJobs(true);
-		try {
+	const updateScheduledJobMutation = useMutation({
+		mutationFn: async ({ jobId, changes }: {
+			jobId: string;
+			changes: { intervalMinutes?: number; enabled?: boolean };
+		}) => {
 			if (runtime.target === "remote") {
-				const snapshot = await requestRemoteSnapshot({ type: "load_jobs" }, "jobs_snapshot");
-				return snapshot.jobs;
+				await sendRemoteMessage({ type: "update_job", jobId, changes });
+				return null;
 			}
 
-			const jobs = await readScheduledJobs();
-			setScheduledJobs(jobs);
-			setScheduledJobsError(null);
-			if (jobs.length === 0) {
-				setScheduledJobRuns([]);
-				setScheduledJobRunsError(null);
+			return await updateScheduledJobRequest(jobId, changes);
+		},
+		onSuccess: (job) => {
+			if (!job) {
+				return;
 			}
-			return jobs;
-		} catch (error) {
-			setScheduledJobsError(getErrorMessage(error));
-			throw error;
-		} finally {
-			setLoadingScheduledJobs(false);
-		}
-	}, [requestRemoteSnapshot, runtime.target]);
 
-	const refreshScheduledJobRuns = useCallback(async (jobId: string) => {
-		setLoadingScheduledJobRuns(true);
-		setScheduledJobRuns([]);
-		setScheduledJobRunsError(null);
-		try {
+			queryClient.setQueryData<ScheduledJobDetails[]>(
+				adminQueryKeys.scheduledJobs(runtime.target),
+				(current = []) => upsertScheduledJob(current, job),
+			);
+		},
+	});
+	const deleteScheduledJobMutation = useMutation({
+		mutationFn: async (jobId: string) => {
 			if (runtime.target === "remote") {
-				const snapshot = await requestRemoteSnapshot(
-					{ type: "load_job_runs", jobId },
-					"job_runs_snapshot",
-					(candidate) => candidate.jobId === jobId,
-				);
-				return snapshot.runs;
+				await sendRemoteMessage({ type: "delete_job", jobId });
+				return jobId;
 			}
 
-			const runs = await readScheduledJobRuns(jobId);
-			setScheduledJobRuns(runs);
-			setScheduledJobRunsError(null);
-			return runs;
-		} catch (error) {
-			setScheduledJobRunsError(getErrorMessage(error));
-			throw error;
-		} finally {
-			setLoadingScheduledJobRuns(false);
-		}
-	}, [requestRemoteSnapshot, runtime.target]);
+			await deleteScheduledJobRequest(jobId);
+			return jobId;
+		},
+		onSuccess: (jobId) => {
+			queryClient.setQueryData<ScheduledJobDetails[]>(
+				adminQueryKeys.scheduledJobs(runtime.target),
+				(current = []) => current.filter((job) => job.id !== jobId),
+			);
+			queryClient.removeQueries({ queryKey: adminQueryKeys.scheduledJobRuns(runtime.target, jobId) });
+			setActiveJobRunsId((current) => current === jobId ? null : current);
+		},
+	});
 
 	const updateScheduledJob = useCallback(async (jobId: string, intervalMinutes: number) => {
-		if (runtime.target === "remote") {
-			await sendRemoteMessage({ type: "update_job", jobId, changes: { intervalMinutes } });
-			return;
-		}
-
-		await updateScheduledJobRequest(jobId, { intervalMinutes });
-		await refreshScheduledJobs();
-	}, [refreshScheduledJobs, runtime.target, sendRemoteMessage]);
+		await updateScheduledJobMutation.mutateAsync({ jobId, changes: { intervalMinutes } });
+	}, [updateScheduledJobMutation]);
 
 	const toggleScheduledJobEnabled = useCallback(async (jobId: string, enabledValue: boolean) => {
-		if (runtime.target === "remote") {
-			await sendRemoteMessage({ type: "update_job", jobId, changes: { enabled: enabledValue } });
-			return;
-		}
-
-		await updateScheduledJobRequest(jobId, { enabled: enabledValue });
-		await refreshScheduledJobs();
-	}, [refreshScheduledJobs, runtime.target, sendRemoteMessage]);
+		await updateScheduledJobMutation.mutateAsync({ jobId, changes: { enabled: enabledValue } });
+	}, [updateScheduledJobMutation]);
 
 	const deleteScheduledJob = useCallback(async (jobId: string) => {
-		if (runtime.target === "remote") {
-			await sendRemoteMessage({ type: "delete_job", jobId });
-			setScheduledJobRuns([]);
-			setScheduledJobRunsError(null);
+		await deleteScheduledJobMutation.mutateAsync(jobId);
+	}, [deleteScheduledJobMutation]);
+
+	const handleRefreshJobs = useCallback(() => {
+		void scheduledJobsQuery.refetch();
+	}, [scheduledJobsQuery]);
+
+	const handleRefreshJobRuns = useCallback((jobId: string) => {
+		if (activeJobRunsId === jobId) {
+			void scheduledJobRunsQuery.refetch();
 			return;
 		}
 
-		await deleteScheduledJobRequest(jobId);
-		setScheduledJobRuns([]);
-		setScheduledJobRunsError(null);
-		await refreshScheduledJobs();
-	}, [refreshScheduledJobs, runtime.target, sendRemoteMessage]);
-
-	const handleRefreshJobs = useCallback(() => {
-		void refreshScheduledJobs().catch(() => {
-			// The error state is already captured for rendering.
-		});
-	}, [refreshScheduledJobs]);
-
-	const handleRefreshJobRuns = useCallback((jobId: string) => {
-		void refreshScheduledJobRuns(jobId).catch(() => {
-			// The error state is already captured for rendering.
-		});
-	}, [refreshScheduledJobRuns]);
+		setActiveJobRunsId(jobId);
+	}, [activeJobRunsId, scheduledJobRunsQuery]);
 
 	const handleSaveAppendSystemPrompt = useCallback((appendSystemPrompt: string) => {
 		setSavingAppendPrompt(true);
@@ -433,76 +453,124 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 			});
 	}, [runtime, sendRemoteMessage]);
 
+	const setDefaultModelMutation = useMutation({
+		mutationFn: async ({ provider, modelId }: { provider: string; modelId: string }) => {
+			if (runtime.target === "remote") {
+				await sendRemoteMessage({ type: "set_default_model", provider, modelId });
+				return null;
+			}
+
+			return await updateDefaultModelRequest({ provider, modelId });
+		},
+		onSuccess: (response) => {
+			if (response) {
+				queryClient.setQueryData(adminQueryKeys.providers(runtime.target), response);
+			}
+		},
+	});
+	const startProviderLoginMutation = useMutation({
+		mutationFn: async (provider: string) => {
+			if (runtime.target === "remote") {
+				setProviderLoginRedirect(provider);
+				await sendRemoteMessage({ type: "start_provider_login", provider });
+				return null;
+			}
+
+			return await startProviderLoginRequest(provider);
+		},
+		onSuccess: (response) => {
+			if (!response) {
+				return;
+			}
+
+			queryClient.setQueryData(adminQueryKeys.providers(runtime.target), response);
+			if (response.loginState.authUrl) {
+				window.location.assign(response.loginState.authUrl);
+			}
+		},
+		onError: () => {
+			setProviderLoginRedirect(null);
+		},
+	});
+	const saveProviderApiKeyMutation = useMutation({
+		mutationFn: async ({ provider, apiKey }: { provider: string; apiKey: string }) => {
+			if (runtime.target === "remote") {
+				await sendRemoteMessage({ type: "save_provider_api_key", provider, apiKey });
+				return null;
+			}
+
+			return await saveProviderApiKeyRequest(provider, apiKey);
+		},
+		onSuccess: (response) => {
+			if (response) {
+				queryClient.setQueryData(adminQueryKeys.providers(runtime.target), response);
+			}
+		},
+	});
+	const createMcpServerMutation = useMutation({
+		mutationFn: async (requestBody: CreateMcpServerRequest) => {
+			if (runtime.target === "remote") {
+				await sendRemoteMessage({ type: "create_mcp_server", request: requestBody });
+				return null;
+			}
+
+			return await createMcpServerRequest(requestBody);
+		},
+		onSuccess: (response) => {
+			if (response) {
+				queryClient.setQueryData(adminQueryKeys.mcpServers(runtime.target), response.servers);
+			}
+		},
+	});
+	const updateMcpServerMutation = useMutation({
+		mutationFn: async ({ serverId, requestBody }: { serverId: string; requestBody: UpdateMcpServerRequest }) => {
+			if (runtime.target === "remote") {
+				await sendRemoteMessage({ type: "update_mcp_server", serverId, request: requestBody });
+				return null;
+			}
+
+			return await updateMcpServerRequest(serverId, requestBody);
+		},
+		onSuccess: (response) => {
+			if (response) {
+				queryClient.setQueryData(adminQueryKeys.mcpServers(runtime.target), response.servers);
+			}
+		},
+	});
+	const deleteMcpServerMutation = useMutation({
+		mutationFn: async (serverId: string) => {
+			if (runtime.target === "remote") {
+				await sendRemoteMessage({ type: "delete_mcp_server", serverId });
+				return null;
+			}
+
+			return await deleteMcpServerRequest(serverId);
+		},
+		onSuccess: (response) => {
+			if (response) {
+				queryClient.setQueryData(adminQueryKeys.mcpServers(runtime.target), response.servers);
+			}
+		},
+	});
+
 	const handleSetDefaultModel = useCallback(async (provider: string, modelId: string) => {
-		if (runtime.target === "remote") {
-			await sendRemoteMessage({ type: "set_default_model", provider, modelId });
-			return;
-		}
-
-		const nextProviders = await updateDefaultModelRequest({ provider, modelId });
-		setProviders(nextProviders);
-		setProvidersError(null);
-	}, [runtime.target, sendRemoteMessage]);
-
+		await setDefaultModelMutation.mutateAsync({ provider, modelId });
+	}, [setDefaultModelMutation]);
 	const handleStartProviderLogin = useCallback(async (provider: string) => {
-		if (runtime.target === "remote") {
-			setProviderLoginRedirect(provider);
-			await sendRemoteMessage({ type: "start_provider_login", provider });
-			return;
-		}
-
-		const response = await startProviderLoginRequest(provider);
-		setProviders(response);
-		setProvidersError(null);
-
-		if (response.loginState.authUrl) {
-			window.location.assign(response.loginState.authUrl);
-		}
-	}, [runtime.target, sendRemoteMessage]);
-
+		await startProviderLoginMutation.mutateAsync(provider);
+	}, [startProviderLoginMutation]);
 	const handleSaveProviderApiKey = useCallback(async (provider: string, apiKey: string) => {
-		if (runtime.target === "remote") {
-			await sendRemoteMessage({ type: "save_provider_api_key", provider, apiKey });
-			return;
-		}
-
-		const response = await saveProviderApiKeyRequest(provider, apiKey);
-		setProviders(response);
-		setProvidersError(null);
-	}, [runtime.target, sendRemoteMessage]);
-
+		await saveProviderApiKeyMutation.mutateAsync({ provider, apiKey });
+	}, [saveProviderApiKeyMutation]);
 	const handleCreateMcpServer = useCallback(async (requestBody: CreateMcpServerRequest) => {
-		if (runtime.target === "remote") {
-			await sendRemoteMessage({ type: "create_mcp_server", request: requestBody });
-			return;
-		}
-
-		const response = await createMcpServerRequest(requestBody);
-		setMcpServers(response.servers);
-		setMcpServersError(null);
-	}, [runtime.target, sendRemoteMessage]);
-
+		await createMcpServerMutation.mutateAsync(requestBody);
+	}, [createMcpServerMutation]);
 	const handleUpdateMcpServer = useCallback(async (serverId: string, requestBody: UpdateMcpServerRequest) => {
-		if (runtime.target === "remote") {
-			await sendRemoteMessage({ type: "update_mcp_server", serverId, request: requestBody });
-			return;
-		}
-
-		const response = await updateMcpServerRequest(serverId, requestBody);
-		setMcpServers(response.servers);
-		setMcpServersError(null);
-	}, [runtime.target, sendRemoteMessage]);
-
+		await updateMcpServerMutation.mutateAsync({ serverId, requestBody });
+	}, [updateMcpServerMutation]);
 	const handleDeleteMcpServer = useCallback(async (serverId: string) => {
-		if (runtime.target === "remote") {
-			await sendRemoteMessage({ type: "delete_mcp_server", serverId });
-			return;
-		}
-
-		const response = await deleteMcpServerRequest(serverId);
-		setMcpServers(response.servers);
-		setMcpServersError(null);
-	}, [runtime.target, sendRemoteMessage]);
+		await deleteMcpServerMutation.mutateAsync(serverId);
+	}, [deleteMcpServerMutation]);
 
 	const handleServerMessage = useCallback((message: ServerPayload): boolean => {
 		switch (message.type) {
@@ -525,8 +593,7 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 			}
 			case "providers_snapshot": {
 				resolveRemoteSnapshots(message);
-				setProviders(message);
-				setProvidersError(null);
+				queryClient.setQueryData(adminQueryKeys.providers(runtime.target), message);
 				if (providerLoginRedirect) {
 					const activeProvider = message.providers.find((provider) => provider.id === providerLoginRedirect);
 					if (activeProvider?.loginState.authUrl) {
@@ -538,111 +605,48 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 			}
 			case "mcp_servers_snapshot": {
 				resolveRemoteSnapshots(message);
-				setMcpServers(message.servers);
-				setMcpServersError(null);
-				setLoadingMcpServers(false);
+				queryClient.setQueryData(adminQueryKeys.mcpServers(runtime.target), message.servers);
 				return true;
 			}
 			case "jobs_snapshot": {
 				resolveRemoteSnapshots(message);
-				setScheduledJobs(message.jobs);
-				setScheduledJobsError(null);
-				setLoadingScheduledJobs(false);
+				queryClient.setQueryData(adminQueryKeys.scheduledJobs(runtime.target), message.jobs);
 				if (message.jobs.length === 0) {
-					setScheduledJobRuns([]);
-					setScheduledJobRunsError(null);
+					queryClient.removeQueries({
+						queryKey: [...adminQueryKeys.all(runtime.target), "scheduled-job-runs"],
+					});
+					setActiveJobRunsId(null);
 				}
 				return true;
 			}
 			case "job_runs_snapshot": {
 				resolveRemoteSnapshots(message);
-				setScheduledJobRuns(message.runs);
-				setScheduledJobRunsError(null);
-				setLoadingScheduledJobRuns(false);
+				queryClient.setQueryData(
+					adminQueryKeys.scheduledJobRuns(runtime.target, message.jobId),
+					message.runs,
+				);
 				return true;
 			}
 			case "job_updated": {
-				setScheduledJobs((current) => {
-					const next = current.filter((job) => job.id !== message.job.id);
-					next.push(message.job);
-					next.sort((left, right) => left.name.localeCompare(right.name));
-					return next;
-				});
+				queryClient.setQueryData<ScheduledJobDetails[]>(
+					adminQueryKeys.scheduledJobs(runtime.target),
+					(current = []) => upsertScheduledJob(current, message.job),
+				);
 				return true;
 			}
 			case "job_deleted": {
-				setScheduledJobs((current) => current.filter((job) => job.id !== message.jobId));
-				setScheduledJobRuns([]);
-				setScheduledJobRunsError(null);
+				queryClient.setQueryData<ScheduledJobDetails[]>(
+					adminQueryKeys.scheduledJobs(runtime.target),
+					(current = []) => current.filter((job) => job.id !== message.jobId),
+				);
+				queryClient.removeQueries({ queryKey: adminQueryKeys.scheduledJobRuns(runtime.target, message.jobId) });
+				setActiveJobRunsId((current) => current === message.jobId ? null : current);
 				return true;
 			}
 			default:
 				return false;
 		}
-	}, [providerLoginRedirect, resolveRemoteSnapshots]);
-
-	useEffect(() => {
-		if (route !== "jobs" && route !== "settings") {
-			return;
-		}
-		if (!runtime.capabilities.jobs) {
-			return;
-		}
-
-		void refreshScheduledJobs().catch(() => {
-			// The error state is already captured for rendering.
-		});
-	}, [refreshScheduledJobs, route, runtime.capabilities.jobs]);
-
-	useEffect(() => {
-		if (route !== "settings") {
-			return;
-		}
-		if (!runtime.capabilities.mcpServers) {
-			return;
-		}
-
-		void refreshMcpServers().catch(() => {
-			// MCP errors are already captured for rendering.
-		});
-	}, [refreshMcpServers, route, runtime.capabilities.mcpServers]);
-
-	useEffect(() => {
-		if (route === "jobs") {
-			return;
-		}
-		if (!runtime.capabilities.providers) {
-			return;
-		}
-
-		void refreshProviders().catch(() => {
-			// Provider errors are already reflected in state.
-		});
-	}, [refreshProviders, route, runtime.capabilities.providers]);
-
-	useEffect(() => {
-		if (route !== "settings") {
-			return;
-		}
-		if (!runtime.capabilities.providers) {
-			return;
-		}
-
-		const hasPendingProviderLogin = providers?.providers.some((provider) => provider.loginState.status === "pending");
-		if (!hasPendingProviderLogin) {
-			return;
-		}
-
-		const pollId = window.setInterval(() => {
-			void refreshProviders().catch(() => {
-				// Provider errors are already reflected in state.
-			});
-		}, 2000);
-
-		return () => {
-			window.clearInterval(pollId);
-		};
-	}, [providers, refreshProviders, route, runtime.capabilities.providers]);
+	}, [providerLoginRedirect, queryClient, resolveRemoteSnapshots, runtime.target]);
 
 	return {
 		adminStatus, adminStatusError, transportStatusMessage, serverReady, transportReady, authorizedSettingsSections,

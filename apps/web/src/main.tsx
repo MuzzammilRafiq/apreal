@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { LocalWebApp } from "./local/LocalWebApp";
 import { RemoteWebApp } from "./remote/RemoteWebApp";
 import { TooltipProvider } from "./components/ui/tooltip";
@@ -21,10 +22,20 @@ if (!container) {
 }
 
 const App = __APREAL_WEB_TARGET__ === "remote" ? RemoteWebApp : LocalWebApp;
+const queryClient = new QueryClient({
+	defaultOptions: {
+		queries: {
+			staleTime: 10_000,
+			retry: 1,
+		},
+	},
+});
 
 createRoot(container).render(
-	<TooltipProvider>
-		<App />
-		<Toaster />
-	</TooltipProvider>,
+	<QueryClientProvider client={queryClient}>
+		<TooltipProvider>
+			<App />
+			<Toaster />
+		</TooltipProvider>
+	</QueryClientProvider>,
 );

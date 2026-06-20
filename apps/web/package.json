@@ -20,6 +20,7 @@
 	},
 	"dependencies": {
 		"@apreal/shared": "workspace:*",
+		"@tanstack/react-query": "^5.101.0",
 		"ai": "^6.0.204",
 		"better-auth": "^1.6.14",
 		"class-variance-authority": "^0.7.1",
