@@ -1,14 +1,13 @@
 import { AccountAuthButton } from "./AccountAuthButton";
+import { Spinner } from "./ui/spinner";
 
 export function AuthGate({ pending }: { pending: boolean }) {
 	return (
-		<main className="auth-gate-grid relative flex min-h-svh items-center justify-center overflow-hidden bg-[#f4f4f1] px-6 py-10 text-[#171717]">
-			<div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-linear-to-b from-black/4 to-transparent" />
-			<div className="pointer-events-none absolute left-1/2 top-1/2 h-136 w-136 -translate-x-1/2 -translate-y-1/2 rounded-full border border-black/5" />
+		<main className="relative flex min-h-svh items-center justify-center overflow-hidden bg-white px-6 py-10 text-[#171717]">
 			{pending ? (
-				<p className="font-mono text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-slate-500">
-					Checking account...
-				</p>
+				<div className="flex items-center justify-center">
+					<Spinner className="size-5 text-slate-400" />
+				</div>
 			) : (
 				<div className="relative z-10 w-full max-w-4xl p-4">
 					{/* <div className="mx-auto flex max-w-3xl flex-col items-center text-center"> */}

@@ -604,15 +604,6 @@
 		margin-bottom: 0;
 	}
 
-	.auth-gate-grid {
-		background-image:
-			linear-gradient(to right, rgba(157, 129, 137, 0.12) 1px, transparent 1px),
-			linear-gradient(to bottom, rgba(157, 129, 137, 0.12) 1px, transparent 1px),
-			radial-gradient(circle at top, rgba(244, 172, 183, 0.28), transparent 42%);
-		background-size: 28px 28px, 28px 28px, 100% 100%;
-		background-position: center;
-	}
-
 	.auth-gate-wordmark {
 		font-family: var(--font-display-pixel);
 		font-size: clamp(2.15rem, 8vw, 5.5rem);
