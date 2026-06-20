@@ -110,6 +110,7 @@ type AppRouteViewProps = {
 	onSaveAppendSystemPrompt: (appendSystemPrompt: string) => void;
 	onDeleteAllSessions: () => Promise<void>;
 	onStartNewChat: () => void;
+	onSyncAllChats: () => void;
 	onActivateSession: (sessionId: string | null) => void;
 	onDeleteSession: (sessionId: string) => Promise<void>;
 	onLoadMoreSessions: () => void;
@@ -126,7 +127,7 @@ export function AppRouteView({
 	composerBlockedReason,
 	onOpenJob, onRefreshJobs, onRefreshJobRuns, onUpdateJobInterval, onToggleJobEnabled, onDeleteJob, onEnsureSessionLoaded, onSetDefaultModel,
 	onStartProviderLogin, onSaveProviderApiKey, onCreateMcpServer, onUpdateMcpServer, onDeleteMcpServer, onRefreshMcpServers,
-	onSaveAppendSystemPrompt, onDeleteAllSessions, onStartNewChat, onActivateSession, onDeleteSession, onLoadMoreSessions, onSendPrompt, onAbort,
+	onSaveAppendSystemPrompt, onDeleteAllSessions, onStartNewChat, onSyncAllChats, onActivateSession, onDeleteSession, onLoadMoreSessions, onSendPrompt, onAbort,
 }: AppRouteViewProps) {
 	const chatConnectionError = target === "remote" && isRoutineTransportNotice(connectionError)
 		? null
@@ -228,6 +229,7 @@ export function AppRouteView({
 				activeSessionId={activeSessionId}
 				onStartNewChat={onStartNewChat}
 				onOpenSettings={capabilities.settings ? () => onRouteChange("settings") : null}
+				onSyncAllChats={onSyncAllChats}
 				onActivateSession={(sessionId) => onActivateSession(sessionId)}
 				onDeleteSession={onDeleteSession}
 				onLoadMoreSessions={onLoadMoreSessions}

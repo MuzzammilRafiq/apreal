@@ -1,8 +1,15 @@
 import { memo, useEffect, useRef, useState, type TouchEvent } from "react";
-import { ArrowLeft, CloudSync, Menu, MessageSquarePlus, Settings, Trash } from "lucide-react";
+import { ArrowLeft, CloudSync, Ellipsis, LoaderCircle, Menu, MessageCircle, Settings, Trash } from "lucide-react";
 import type { SessionSummary } from "../chatTypes";
-import { formatRelativeTime, getSessionCardClassName } from "../chatView";
+import { getSessionCardClassName } from "../chatView";
 import { ConnectionSidebarFooter } from "./ConnectionSidebarFooter";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+} from "./ui/dialog";
 
 type SidebarProps = {
 	pendingDraft: boolean;
@@ -13,6 +20,7 @@ type SidebarProps = {
 	activeSessionId: string | null;
 	onStartNewChat: () => void;
 	onOpenSettings: (() => void) | null;
+	onSyncAllChats: () => void;
 	onActivateSession: (sessionId: string) => void;
 	onDeleteSession: (sessionId: string) => Promise<void>;
 	onLoadMoreSessions: () => void;
@@ -34,6 +42,7 @@ function SidebarContent({
 	activeSessionId,
 	onStartNewChat,
 	onOpenSettings,
+	onSyncAllChats,
 	onActivateSession,
 	onDeleteSession,
 	onLoadMoreSessions,
@@ -43,6 +52,55 @@ function SidebarContent({
 	hostConnected,
 	onClose,
 }: SidebarProps & { onClose?: () => void }) {
+	const [selectedSession, setSelectedSession] = useState<SessionSummary | null>(null);
+	const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+	const longPressTimer = useRef<number | null>(null);
+	const longPressStart = useRef<{ x: number; y: number } | null>(null);
+	const suppressSessionClick = useRef(false);
+
+	const clearLongPress = () => {
+		if (longPressTimer.current !== null) {
+			window.clearTimeout(longPressTimer.current);
+			longPressTimer.current = null;
+		}
+		longPressStart.current = null;
+	};
+
+	const startLongPress = (session: SessionSummary, event: TouchEvent<HTMLDivElement>) => {
+		const touch = event.touches[0];
+		if (!touch) {
+			return;
+		}
+		clearLongPress();
+		longPressStart.current = { x: touch.clientX, y: touch.clientY };
+		longPressTimer.current = window.setTimeout(() => {
+			suppressSessionClick.current = true;
+			setSelectedSession(session);
+			longPressTimer.current = null;
+		}, 500);
+	};
+
+	const moveLongPress = (event: TouchEvent<HTMLDivElement>) => {
+		const start = longPressStart.current;
+		const touch = event.touches[0];
+		if (!start || !touch) {
+			return;
+		}
+		if (Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > 10) {
+			clearLongPress();
+		}
+	};
+
+	useEffect(() => clearLongPress, []);
+
+	const selectedSessionNeedsSync = selectedSession
+		? sessionIdsNeedingSync.has(selectedSession.id)
+		: false;
+	const closeSessionActions = () => {
+		suppressSessionClick.current = false;
+		setSelectedSession(null);
+	};
+
 	return (
 		<>
 			{onClose ? (
@@ -73,7 +131,7 @@ function SidebarContent({
 							onClose?.();
 						}}
 					>
-						<MessageSquarePlus className="h-5 w-5 shrink-0" strokeWidth={2.1} aria-hidden="true" />
+						<MessageCircle className="h-5 w-5 shrink-0" strokeWidth={2.1} aria-hidden="true" />
 						<span className="truncate">New chat</span>
 					</button>
 					{onOpenSettings ? (
@@ -81,8 +139,7 @@ function SidebarContent({
 							type="button"
 							className={sidebarNavItemClassName}
 							onClick={() => {
-								onOpenSettings();
-								onClose?.();
+								setSettingsDialogOpen(true);
 							}}
 						>
 							<Settings className="h-5 w-5 shrink-0" strokeWidth={2.1} aria-hidden="true" />
@@ -92,7 +149,7 @@ function SidebarContent({
 				</nav>
 			</div>
 
-			<div className="sidebar-scrollable-container min-h-0 flex-1 overflow-y-auto px-2 pb-2 scrollbar-thin">
+			<div className="sidebar-scrollable-container min-h-0 flex-1 overflow-y-auto px-2 pb-2">
 				<div id="session-list" className="flex flex-col gap-px" aria-label="Chat sessions">
 					{sessions.length === 0 ? (
 						<div className="mx-1 w-full bg-white px-4 py-5 text-center">
@@ -107,61 +164,57 @@ function SidebarContent({
 								<div
 									key={session.id}
 									className={getSessionCardClassName(isActive)}
+									onTouchStart={(event) => startLongPress(session, event)}
+									onTouchMove={moveLongPress}
+									onTouchEnd={clearLongPress}
+									onTouchCancel={clearLongPress}
+									onContextMenu={(event) => {
+										event.preventDefault();
+										setSelectedSession(session);
+									}}
 								>
 									<button
 										type="button"
 										className="min-w-0 flex-1 text-left"
 										aria-pressed={isActive}
 										onClick={() => {
+											if (suppressSessionClick.current) {
+												suppressSessionClick.current = false;
+												return;
+											}
 											onActivateSession(session.id);
 											onClose?.();
 										}}
 									>
-										<p className="truncate text-[0.9375rem] font-medium leading-snug tracking-tight">
+										<p
+											className={`truncate text-[0.9375rem] leading-snug tracking-tight ${needsSync ? "font-semibold text-ink" : "font-normal"}`}
+										>
 											{session.title}
 										</p>
 									</button>
-									{needsSync ? (
+									{session.busy ? (
 										<span
-											className={[
-												"flex h-4.5 w-4.5 shrink-0 items-center justify-center",
-												isActive
-													? "text-slate-700"
-													: "text-slate-400 group-hover:text-slate-600",
-											].join(" ")}
-											title="Transcript updates when opened"
-											aria-label="Transcript updates when opened"
-											role="img"
+											className="flex h-7 w-7 shrink-0 items-center justify-center text-slate-500"
+											role="status"
+											aria-label={`${session.title} is working`}
+											title="Chat is working"
 										>
-											<CloudSync className="h-4.5 w-4.5" strokeWidth={1.9} aria-hidden="true" />
+											<LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden="true" />
 										</span>
 									) : null}
-									<div className="relative flex items-center justify-end shrink-0 min-w-14 h-7">
-										<span
-											className={[
-												"text-[0.8125rem] tabular-nums transition-opacity duration-150 group-hover:opacity-0 group-focus-within:opacity-0",
-												isActive ? "text-faint" : "text-faint",
-											].join(" ")}
-										>
-											{formatRelativeTime(session.updatedAt)}
-										</span>
+									<div className="hidden h-7 w-7 shrink-0 items-center justify-center min-[721px]:flex">
 										<button
 											type="button"
-											className="ui-icon-button absolute right-0 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-slate-400 opacity-0 transition-opacity duration-150 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring group-hover:opacity-100"
-											aria-label={`Delete ${session.title}`}
-											title="Delete chat"
-											disabled={session.busy}
+											className="ui-icon-button flex h-7 w-7 items-center justify-center rounded-md text-slate-400 opacity-0 transition-[color,opacity] duration-150 hover:text-slate-700 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring group-hover:opacity-100 group-focus-within:opacity-100"
+											aria-label={`More options for ${session.title}`}
+											title="Chat options"
 											onClick={(event) => {
 												event.stopPropagation();
-												if (!window.confirm(`Delete "${session.title}"?`)) {
-													return;
-												}
-												void onDeleteSession(session.id).catch((error) => {
-													window.alert(error instanceof Error ? error.message : "Failed to delete chat.");
-												});
+												suppressSessionClick.current = false;
+												setSelectedSession(session);
 											}}
 										>
-											<Trash className="h-4 w-4" strokeWidth={1.9} aria-hidden="true" />
+											<Ellipsis className="h-4.5 w-4.5" strokeWidth={2.1} aria-hidden="true" />
 										</button>
 									</div>
 								</div>
@@ -180,6 +233,118 @@ function SidebarContent({
 					) : null}
 				</div>
 			</div>
+
+			<Dialog
+				open={selectedSession !== null}
+				onOpenChange={(open) => {
+					if (!open) {
+						closeSessionActions();
+					}
+				}}
+			>
+				<DialogContent aria-describedby={selectedSession ? "chat-actions-description" : undefined}>
+					{selectedSession ? (
+						<>
+							<DialogHeader>
+								<DialogTitle className="truncate">{selectedSession.title}</DialogTitle>
+								<DialogDescription id="chat-actions-description">
+									{selectedSessionNeedsSync ? "Updates are available for this chat." : "This chat is up to date."}
+								</DialogDescription>
+							</DialogHeader>
+
+							<div className="overflow-hidden rounded-xl border border-black/8">
+								<button
+									type="button"
+									className="flex w-full items-center gap-3 border-b border-black/8 px-3.5 py-3 text-left text-sm font-medium transition-colors hover:bg-black/4 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus-ring disabled:cursor-default disabled:text-slate-500 disabled:hover:bg-transparent"
+									disabled={!selectedSessionNeedsSync}
+									onClick={() => {
+										if (!selectedSessionNeedsSync) {
+											return;
+										}
+										onActivateSession(selectedSession.id);
+										closeSessionActions();
+										onClose?.();
+									}}
+								>
+									<CloudSync className="h-4.5 w-4.5 text-slate-500" strokeWidth={1.9} aria-hidden="true" />
+									<span>{selectedSessionNeedsSync ? "Sync" : "Up to date"}</span>
+								</button>
+
+								<div className="flex items-center justify-between gap-4 border-b border-black/8 px-3.5 py-3 text-sm">
+									<span className="text-slate-500">Last updated</span>
+									<time
+										className="text-right font-medium tabular-nums text-slate-700"
+										dateTime={new Date(selectedSession.updatedAt).toISOString()}
+									>
+										{new Date(selectedSession.updatedAt).toLocaleString([], {
+											dateStyle: "medium",
+											timeStyle: "short",
+										})}
+									</time>
+								</div>
+
+								<button
+									type="button"
+									className="flex w-full items-center gap-3 px-3.5 py-3 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+									disabled={selectedSession.busy}
+									onClick={() => {
+										const session = selectedSession;
+										closeSessionActions();
+										void onDeleteSession(session.id).catch((error) => {
+											window.alert(error instanceof Error ? error.message : "Failed to delete chat.");
+										});
+									}}
+								>
+									<Trash className="h-4.5 w-4.5" strokeWidth={1.9} aria-hidden="true" />
+									<span>{selectedSession.busy ? "Chat is currently running" : "Delete chat"}</span>
+								</button>
+							</div>
+						</>
+					) : null}
+				</DialogContent>
+			</Dialog>
+
+			<Dialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen}>
+				<DialogContent aria-describedby="sidebar-settings-description">
+					<DialogHeader>
+						<DialogTitle>Settings</DialogTitle>
+						<DialogDescription id="sidebar-settings-description">
+							Choose an action.
+						</DialogDescription>
+					</DialogHeader>
+
+					<div className="overflow-hidden rounded-xl border border-black/8">
+						<button
+							type="button"
+							className="flex w-full items-center gap-3 border-b border-black/8 px-3.5 py-3 text-left text-sm font-medium transition-colors hover:bg-black/4 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus-ring"
+							onClick={() => {
+								setSettingsDialogOpen(false);
+								onOpenSettings?.();
+								onClose?.();
+							}}
+						>
+							<Settings className="h-4.5 w-4.5 text-slate-500" strokeWidth={1.9} aria-hidden="true" />
+							<span>Settings page</span>
+						</button>
+
+						<button
+							type="button"
+							className="flex w-full items-center gap-3 px-3.5 py-3 text-left text-sm font-medium transition-colors hover:bg-black/4 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus-ring disabled:cursor-default disabled:text-slate-500 disabled:hover:bg-transparent"
+							disabled={sessionIdsNeedingSync.size === 0}
+							onClick={() => {
+								if (sessionIdsNeedingSync.size === 0) {
+									return;
+								}
+								onSyncAllChats();
+								setSettingsDialogOpen(false);
+							}}
+						>
+							<CloudSync className="h-4.5 w-4.5 text-slate-500" strokeWidth={1.9} aria-hidden="true" />
+							<span>{sessionIdsNeedingSync.size === 0 ? "All chats are up to date" : "Sync all chats"}</span>
+						</button>
+					</div>
+				</DialogContent>
+			</Dialog>
 		</>
 	);
 }
@@ -193,6 +358,7 @@ export const Sidebar = memo(function Sidebar({
 	activeSessionId,
 	onStartNewChat,
 	onOpenSettings,
+	onSyncAllChats,
 	onActivateSession,
 	onDeleteSession,
 	onLoadMoreSessions,
@@ -327,7 +493,7 @@ export const Sidebar = memo(function Sidebar({
 					onClick={onStartNewChat}
 					aria-label="Start new chat"
 				>
-					<MessageSquarePlus className="h-4 w-4" strokeWidth={2.3} aria-hidden="true" />
+					<MessageCircle className="h-4 w-4" strokeWidth={2.3} aria-hidden="true" />
 				</button>
 			</div>
 
@@ -361,6 +527,7 @@ export const Sidebar = memo(function Sidebar({
 							activeSessionId={activeSessionId}
 							onStartNewChat={onStartNewChat}
 							onOpenSettings={onOpenSettings}
+							onSyncAllChats={onSyncAllChats}
 							onActivateSession={onActivateSession}
 							onDeleteSession={onDeleteSession}
 							onLoadMoreSessions={onLoadMoreSessions}
@@ -384,6 +551,7 @@ export const Sidebar = memo(function Sidebar({
 					activeSessionId={activeSessionId}
 					onStartNewChat={onStartNewChat}
 					onOpenSettings={onOpenSettings}
+					onSyncAllChats={onSyncAllChats}
 					onActivateSession={onActivateSession}
 					onDeleteSession={onDeleteSession}
 					onLoadMoreSessions={onLoadMoreSessions}

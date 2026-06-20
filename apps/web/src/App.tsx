@@ -963,6 +963,12 @@ export function App({ runtime }: AppProps) {
 		requestSessionPage(serverLoadedSessionCountRef.current, SESSION_PAGE_SIZE);
 	}, [requestSessionPage, totalSessionCount]);
 
+	const handleSyncAllChats = useCallback(() => {
+		for (const sessionId of sessionIdsNeedingSync) {
+			ensureSessionLoaded(sessionId);
+		}
+	}, [ensureSessionLoaded, sessionIdsNeedingSync]);
+
 	const submitPrompt = useCallback((trimmedPrompt: string) => {
 		if (!trimmedPrompt || isBusy || !chatTransportReady) {
 			return false;
@@ -1102,7 +1108,7 @@ export function App({ runtime }: AppProps) {
 			}}
 			onSaveAppendSystemPrompt={handleSaveAppendSystemPrompt}
 			onDeleteAllSessions={handleDeleteAllSessions}
-			onStartNewChat={handleStartNewChat} onActivateSession={activateSession} onLoadMoreSessions={handleLoadMoreSessions}
+			onStartNewChat={handleStartNewChat} onSyncAllChats={handleSyncAllChats} onActivateSession={activateSession} onLoadMoreSessions={handleLoadMoreSessions}
 			onSendPrompt={submitPrompt} onAbort={handleAbort} onDeleteSession={handleDeleteSession}
 		/>
 	);

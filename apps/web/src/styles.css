@@ -157,13 +157,28 @@
 
 	.sidebar-scrollable-container::-webkit-scrollbar {
 		width: 4px;
+		background: transparent;
+	}
+	.sidebar-scrollable-container::-webkit-scrollbar-track,
+	.sidebar-scrollable-container::-webkit-scrollbar-track-piece {
+		border: 0;
+		background: transparent !important;
+		box-shadow: none;
 	}
 	.sidebar-scrollable-container::-webkit-scrollbar-thumb {
+		border: 0;
 		background: rgba(0, 0, 0, 0.08);
 		border-radius: 4px;
+		box-shadow: none;
 	}
 	.sidebar-scrollable-container::-webkit-scrollbar-thumb:hover {
 		background: rgba(0, 0, 0, 0.18);
+	}
+	.sidebar-scrollable-container::-webkit-scrollbar-button,
+	.sidebar-scrollable-container::-webkit-scrollbar-corner {
+		display: none;
+		border: 0;
+		background: transparent !important;
 	}
 
 	button,
@@ -829,6 +844,10 @@ body :where(
 	tr
 ) {
 	background-color: #ffffff !important;
+}
+
+[data-slot="dialog-overlay"] {
+	background-color: rgba(15, 23, 42, 0.3) !important;
 }
 
 .group.is-user > div {
