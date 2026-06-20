@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+
 type ConnectionSidebarFooterProps = {
 	target: "local" | "remote";
 	clientConnected: boolean;
@@ -14,10 +16,16 @@ function StatusDot({
 	label,
 	status,
 	tooltipPosition = "top",
+	forceTooltipVisible = false,
+	suppressTooltip = false,
+	onActivate,
 }: {
 	label: string;
 	status: "connected" | "connecting" | "disconnected";
 	tooltipPosition?: "top" | "bottom";
+	forceTooltipVisible?: boolean;
+	suppressTooltip?: boolean;
+	onActivate?: () => void;
 }) {
 	const tooltipClassName = tooltipPosition === "bottom"
 		? "top-full mt-2"
@@ -27,7 +35,13 @@ function StatusDot({
 	const statusLabel = connected ? "Connected" : connecting ? "Connecting" : "Disconnected";
 
 	return (
-		<div className="group relative flex items-center justify-center cursor-pointer" title={`${label}: ${statusLabel}`} aria-label={`${label}: ${statusLabel}`}>
+		<button
+			type="button"
+			className="group relative -m-2 flex cursor-pointer items-center justify-center border-0 bg-transparent p-2"
+			title={`${label}: ${statusLabel}`}
+			aria-label={`${label}: ${statusLabel}`}
+			onClick={onActivate}
+		>
 			{/* Ambient Pulse Ring */}
 			{connected ? (
 				<span className="absolute inline-flex h-3 w-3 animate-status-ping rounded-full bg-emerald-400/50" />
@@ -52,14 +66,14 @@ function StatusDot({
 				<span className="h-1 w-1 rounded-full bg-white/80 shadow-[0_0.5px_1px_rgba(0,0,0,0.15)]" />
 			</span>
 			{/* Tooltip */}
-			<span className={`pointer-events-none absolute left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-md border border-black/8 bg-white px-2.5 py-1.5 font-mono text-[0.62rem] font-bold uppercase tracking-[0.12em] text-[#171717] opacity-0 shadow-[0_8px_20px_rgba(0,0,0,0.06)] transition-all duration-150 group-hover:opacity-100 ${tooltipClassName} flex items-center gap-1.5`}>
+			<span className={`pointer-events-none absolute left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-md border border-black/8 bg-white px-2.5 py-1.5 font-mono text-[0.62rem] font-bold uppercase tracking-[0.12em] text-[#171717] shadow-[0_8px_20px_rgba(0,0,0,0.06)] transition-all duration-150 ${suppressTooltip ? "opacity-0" : forceTooltipVisible ? "opacity-100" : "opacity-0 group-hover:opacity-100"} ${tooltipClassName} flex items-center gap-1.5`}>
 				<span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-emerald-500" : "bg-amber-500"}`} />
 				<span>{label}</span>
 				<span className="font-sans font-medium lowercase text-thinking-body/60">•</span>
 				<span className={connected ? "text-emerald-600" : "text-amber-600"}>{statusLabel}</span>
 			</span>
 			<span className="sr-only">{label}</span>
-		</div>
+		</button>
 	);
 }
 
@@ -74,6 +88,22 @@ export function ConnectionSidebarFooter({
 	showConnectivity = true,
 	showBackToChat = true,
 }: ConnectionSidebarFooterProps) {
+	const [activeTooltip, setActiveTooltip] = useState<"client" | "host" | null>(null);
+	const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	useEffect(() => () => {
+		if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current);
+	}, []);
+
+	const revealTooltip = (tooltip: "client" | "host") => {
+		setActiveTooltip(tooltip);
+		if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current);
+		tooltipTimerRef.current = setTimeout(() => {
+			setActiveTooltip(null);
+			tooltipTimerRef.current = null;
+		}, 1_000);
+	};
+
 	const clientLabel = target === "remote" ? "Relay server" : "Server";
 	const clientStatus = clientConnected ? "connected" : clientConnecting ? "connecting" : "disconnected";
 	const isTopPlacement = placement === "top";
@@ -96,8 +126,8 @@ export function ConnectionSidebarFooter({
 				<div className={`flex items-center ${isTopPlacement ? "justify-center" : "justify-end"} px-1 py-1`}>
 					<div className="group/face relative flex flex-col items-center pt-1 pb-1">
 						<div className="flex items-center gap-4.5 pb-2.5">
-							<StatusDot label={clientLabel} status={clientStatus} tooltipPosition={isTopPlacement ? "bottom" : "top"} />
-							<StatusDot label="Agent host" status={hostConnected ? "connected" : "disconnected"} tooltipPosition={isTopPlacement ? "bottom" : "top"} />
+							<StatusDot label={clientLabel} status={clientStatus} tooltipPosition={isTopPlacement ? "bottom" : "top"} forceTooltipVisible={activeTooltip === "client"} suppressTooltip={activeTooltip === "host"} onActivate={() => revealTooltip("client")} />
+							<StatusDot label="Agent host" status={hostConnected ? "connected" : "disconnected"} tooltipPosition={isTopPlacement ? "bottom" : "top"} forceTooltipVisible={activeTooltip === "host"} suppressTooltip={activeTooltip === "client"} onActivate={() => revealTooltip("host")} />
 						</div>
 						<svg
 							width="20"
