@@ -857,6 +857,10 @@ body .scheduled-job-card :where(div, p) {
 	background-color: transparent !important;
 }
 
+body .execution-run-card :where(div, p) {
+	background-color: transparent !important;
+}
+
 [data-slot="dialog-overlay"] {
 	background-color: rgba(15, 23, 42, 0.3) !important;
 }
