@@ -1,6 +1,6 @@
 import type { FormEvent, ReactNode } from "react";
 import type { LocalWebAdminStatus } from "@apreal/shared";
-import { AlertTriangle, FileText, LoaderCircle, RotateCcw, Save, Trash2 } from "lucide-react";
+import { AlertTriangle, LoaderCircle, RotateCcw, Save, Trash2 } from "lucide-react";
 import { authClient } from "../auth/auth-client";
 import { BUILD_VERSION } from "../generated/build-version";
 import { AccountAuthButton } from "./AccountAuthButton";
@@ -174,22 +174,11 @@ export function SettingsAccountSection({
 
       {/* ===== Custom instructions ===== */}
       <form
-        className={cardClassName}
+        className={`${cardClassName} p-5`}
         onSubmit={handleAppendSystemPromptSubmit}
       >
         <FieldSet className="gap-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <FieldLegend>Custom instructions</FieldLegend>
-              <FieldDescription>
-                Append these instructions to every system prompt. Useful for
-                enforcing tone, style, or project conventions.
-              </FieldDescription>
-            </div>
-            <span className="mt-0.5 hidden h-9 w-9 shrink-0 items-center justify-center rounded-md bg-black/3 text-slate-500 ring-1 ring-black/8 min-[760px]:flex">
-              <FileText className="h-4.5 w-4.5" />
-            </span>
-          </div>
+          <FieldLegend>Custom instructions</FieldLegend>
 
           <FieldGroup>
             <Field>
