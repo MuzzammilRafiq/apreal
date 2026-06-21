@@ -8,7 +8,7 @@ import { Sidebar } from "./components/Sidebar";
 import { TranscriptPanel } from "./components/TranscriptPanel";
 import type { ScheduledJobDetails, SessionCacheEntry, SessionSummary, TranscriptMessage } from "./chatTypes";
 import type { AppRoute } from "./app-state";
-import type { WebCapabilities } from "./runtime";
+import type { SettingsSectionId, WebCapabilities } from "./runtime";
 
 type EmptyState = { title: string; body: string | null } | null;
 
@@ -94,6 +94,9 @@ type AppRouteViewProps = {
 	promptInputRef: RefObject<HTMLTextAreaElement | null>;
 	onRouteChange: (route: AppRoute) => void;
 	onOpenJob: (jobId: string) => void;
+	onBackToJobsPanel: () => void;
+	requestedSettingsSection: SettingsSectionId | null;
+	onConsumeRequestedSettingsSection: () => void;
 	onRefreshJobs: () => void;
 	onRefreshJobRuns: (jobId: string) => void;
 	onUpdateJobInterval: (jobId: string, intervalMinutes: number) => Promise<void>;
@@ -128,6 +131,7 @@ export function AppRouteView({
 	onOpenJob, onRefreshJobs, onRefreshJobRuns, onUpdateJobInterval, onToggleJobEnabled, onDeleteJob, onEnsureSessionLoaded, onSetDefaultModel,
 	onStartProviderLogin, onSaveProviderApiKey, onCreateMcpServer, onUpdateMcpServer, onDeleteMcpServer, onRefreshMcpServers,
 	onSaveAppendSystemPrompt, onDeleteAllSessions, onStartNewChat, onSyncAllChats, onActivateSession, onDeleteSession, onLoadMoreSessions, onSendPrompt, onAbort,
+	onBackToJobsPanel, requestedSettingsSection, onConsumeRequestedSettingsSection,
 }: AppRouteViewProps) {
 	const chatConnectionError = target === "remote" && isRoutineTransportNotice(connectionError)
 		? null
@@ -178,6 +182,8 @@ export function AppRouteView({
 				target={target}
 				onRefreshJobs={onRefreshJobs}
 				onOpenJob={onOpenJob}
+				initialActiveSection={requestedSettingsSection}
+				onConsumeInitialSection={onConsumeRequestedSettingsSection}
 				onSetDefaultModel={onSetDefaultModel}
 				onStartProviderLogin={onStartProviderLogin}
 				onSaveProviderApiKey={onSaveProviderApiKey}
@@ -200,14 +206,10 @@ export function AppRouteView({
 				jobs={scheduledJobs}
 				jobRuns={scheduledJobRuns}
 				sessionCache={sessionCache}
-				jobsError={scheduledJobsError}
 				jobRunsError={scheduledJobRunsError}
-				isLoadingJobs={loadingScheduledJobs}
 				isLoadingJobRuns={loadingScheduledJobRuns}
 				connectionError={connectionError}
-				onBack={() => onRouteChange("chat")}
-				onSelectJob={onOpenJob}
-				onRefreshJobs={onRefreshJobs}
+				onBack={onBackToJobsPanel}
 				onRefreshJobRuns={onRefreshJobRuns}
 				onUpdateJobInterval={onUpdateJobInterval}
 				onToggleJobEnabled={onToggleJobEnabled}

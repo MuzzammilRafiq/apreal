@@ -1,7 +1,6 @@
 import type { ScheduledJobDetails } from "../chatTypes";
 import { ScheduledJobList } from "./ScheduledJobList";
 import { StatusPill } from "./settings-helpers";
-import { Button } from "./ui/button";
 
 type SettingsJobsSectionProps = {
 	activeSection: string;
@@ -17,7 +16,6 @@ export function SettingsJobsSection({
 	jobs,
 	jobsError,
 	isLoadingJobs,
-	onRefreshJobs,
 	onOpenJob,
 }: SettingsJobsSectionProps) {
 	if (activeSection !== "jobs") {
@@ -30,19 +28,24 @@ export function SettingsJobsSection({
 
 	return (
 		<div className="py-3">
-			<div className="flex flex-wrap items-center gap-2">
-				<StatusPill
-					label={`${enabledJobCount}/${jobs.length} active`}
-					tone={enabledJobCount > 0 ? "success" : "neutral"}
-				/>
-				<StatusPill
-					label={`${jobsWithErrorsCount} errors`}
-					tone={jobsWithErrorsCount > 0 ? "danger" : "neutral"}
-				/>
-				<StatusPill
-					label={`${totalRunCount} runs`}
-					tone={totalRunCount > 0 ? "success" : "neutral"}
-				/>
+			<div className="rounded-lg border border-black/10 bg-white p-3 shadow-[0_12px_36px_rgba(15,23,42,0.05)]">
+				<div className="flex flex-wrap items-center gap-2">
+					<StatusPill
+						label={`${enabledJobCount}/${jobs.length} active`}
+						tone={enabledJobCount > 0 ? "success" : "neutral"}
+					/>
+					<StatusPill
+						label={`${jobsWithErrorsCount} error${jobsWithErrorsCount !== 1 ? "s" : ""}`}
+						tone={jobsWithErrorsCount > 0 ? "danger" : "neutral"}
+					/>
+					<StatusPill
+						label={`${totalRunCount} run${totalRunCount !== 1 ? "s" : ""}`}
+						tone={totalRunCount > 0 ? "success" : "neutral"}
+					/>
+					<span className="ml-auto font-mono text-[0.64rem] font-semibold uppercase tracking-[0.14em] text-slate-400">
+						{isLoadingJobs ? "Syncing…" : "Live"}
+					</span>
+				</div>
 			</div>
 
 			{jobsError ? (
@@ -52,7 +55,7 @@ export function SettingsJobsSection({
 			) : null}
 
 			<section className="mt-4 space-y-3">
-				<div className="flex flex-wrap items-center justify-between gap-3">
+				<div className="flex flex-wrap items-end justify-between gap-3">
 					<div>
 						<p className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">
 							Jobs
@@ -62,16 +65,6 @@ export function SettingsJobsSection({
 							Browse active recurring schedules here. Open any job to inspect its full configuration, run history, and transcript on the dedicated jobs page.
 						</p>
 					</div>
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						className="ui-settings-action-button rounded"
-						onClick={onRefreshJobs}
-						disabled={isLoadingJobs}
-					>
-						{isLoadingJobs ? "Syncing..." : "Sync"}
-					</Button>
 				</div>
 
 				<ScheduledJobList

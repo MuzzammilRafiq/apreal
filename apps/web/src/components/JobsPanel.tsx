@@ -1,18 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import type { SessionCacheEntry, SessionSummary, ScheduledJobDetails } from "../chatTypes";
-import { ScheduledJobList, formatInterval, formatNextRunRelative, getJobStatusTone } from "./ScheduledJobList";
+import { formatInterval, formatNextRunRelative, getJobStatusTone } from "./ScheduledJobList";
 import { TranscriptPanel } from "./TranscriptPanel";
 
 type JobsPanelProps = {
 	jobs: ScheduledJobDetails[];
 	jobRuns: SessionSummary[];
 	sessionCache: Map<string, SessionCacheEntry>;
-	jobsError: string | null;
 	jobRunsError: string | null;
-	isLoadingJobs: boolean;
 	isLoadingJobRuns: boolean;
 	connectionError: string | null;
-	onSelectJob: (jobId: string) => void;
 	onRefreshJobRuns: (jobId: string) => void;
 	onUpdateJobInterval: (jobId: string, intervalMinutes: number) => Promise<void>;
 	onToggleJobEnabled: (jobId: string, enabled: boolean) => Promise<void>;
@@ -57,12 +54,9 @@ export function JobsPanel({
 	jobs,
 	jobRuns,
 	sessionCache,
-	jobsError,
 	jobRunsError,
-	isLoadingJobs,
 	isLoadingJobRuns,
 	connectionError,
-	onSelectJob,
 	onRefreshJobRuns,
 	onUpdateJobInterval,
 	onToggleJobEnabled,
@@ -86,7 +80,7 @@ export function JobsPanel({
 	}, [actionMessage, actionError]);
 
 	const selectedJob = useMemo(
-		() => jobs.find((job) => job.id === selectedJobId) ?? jobs[0] ?? null,
+		() => jobs.find((job) => job.id === selectedJobId) ?? null,
 		[jobs, selectedJobId],
 	);
 	const intervalMinutes = intervalDraft.jobId === selectedJob?.id
@@ -104,14 +98,6 @@ export function JobsPanel({
 		? selectedRunCache.transcript.filter((message) => message.role !== "user" && message.role !== "system")
 		: [];
 	const selectedRunTranscriptLoaded = selectedRunCache?.transcriptLoaded ?? false;
-
-	function handleSelectJob(jobId: string) {
-		onSelectJob(jobId);
-		setSelectedRunId(null);
-		setActionMessage(null);
-		setActionError(null);
-		onRefreshJobRuns(jobId);
-	}
 
 	function handleSelectRun(runId: string) {
 		setSelectedRunId(runId);
@@ -194,17 +180,7 @@ export function JobsPanel({
 	return (
 		<div className="flex flex-col gap-4">
 			{/* ---- Main grid ---- */}
-			<div className="grid gap-4 min-[1180px]:grid-cols-[minmax(260px,0.78fr)_minmax(0,1.22fr)] items-start">
-				{/* ======== LEFT: Job List ======== */}
-				<ScheduledJobList
-					jobs={jobs}
-					jobsError={jobsError}
-					isLoadingJobs={isLoadingJobs}
-					selectedJobId={selectedJob?.id ?? null}
-					onSelectJob={handleSelectJob}
-				/>
-
-				{/* ======== RIGHT: Inspector + Runs + Transcript ======== */}
+			<div>
 				<section className="flex min-h-0 flex-col gap-4">
 					{/* ---- Inspector ---- */}
 					<div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
