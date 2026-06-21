@@ -11,8 +11,8 @@
 	},
 	"dependencies": {
 		"@apreal/shared": "workspace:*",
-		"@earendil-works/pi-ai": "^0.74.0",
-		"@earendil-works/pi-coding-agent": "^0.74.0",
+		"@earendil-works/pi-ai": "^0.79.9",
+		"@earendil-works/pi-coding-agent": "^0.79.9",
 		"@modelcontextprotocol/sdk": "^1.29.0",
 		"@t3-oss/env-core": "^0.13.11",
 		"dotenv": "^17.4.2",
