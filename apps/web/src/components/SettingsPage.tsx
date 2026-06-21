@@ -32,6 +32,8 @@ type SettingsPageProps = {
 	onBack: () => void;
 	onRefreshJobs: () => void;
 	onOpenJob: (jobId: string) => void;
+	initialActiveSection?: SettingsSection | null;
+	onConsumeInitialSection?: () => void;
 	onSetDefaultModel: (provider: string, modelId: string) => Promise<void>;
 	onStartProviderLogin: (provider: string) => Promise<void>;
 	onSaveProviderApiKey: (provider: string, apiKey: string) => Promise<void>;
@@ -74,6 +76,8 @@ export function SettingsPage({
 	onBack,
 	onRefreshJobs,
 	onOpenJob,
+	initialActiveSection,
+	onConsumeInitialSection,
 	onSetDefaultModel,
 	onStartProviderLogin,
 	onSaveProviderApiKey,
@@ -129,6 +133,13 @@ export function SettingsPage({
 			setActiveSection(mergedVisibleSections[0] ?? "account");
 		}
 	}, [activeSection, mergedVisibleSections]);
+
+	useEffect(() => {
+		if (initialActiveSection && mergedVisibleSections.includes(initialActiveSection)) {
+			setActiveSection(initialActiveSection);
+			onConsumeInitialSection?.();
+		}
+	}, [initialActiveSection, mergedVisibleSections, onConsumeInitialSection]);
 
 	const resetMcpForm = () => {
 		setMcpEditingServerId(null);

@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type TouchEvent } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState, type TouchEvent } from "react";
 import { ArrowLeft, CloudSync, Ellipsis, LoaderCircle, Menu, MessageCircle, Settings, Trash } from "lucide-react";
 import type { SessionSummary } from "../chatTypes";
 import { getSessionCardClassName } from "../chatView";
@@ -10,6 +10,11 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "./ui/dialog";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "./ui/popover";
 
 type SidebarProps = {
 	pendingDraft: boolean;
@@ -53,7 +58,9 @@ function SidebarContent({
 	onClose,
 }: SidebarProps & { onClose?: () => void }) {
 	const [selectedSession, setSelectedSession] = useState<SessionSummary | null>(null);
-	const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+	const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+	const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
+	const [settingsButtonHeight, setSettingsButtonHeight] = useState(0);
 	const longPressTimer = useRef<number | null>(null);
 	const longPressStart = useRef<{ x: number; y: number } | null>(null);
 	const suppressSessionClick = useRef(false);
@@ -92,6 +99,21 @@ function SidebarContent({
 	};
 
 	useEffect(() => clearLongPress, []);
+
+	const measureSettingsButton = () => {
+		if (settingsButtonRef.current) {
+			setSettingsButtonHeight(settingsButtonRef.current.offsetHeight);
+		}
+	};
+	useLayoutEffect(() => {
+		if (settingsMenuOpen) {
+			measureSettingsButton();
+		}
+	}, [settingsMenuOpen]);
+	useEffect(() => {
+		window.addEventListener("resize", measureSettingsButton);
+		return () => window.removeEventListener("resize", measureSettingsButton);
+	}, []);
 
 	const selectedSessionNeedsSync = selectedSession
 		? sessionIdsNeedingSync.has(selectedSession.id)
@@ -134,18 +156,66 @@ function SidebarContent({
 						<MessageCircle className="h-5 w-5 shrink-0" strokeWidth={2.1} aria-hidden="true" />
 						<span className="truncate">New chat</span>
 					</button>
-					{onOpenSettings ? (
-						<button
-							type="button"
-							className={sidebarNavItemClassName}
-							onClick={() => {
-								setSettingsDialogOpen(true);
-							}}
+				{onOpenSettings ? (
+					<Popover open={settingsMenuOpen} onOpenChange={setSettingsMenuOpen}>
+						<PopoverTrigger asChild>
+							<button
+								type="button"
+								ref={settingsButtonRef}
+								className={sidebarNavItemClassName}
+								aria-haspopup="menu"
+								aria-expanded={settingsMenuOpen}
+							>
+								<Settings className="h-5 w-5 shrink-0" strokeWidth={2.1} aria-hidden="true" />
+								<span className="truncate">Settings</span>
+							</button>
+						</PopoverTrigger>
+						<PopoverContent
+							side="bottom"
+							align="start"
+							sideOffset={-settingsButtonHeight}
+							aria-describedby="sidebar-settings-description"
 						>
-							<Settings className="h-5 w-5 shrink-0" strokeWidth={2.1} aria-hidden="true" />
-							<span className="truncate">Settings</span>
-						</button>
-					) : null}
+							<div className="flex flex-col gap-1.5 pr-8 text-left">
+								<h2 className="text-base font-semibold leading-snug tracking-tight">Settings</h2>
+								<p id="sidebar-settings-description" className="text-sm text-muted-foreground">
+									Choose an action.
+								</p>
+							</div>
+
+							<div className="overflow-hidden rounded-xl border border-black/8">
+								<button
+									type="button"
+									className="flex w-full items-center gap-3 border-b border-black/8 px-3.5 py-3 text-left text-sm font-medium transition-colors hover:bg-black/4 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus-ring"
+									onClick={() => {
+										setSettingsMenuOpen(false);
+										onOpenSettings?.();
+										onClose?.();
+									}}
+								>
+									<Settings className="h-4.5 w-4.5 text-slate-500" strokeWidth={1.9} aria-hidden="true" />
+									<span>Settings page</span>
+								</button>
+
+								<button
+									type="button"
+									className="flex w-full items-center gap-3 px-3.5 py-3 text-left text-sm font-medium transition-colors hover:bg-black/4 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus-ring disabled:cursor-default disabled:text-slate-500 disabled:hover:bg-transparent"
+									disabled={sessionIdsNeedingSync.size === 0}
+									onClick={() => {
+										if (sessionIdsNeedingSync.size === 0) {
+											return;
+										}
+										onSyncAllChats();
+										setSettingsMenuOpen(false);
+									}}
+								>
+									<CloudSync className="h-4.5 w-4.5 text-slate-500" strokeWidth={1.9} aria-hidden="true" />
+									<span>{sessionIdsNeedingSync.size === 0 ? "All chats are up to date" : "Sync all chats"}</span>
+								</button>
+							</div>
+						</PopoverContent>
+					</Popover>
+				) : null}
 				</nav>
 			</div>
 
@@ -309,48 +379,6 @@ function SidebarContent({
 							</div>
 						</>
 					) : null}
-				</DialogContent>
-			</Dialog>
-
-			<Dialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen}>
-				<DialogContent aria-describedby="sidebar-settings-description">
-					<DialogHeader>
-						<DialogTitle>Settings</DialogTitle>
-						<DialogDescription id="sidebar-settings-description">
-							Choose an action.
-						</DialogDescription>
-					</DialogHeader>
-
-					<div className="overflow-hidden rounded-xl border border-black/8">
-						<button
-							type="button"
-							className="flex w-full items-center gap-3 border-b border-black/8 px-3.5 py-3 text-left text-sm font-medium transition-colors hover:bg-black/4 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus-ring"
-							onClick={() => {
-								setSettingsDialogOpen(false);
-								onOpenSettings?.();
-								onClose?.();
-							}}
-						>
-							<Settings className="h-4.5 w-4.5 text-slate-500" strokeWidth={1.9} aria-hidden="true" />
-							<span>Settings page</span>
-						</button>
-
-						<button
-							type="button"
-							className="flex w-full items-center gap-3 px-3.5 py-3 text-left text-sm font-medium transition-colors hover:bg-black/4 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus-ring disabled:cursor-default disabled:text-slate-500 disabled:hover:bg-transparent"
-							disabled={sessionIdsNeedingSync.size === 0}
-							onClick={() => {
-								if (sessionIdsNeedingSync.size === 0) {
-									return;
-								}
-								onSyncAllChats();
-								setSettingsDialogOpen(false);
-							}}
-						>
-							<CloudSync className="h-4.5 w-4.5 text-slate-500" strokeWidth={1.9} aria-hidden="true" />
-							<span>{sessionIdsNeedingSync.size === 0 ? "All chats are up to date" : "Sync all chats"}</span>
-						</button>
-					</div>
 				</DialogContent>
 			</Dialog>
 		</>

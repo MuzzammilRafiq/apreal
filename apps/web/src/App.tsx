@@ -41,7 +41,7 @@ type PendingConnectionWaiter = {
 	reject(error: Error): void;
 	timer: number;
 };
-import { coerceRouteForCapabilities, type WebEventStream, type WebRuntime } from "./runtime";
+import { coerceRouteForCapabilities, type WebEventStream, type WebRuntime, type SettingsSectionId } from "./runtime";
 import { useAppAdmin } from "./useAppAdmin";
 
 type AppProps = {
@@ -130,6 +130,7 @@ function applyBufferedAssistantDelta(
 export function App({ runtime }: AppProps) {
 	const { data: authSession, isPending: authSessionPending } = authClient.useSession();
 	const [route, setRoute] = useState<AppRoute>(() => coerceRouteForCapabilities(readCurrentRoute(), runtime.capabilities));
+	const [requestedSettingsSection, setRequestedSettingsSection] = useState<SettingsSectionId | null>(null);
 	const [connected, setConnected] = useState(false);
 	const [pendingDraft, setPendingDraft] = useState(false);
 	const [pendingPrompt, setPendingPrompt] = useState<PendingPrompt | null>(null);
@@ -1098,6 +1099,13 @@ export function App({ runtime }: AppProps) {
 		handleRefreshJobRuns(jobId);
 	}, [effectiveCapabilities, handleRefreshJobRuns]);
 
+	const handleBackToJobsPanel = useCallback(() => {
+		setRequestedSettingsSection("jobs");
+		const supportedRoute = coerceRouteForCapabilities("settings", effectiveCapabilities);
+		navigateToRoute(supportedRoute);
+		setRoute(supportedRoute);
+	}, [effectiveCapabilities]);
+
 
 
 	if (authSessionPending || signInRequired) {
@@ -1126,6 +1134,9 @@ export function App({ runtime }: AppProps) {
 			promptInputRef={promptInputRef}
 			onRouteChange={handleRouteChange}
 			onOpenJob={handleOpenJob}
+			requestedSettingsSection={requestedSettingsSection}
+			onConsumeRequestedSettingsSection={() => setRequestedSettingsSection(null)}
+			onBackToJobsPanel={handleBackToJobsPanel}
 			onRefreshJobs={handleRefreshJobs} onRefreshJobRuns={handleRefreshJobRuns}
 			onUpdateJobInterval={updateScheduledJob} onToggleJobEnabled={toggleScheduledJobEnabled}
 			onDeleteJob={deleteScheduledJob} onEnsureSessionLoaded={ensureSessionLoaded}
