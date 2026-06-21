@@ -76,6 +76,8 @@ export function isRelayClientMessageAllowed(message: ClientAppMessage): boolean 
 		message.type === "delete_all_sessions" ||
 		message.type === "load_session" ||
 		message.type === "load_sessions_page" ||
+		message.type === "load_providers" ||
+		message.type === "set_default_model" ||
 		message.type === "ping";
 }
 

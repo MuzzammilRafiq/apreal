@@ -4,7 +4,7 @@ import test from "node:test";
 import type { ClientAppMessage } from "../protocol.ts";
 import { isRelayClientMessageAllowed } from "../web/handlers.ts";
 
-test("allows relay chat actions and rejects laptop administration", () => {
+test("allows relay chat and model selection while rejecting laptop administration", () => {
 	const allowedMessages: ClientAppMessage[] = [
 		{ type: "prompt", prompt: "hello" },
 		{ type: "abort", sessionId: "session-1" },
@@ -12,12 +12,12 @@ test("allows relay chat actions and rejects laptop administration", () => {
 		{ type: "delete_all_sessions" },
 		{ type: "load_session", sessionId: "session-1" },
 		{ type: "load_sessions_page" },
+		{ type: "load_providers" },
+		{ type: "set_default_model", provider: "example", modelId: "model" },
 		{ type: "ping" },
 	];
 	const localOnlyMessages: ClientAppMessage[] = [
 		{ type: "load_status" },
-		{ type: "load_providers" },
-		{ type: "set_default_model", provider: "example", modelId: "model" },
 		{ type: "save_provider_api_key", provider: "example", apiKey: "secret" },
 		{ type: "start_provider_login", provider: "example" },
 		{ type: "load_jobs" },
