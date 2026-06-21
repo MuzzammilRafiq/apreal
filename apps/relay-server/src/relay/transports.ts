@@ -4,7 +4,8 @@ import { WebSocket, WebSocketServer, type RawData } from "ws";
 import { SYNC_LAST_SEQ_QUERY_PARAM, type RelayAgentCommand } from "@apreal/shared";
 import { AuthError, readBearerTokenFromRequest, readRelayToken } from "../auth.ts";
 import type { RelayServerState } from "./state.ts";
-import { RELAY_SSE_HEARTBEAT_INTERVAL_MS } from "./constants.ts";
+import { RELAY_SSE_HEARTBEAT_INTERVAL_MS, RELAY_WEBSOCKET_PONG_TIMEOUT_MS } from "./constants.ts";
+import { startWebSocketHeartbeat } from "./websocket-heartbeat.ts";
 import { readRequestBody, sendJson, setHeaders } from "./http.ts";
 import { resolveClientRelayTarget } from "./authorization.ts";
 import { parseRelayAgentMessage } from "./parsing.ts";
@@ -336,7 +337,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		lastSeq: number | undefined,
 	) {
 		let closed = false;
-		let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+		let stopHeartbeat: (() => void) | null = null;
 
 		const close = (reason: string) => {
 			if (closed) {
@@ -345,10 +346,8 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 
 			closed = true;
 			connection.closed = true;
-			if (heartbeatTimer) {
-				clearInterval(heartbeatTimer);
-				heartbeatTimer = null;
-			}
+			stopHeartbeat?.();
+			stopHeartbeat = null;
 
 			const existing = state.browserClients.get(target.clientId);
 			const isActiveConnection = existing === connection;
@@ -453,21 +452,28 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 			close("browser_ws_error");
 		});
 
-		heartbeatTimer = setInterval(() => {
-			if (closed || ws.readyState !== WebSocket.OPEN) {
-				return;
-			}
-
-			if (ws.bufferedAmount > 0) {
-				log("warn", "relay browser websocket heartbeat sees buffered data", {
+		stopHeartbeat = startWebSocketHeartbeat(ws, {
+			intervalMs: RELAY_SSE_HEARTBEAT_INTERVAL_MS,
+			pongTimeoutMs: RELAY_WEBSOCKET_PONG_TIMEOUT_MS,
+			onTimeout: () => {
+				log("warn", "relay browser websocket heartbeat timed out", {
 					clientId: target.clientId,
 					agentId: target.agentId,
 					bufferedAmount: ws.bufferedAmount,
 				});
-			}
-
-			ws.ping();
-		}, RELAY_SSE_HEARTBEAT_INTERVAL_MS);
+				close("browser_ws_heartbeat_timeout");
+				ws.terminate();
+			},
+			onError: (error) => {
+				log("warn", "relay browser websocket heartbeat failed", {
+					clientId: target.clientId,
+					agentId: target.agentId,
+					error: error.message,
+				});
+				close("browser_ws_heartbeat_failed");
+				ws.terminate();
+			},
+		});
 
 		sendAgentCommand(target.agentId, { type: "client_connect", clientId: target.clientId, lastSeq });
 	}
@@ -671,7 +677,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		principal: ReturnType<typeof readRelayToken>,
 	) {
 		let closed = false;
-		let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+		let stopHeartbeat: (() => void) | null = null;
 
 		const close = (reason: string) => {
 			if (closed) {
@@ -680,10 +686,8 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 
 			closed = true;
 			connection.closed = true;
-			if (heartbeatTimer) {
-				clearInterval(heartbeatTimer);
-				heartbeatTimer = null;
-			}
+			stopHeartbeat?.();
+			stopHeartbeat = null;
 
 			const existing = state.agentConnections.get(principal.id);
 			if (existing === connection) {
@@ -784,20 +788,26 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 			close("agent_ws_error");
 		});
 
-		heartbeatTimer = setInterval(() => {
-			if (closed || ws.readyState !== WebSocket.OPEN) {
-				return;
-			}
-
-			if (ws.bufferedAmount > 0) {
-				log("warn", "relay agent websocket heartbeat sees buffered data", {
+		stopHeartbeat = startWebSocketHeartbeat(ws, {
+			intervalMs: RELAY_SSE_HEARTBEAT_INTERVAL_MS,
+			pongTimeoutMs: RELAY_WEBSOCKET_PONG_TIMEOUT_MS,
+			onTimeout: () => {
+				log("warn", "relay agent websocket heartbeat timed out", {
 					agentId: principal.id,
 					bufferedAmount: ws.bufferedAmount,
 				});
-			}
-
-			ws.ping();
-		}, RELAY_SSE_HEARTBEAT_INTERVAL_MS);
+				close("agent_ws_heartbeat_timeout");
+				ws.terminate();
+			},
+			onError: (error) => {
+				log("warn", "relay agent websocket heartbeat failed", {
+					agentId: principal.id,
+					error: error.message,
+				});
+				close("agent_ws_heartbeat_failed");
+				ws.terminate();
+			},
+		});
 
 		notifyAgentOfConnectedClients(principal.id);
 	}
