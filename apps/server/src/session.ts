@@ -119,7 +119,7 @@ async function createResourceLoader(cwd: string, settingsManager: SettingsManage
 				"- Use memory(action=add, memoryType=user or agent, content=...) for new durable entries.",
 				"- Use memory(action=replace or remove, memoryType=user or agent, match=...) to keep entries compact and current.",
 				"- Memory files are loaded as a frozen snapshot when the session is created. Tool writes are durable immediately, but the prompt snapshot refreshes in the next session.",
-				"- Legacy always memory and topic search memory still exist; only the search memory index is loaded by default, so read search files on demand when relevant.",
+				"- Topic search memory is available for larger Markdown notes; only the search memory index is loaded by default, so read search files on demand when relevant.",
 			].join("\n"),
 		],
 	});

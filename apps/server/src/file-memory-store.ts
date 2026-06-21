@@ -4,10 +4,8 @@ import { getAprealAgentPath } from "./agent-dir.ts";
 
 const MEMORY_DIR = getAprealAgentPath("memory");
 const SEARCH_MEMORY_DIR = join(MEMORY_DIR, "search");
-const ALWAYS_MEMORY_FILE = join(MEMORY_DIR, "always.md");
 const AGENT_MEMORY_FILE = join(MEMORY_DIR, "MEMORY.md");
 const USER_MEMORY_FILE = join(MEMORY_DIR, "USER.md");
-const ALWAYS_MEMORY_VIRTUAL_PATH = "/virtual/APREAL_ALWAYS_MEMORY.md";
 const SEARCH_MEMORY_INDEX_VIRTUAL_PATH = "/virtual/APREAL_SEARCH_MEMORY_INDEX.md";
 const AGENT_MEMORY_VIRTUAL_PATH = "/virtual/APREAL_AGENT_MEMORY.md";
 const USER_MEMORY_VIRTUAL_PATH = "/virtual/APREAL_USER_MEMORY.md";
@@ -17,7 +15,7 @@ const ENTRY_DELIMITER = "\n§\n";
 const AGENT_MEMORY_CHAR_LIMIT = 2200;
 const USER_MEMORY_CHAR_LIMIT = 1375;
 
-export type MemoryKind = "always" | "search" | CuratedMemoryTarget;
+export type MemoryKind = "search" | CuratedMemoryTarget;
 export type CuratedMemoryTarget = "agent" | "user";
 
 export type SearchMemoryFile = {
@@ -37,15 +35,12 @@ export type FileMemoryContext = {
 };
 
 export type FileMemoryPromptSnapshot = {
-	always: string;
 	searchFiles: SearchMemoryFile[];
 	agent: CuratedMemorySnapshot;
 	user: CuratedMemorySnapshot;
 };
 
 export interface FileMemoryStore {
-	readAlways(): string;
-	writeAlways(content: string): void;
 	listSearchFiles(): SearchMemoryFile[];
 	readSearch(fileName: string): string;
 	writeSearch(fileName: string, content: string): void;
@@ -59,15 +54,11 @@ export interface FileMemoryStore {
 	clearCurated(target: CuratedMemoryTarget): void;
 	createPromptSnapshot(): FileMemoryPromptSnapshot;
 	renderPromptContexts(snapshot: FileMemoryPromptSnapshot): FileMemoryContext[];
-	renderAlwaysContext(): { path: string; content: string } | null;
 	renderSearchIndexContext(): { path: string; content: string } | null;
 }
 
 function ensureMemoryDirs() {
 	mkdirSync(SEARCH_MEMORY_DIR, { recursive: true });
-	if (!existsSync(ALWAYS_MEMORY_FILE)) {
-		writeFileSync(ALWAYS_MEMORY_FILE, "", "utf8");
-	}
 	if (!existsSync(AGENT_MEMORY_FILE)) {
 		writeFileSync(AGENT_MEMORY_FILE, "", "utf8");
 	}
@@ -307,14 +298,6 @@ export function createFileMemoryStore(): FileMemoryStore {
 	ensureMemoryDirs();
 
 	return {
-		readAlways() {
-			ensureMemoryDirs();
-			return readTextFile(ALWAYS_MEMORY_FILE);
-		},
-		writeAlways(content) {
-			ensureMemoryDirs();
-			writeFileSync(ALWAYS_MEMORY_FILE, normalizeContent(content), "utf8");
-		},
 		listSearchFiles() {
 			return listMarkdownFiles().map((fileName) => {
 				const content = readTextFile(join(SEARCH_MEMORY_DIR, fileName));
@@ -403,7 +386,6 @@ export function createFileMemoryStore(): FileMemoryStore {
 		createPromptSnapshot() {
 			ensureMemoryDirs();
 			return {
-				always: this.readAlways(),
 				searchFiles: this.listSearchFiles(),
 				agent: sanitizeCuratedSnapshot(this.listCurated("agent")),
 				user: sanitizeCuratedSnapshot(this.listCurated("user")),
@@ -411,14 +393,6 @@ export function createFileMemoryStore(): FileMemoryStore {
 		},
 		renderPromptContexts(snapshot) {
 			const contexts: FileMemoryContext[] = [];
-			const alwaysContent = snapshot.always.trim();
-			if (alwaysContent) {
-				contexts.push({
-					path: ALWAYS_MEMORY_VIRTUAL_PATH,
-					content: ["# Always Memory", "Frozen snapshot loaded when this Apreal agent session was created.", "", alwaysContent].join("\n"),
-				});
-			}
-
 			contexts.push({
 				path: SEARCH_MEMORY_INDEX_VIRTUAL_PATH,
 				content: renderSearchIndex(snapshot.searchFiles),
@@ -435,17 +409,6 @@ export function createFileMemoryStore(): FileMemoryStore {
 			}
 
 			return contexts;
-		},
-		renderAlwaysContext() {
-			const content = this.readAlways().trim();
-			if (!content) {
-				return null;
-			}
-
-			return {
-				path: ALWAYS_MEMORY_VIRTUAL_PATH,
-				content: ["# Always Memory", "Loaded at the start of every Apreal session.", "", content].join("\n"),
-			};
 		},
 		renderSearchIndexContext() {
 			return {

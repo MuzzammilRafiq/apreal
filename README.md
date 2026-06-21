@@ -90,7 +90,7 @@ pnpm build:web:remote
 ## Runtime Notes
 
 - Agent provider login is handled by the Apreal settings UI on the laptop. Credentials and defaults are stored under `~/.apreal/agent` by default.
-- The server exposes a persistent Markdown-backed `memory` tool. Curated memory lives in `~/.apreal/agent/memory/USER.md` for user preferences/expectations and `~/.apreal/agent/memory/MEMORY.md` for agent/project/environment facts; use `memory(action="add"|"replace"|"remove", memoryType="user"|"agent", ...)` to keep entries compact. These files are loaded as a frozen prompt snapshot when a session starts, while tool writes become durable immediately. Legacy `always` memory remains at `~/.apreal/agent/memory/always.md`, and `search` memory lives in up to 10 Markdown files under `~/.apreal/agent/memory/search`; only the search index is loaded by default.
+- The server exposes a persistent Markdown-backed `memory` tool. Curated memory lives in `~/.apreal/agent/memory/USER.md` for user preferences/expectations and `~/.apreal/agent/memory/MEMORY.md` for agent/project/environment facts; use `memory(action="add"|"replace"|"remove", memoryType="user"|"agent", ...)` to keep entries compact. These files are loaded as a frozen prompt snapshot when a session starts, while tool writes become durable immediately. `search` memory lives in up to 10 Markdown files under `~/.apreal/agent/memory/search`; only the search index is loaded by default.
 - `LOG_LEVEL` supports `debug`, `info`, `warn`, and `error`.
 - The browser talks only to the relay host for auth plus chat transport.
 - The browser talks only to the relay host. The Pi server keeps an outbound authenticated stream open to the relay, and browser messages are forwarded over that live channel.

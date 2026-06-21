@@ -13,7 +13,6 @@ const memoryToolParameters = Type.Object({
 		Type.Literal("forget"),
 	]),
 	memoryType: Type.Union([
-		Type.Literal("always"),
 		Type.Literal("search"),
 		Type.Literal("agent"),
 		Type.Literal("user"),
@@ -93,7 +92,7 @@ export function createMemoryTool(store: FileMemoryStore) {
 		name: "memory",
 		label: "Memory",
 		description:
-			"Manages Apreal persistent memory. Prefer agent/user memory for durable curated entries: user stores the user's preferences and expectations; agent stores project, environment, and workflow facts. Use add for new entries, replace/remove with a short unique match to keep memory compact. Legacy always/search Markdown memory is still available: always is loaded at session start, search is up to 10 topic files read on demand.",
+			"Manages Apreal persistent memory. Prefer agent/user memory for durable curated entries: user stores the user's preferences and expectations; agent stores project, environment, and workflow facts. Use add for new entries, replace/remove with a short unique match to keep memory compact. Search Markdown memory is available for up to 10 larger topic files that are read on demand.",
 		parameters: memoryToolParameters as any,
 		async execute(_toolCallId, params: MemoryToolParams) {
 			switch (params.action) {
@@ -129,32 +128,6 @@ export function createMemoryTool(store: FileMemoryStore) {
 					};
 				}
 				case "list": {
-					if (params.memoryType === "always") {
-						const content = store.readAlways();
-						return {
-							content: [
-								{
-									type: "text",
-									text: JSON.stringify(
-										{
-											action: "list",
-											memoryType: "always",
-											fileName: "always.md",
-											lineCount: countLines(content),
-										},
-										null,
-										2,
-									),
-								},
-							],
-							details: buildDetails({
-								action: "list",
-								memoryType: "always",
-								fileName: "always.md",
-								lineCount: countLines(content),
-							}),
-						};
-					}
 					if (isCuratedMemoryKind(params.memoryType)) {
 						const entries = store.listCurated(params.memoryType);
 						return {
@@ -206,33 +179,6 @@ export function createMemoryTool(store: FileMemoryStore) {
 					};
 				}
 				case "read": {
-					if (params.memoryType === "always") {
-						const content = store.readAlways();
-						return {
-							content: [
-								{
-									type: "text",
-									text: JSON.stringify(
-										{
-											action: "read",
-											memoryType: "always",
-											fileName: "always.md",
-											lineCount: countLines(content),
-											content,
-										},
-										null,
-										2,
-									),
-								},
-							],
-							details: buildDetails({
-								action: "read",
-								memoryType: "always",
-								fileName: "always.md",
-								lineCount: countLines(content),
-							}),
-						};
-					}
 					if (isCuratedMemoryKind(params.memoryType)) {
 						const content = store.readCurated(params.memoryType);
 						const entries = store.listCurated(params.memoryType);
@@ -353,33 +299,6 @@ export function createMemoryTool(store: FileMemoryStore) {
 				}
 				case "write": {
 					const content = readRequiredContent(params.content);
-					if (params.memoryType === "always") {
-						store.writeAlways(content);
-						return {
-							content: [
-								{
-									type: "text",
-									text: JSON.stringify(
-										{
-											ok: true,
-											action: "write",
-											memoryType: "always",
-											fileName: "always.md",
-											lineCount: countLines(content),
-										},
-										null,
-										2,
-									),
-								},
-							],
-							details: buildDetails({
-								action: "write",
-								memoryType: "always",
-								fileName: "always.md",
-								lineCount: countLines(content),
-							}),
-						};
-					}
 					if (isCuratedMemoryKind(params.memoryType)) {
 						store.writeCurated(params.memoryType, content);
 						const entries = store.listCurated(params.memoryType);
@@ -435,31 +354,6 @@ export function createMemoryTool(store: FileMemoryStore) {
 					};
 				}
 				case "forget": {
-					if (params.memoryType === "always") {
-						store.writeAlways("");
-						return {
-							content: [
-								{
-									type: "text",
-									text: JSON.stringify(
-										{
-											ok: true,
-											action: "forget",
-											memoryType: "always",
-											fileName: "always.md",
-										},
-										null,
-										2,
-									),
-								},
-							],
-							details: buildDetails({
-								action: "forget",
-								memoryType: "always",
-								fileName: "always.md",
-							}),
-						};
-					}
 					if (isCuratedMemoryKind(params.memoryType)) {
 						store.clearCurated(params.memoryType);
 						return {
