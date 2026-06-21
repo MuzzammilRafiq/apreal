@@ -182,6 +182,7 @@ export function AppRouteView({
 				target={target}
 				onRefreshJobs={onRefreshJobs}
 				onOpenJob={onOpenJob}
+				onDeleteJob={onDeleteJob}
 				initialActiveSection={requestedSettingsSection}
 				onConsumeInitialSection={onConsumeRequestedSettingsSection}
 				onSetDefaultModel={onSetDefaultModel}
@@ -213,7 +214,6 @@ export function AppRouteView({
 				onRefreshJobRuns={onRefreshJobRuns}
 				onUpdateJobInterval={onUpdateJobInterval}
 				onToggleJobEnabled={onToggleJobEnabled}
-				onDeleteJob={onDeleteJob}
 				onEnsureRunLoaded={onEnsureSessionLoaded}
 				selectedJobId={selectedJobId}
 			/>

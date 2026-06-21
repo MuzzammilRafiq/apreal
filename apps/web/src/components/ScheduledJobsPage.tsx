@@ -12,7 +12,6 @@ type ScheduledJobsPageProps = {
 	onRefreshJobRuns: (jobId: string) => void;
 	onUpdateJobInterval: (jobId: string, intervalMinutes: number) => Promise<void>;
 	onToggleJobEnabled: (jobId: string, enabled: boolean) => Promise<void>;
-	onDeleteJob: (jobId: string) => Promise<void>;
 	onEnsureRunLoaded: (runId: string) => void;
 	selectedJobId?: string | null;
 };
@@ -28,7 +27,6 @@ export function ScheduledJobsPage({
 	onRefreshJobRuns,
 	onUpdateJobInterval,
 	onToggleJobEnabled,
-	onDeleteJob,
 	onEnsureRunLoaded,
 	selectedJobId,
 }: ScheduledJobsPageProps) {
@@ -67,7 +65,6 @@ export function ScheduledJobsPage({
 						onRefreshJobRuns={onRefreshJobRuns}
 						onUpdateJobInterval={onUpdateJobInterval}
 						onToggleJobEnabled={onToggleJobEnabled}
-						onDeleteJob={onDeleteJob}
 						onEnsureRunLoaded={onEnsureRunLoaded}
 						selectedJobId={selectedJobId}
 					/>

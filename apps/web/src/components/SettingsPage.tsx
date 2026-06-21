@@ -32,6 +32,7 @@ type SettingsPageProps = {
 	onBack: () => void;
 	onRefreshJobs: () => void;
 	onOpenJob: (jobId: string) => void;
+	onDeleteJob: (jobId: string) => Promise<void>;
 	initialActiveSection?: SettingsSection | null;
 	onConsumeInitialSection?: () => void;
 	onSetDefaultModel: (provider: string, modelId: string) => Promise<void>;
@@ -76,6 +77,7 @@ export function SettingsPage({
 	onBack,
 	onRefreshJobs,
 	onOpenJob,
+	onDeleteJob,
 	initialActiveSection,
 	onConsumeInitialSection,
 	onSetDefaultModel,
@@ -624,6 +626,7 @@ export function SettingsPage({
 							isLoadingJobs={isLoadingJobs}
 							onRefreshJobs={onRefreshJobs}
 							onOpenJob={onOpenJob}
+							onDeleteJob={onDeleteJob}
 						/>
 					</div>
 						</div>

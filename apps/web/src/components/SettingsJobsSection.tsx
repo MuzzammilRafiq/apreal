@@ -9,6 +9,7 @@ type SettingsJobsSectionProps = {
 	isLoadingJobs: boolean;
 	onRefreshJobs: () => void;
 	onOpenJob: (jobId: string) => void;
+	onDeleteJob: (jobId: string) => Promise<void>;
 };
 
 export function SettingsJobsSection({
@@ -17,6 +18,7 @@ export function SettingsJobsSection({
 	jobsError,
 	isLoadingJobs,
 	onOpenJob,
+	onDeleteJob,
 }: SettingsJobsSectionProps) {
 	if (activeSection !== "jobs") {
 		return null;
@@ -72,6 +74,7 @@ export function SettingsJobsSection({
 					jobsError={null}
 					isLoadingJobs={isLoadingJobs}
 					onSelectJob={onOpenJob}
+					onDeleteJob={onDeleteJob}
 				/>
 			</section>
 		</div>

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ScheduledJobDetails } from "../chatTypes";
 
 type ScheduledJobListProps = {
@@ -7,6 +8,7 @@ type ScheduledJobListProps = {
 	selectedJobId?: string | null;
 	title?: string;
 	onSelectJob: (jobId: string) => void;
+	onDeleteJob?: (jobId: string) => Promise<void>;
 };
 
 export function formatInterval(intervalMs: number): string {
@@ -72,7 +74,24 @@ export function ScheduledJobList({
 	selectedJobId = null,
 	title = "Active Recurring Schedules",
 	onSelectJob,
+	onDeleteJob,
 }: ScheduledJobListProps) {
+	const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
+	const [deleteError, setDeleteError] = useState<string | null>(null);
+
+	async function handleDeleteJob(job: ScheduledJobDetails) {
+		if (!onDeleteJob || !window.confirm(`Delete scheduled job "${job.name}"? This cannot be undone.`)) return;
+		setDeletingJobId(job.id);
+		setDeleteError(null);
+		try {
+			await onDeleteJob(job.id);
+		} catch (error) {
+			setDeleteError(error instanceof Error ? error.message : String(error));
+		} finally {
+			setDeletingJobId(null);
+		}
+	}
+
 	return (
 		<section className="flex min-h-0 flex-col overflow-hidden">
 			<div className="flex items-center justify-between px-0 py-3">
@@ -88,6 +107,9 @@ export function ScheduledJobList({
 				<div className="mb-3 rounded-md border-l-2 border-rose-500 bg-rose-50 px-3 py-2.5 text-xs font-semibold leading-5 text-rose-800">
 					{jobsError}
 				</div>
+			) : null}
+			{deleteError ? (
+				<div className="ui-feedback mb-3 rounded-md px-3 py-2.5 text-xs font-semibold leading-5">{deleteError}</div>
 			) : null}
 
 			<div className="flex-1 overflow-y-auto py-1 scrollbar-thin">
@@ -110,16 +132,19 @@ export function ScheduledJobList({
 							const relative = formatNextRunRelative(job.nextRunAt);
 
 							return (
-							<button
+							<article
 								key={job.id}
-								type="button"
-								onClick={() => onSelectJob(job.id)}
-							className={`scheduled-job-card group flex w-full cursor-pointer flex-col rounded-lg border px-3 py-2.5 text-left transition-all duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 ${
+								className={`scheduled-job-card group relative rounded-lg border text-left transition-all duration-150 ${
 								isSelected
 									? "border-slate-900 bg-white text-slate-950 ring-1 ring-slate-900 shadow-[0_8px_24px_rgba(15,23,42,0.10)]"
 									: "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50 hover:shadow-[0_6px_20px_rgba(15,23,42,0.05)]"
 							}`}
 							>
+								<button
+									type="button"
+									onClick={() => onSelectJob(job.id)}
+									className="flex w-full cursor-pointer flex-col bg-transparent px-3 py-2.5 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+								>
 								<div className="flex w-full items-start justify-between gap-3">
 									<p className="min-w-0 flex-1 truncate text-[0.84rem] font-bold text-slate-900">
 										{job.name}
@@ -131,7 +156,7 @@ export function ScheduledJobList({
 								<p className="mt-1.5 line-clamp-2 text-[0.75rem] font-medium leading-[1.4] text-slate-500">
 									{job.prompt}
 								</p>
-								<div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[0.64rem] font-bold tracking-wider text-slate-400">
+								<div className={`mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[0.64rem] font-bold tracking-wider text-slate-400 ${onDeleteJob ? "pr-20" : ""}`}>
 									<span className="rounded bg-slate-100 px-1.5 py-0.5 transition-colors group-hover:bg-transparent">
 										Interval: {formatInterval(job.intervalMs)}
 									</span>
@@ -140,7 +165,19 @@ export function ScheduledJobList({
 									</span>
 									<span>{job.runCount} run{job.runCount !== 1 ? "s" : ""}</span>
 								</div>
-							</button>
+								</button>
+								{onDeleteJob ? (
+									<button
+										type="button"
+										className="ui-settings-danger-button absolute bottom-2 right-3 rounded-md border px-2.5 py-1 text-[0.68rem] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500 disabled:cursor-not-allowed"
+										onClick={() => { void handleDeleteJob(job); }}
+										disabled={deletingJobId !== null}
+										aria-label={`Delete ${job.name}`}
+									>
+										{deletingJobId === job.id ? "Deleting…" : "Delete"}
+									</button>
+								) : null}
+							</article>
 							);
 						})}
 					</div>

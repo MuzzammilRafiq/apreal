@@ -13,7 +13,6 @@ type JobsPanelProps = {
 	onRefreshJobRuns: (jobId: string) => void;
 	onUpdateJobInterval: (jobId: string, intervalMinutes: number) => Promise<void>;
 	onToggleJobEnabled: (jobId: string, enabled: boolean) => Promise<void>;
-	onDeleteJob: (jobId: string) => Promise<void>;
 	onEnsureRunLoaded: (runId: string) => void;
 	selectedJobId?: string | null;
 };
@@ -60,7 +59,6 @@ export function JobsPanel({
 	onRefreshJobRuns,
 	onUpdateJobInterval,
 	onToggleJobEnabled,
-	onDeleteJob,
 	onEnsureRunLoaded,
 	selectedJobId = null,
 }: JobsPanelProps) {
@@ -139,23 +137,6 @@ export function JobsPanel({
 		try {
 			await onToggleJobEnabled(selectedJob.id, !selectedJob.enabled);
 			setActionMessage(selectedJob.enabled ? "Job paused." : "Job resumed.");
-		} catch (error) {
-			setActionError(error instanceof Error ? error.message : String(error));
-		} finally {
-			setIsMutating(false);
-		}
-	}
-
-	async function handleDeleteJob() {
-		if (!selectedJob) return;
-		if (!window.confirm(`Delete scheduled job "${selectedJob.name}"? This cannot be undone.`)) return;
-
-		setIsMutating(true);
-		setActionError(null);
-		setActionMessage(null);
-		try {
-			await onDeleteJob(selectedJob.id);
-			setActionMessage("Job deleted successfully.");
 		} catch (error) {
 			setActionError(error instanceof Error ? error.message : String(error));
 		} finally {
@@ -256,14 +237,6 @@ export function JobsPanel({
 										disabled={isMutating}
 									>
 										{selectedJob.enabled ? "Pause schedule" : "Resume schedule"}
-									</button>
-									<button
-										type="button"
-									className="ui-settings-danger-button w-full cursor-pointer rounded-md border px-4 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed min-[520px]:w-auto"
-										onClick={() => { void handleDeleteJob(); }}
-										disabled={isMutating}
-									>
-										Delete job
 									</button>
 								</div>
 

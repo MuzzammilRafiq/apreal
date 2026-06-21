@@ -1,8 +1,12 @@
 import type { FormEvent, ReactNode } from "react";
 import type { LocalWebAdminStatus } from "@apreal/shared";
+import { AlertTriangle, FileText, LoaderCircle, RotateCcw, Save, Trash2 } from "lucide-react";
 import { authClient } from "../auth/auth-client";
 import { BUILD_VERSION } from "../generated/build-version";
 import { AccountAuthButton } from "./AccountAuthButton";
+import { Button } from "./ui/button";
+import { Field, FieldDescription, FieldSet, FieldGroup, FieldLegend } from "./ui/field";
+import { Textarea } from "./ui/textarea";
 
 type SettingsAccountSectionProps = {
   active: boolean;
@@ -22,6 +26,9 @@ type SettingsAccountSectionProps = {
   deleteSessionsError: string | null;
   modelControl?: ReactNode;
 };
+
+const cardClassName =
+  "rounded-lg border border-black/10 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)]";
 
 export function SettingsAccountSection({
   active,
@@ -49,21 +56,28 @@ export function SettingsAccountSection({
       : null;
   const userLabel = user?.name || user?.email || "Signed in";
   const userInitial = userLabel.trim().charAt(0).toUpperCase() || "A";
+  const isSignedIn = Boolean(user);
 
   if (!active) {
     return null;
   }
+
   const sessionLabel =
     typeof adminStatus?.sessions === "number"
       ? `${adminStatus.sessions} session${adminStatus.sessions === 1 ? "" : "s"}`
       : "Unavailable";
 
+  const appendBaseline = adminStatus?.appendSystemPrompt ?? "";
+  const hasAppendChanges = appendSystemPromptDraft !== appendBaseline;
+  const canEditAppend = Boolean(adminStatus) && !isSavingAppendPrompt;
+
   return (
-    <div className="space-y-4 ">
-      <section className="p-4 ">
-        <div className="flex flex-col gap-4 min-[760px]:flex-row min-[760px]:items-start min-[760px]:justify-between">
-          <div className="flex min-w-0 items-start gap-4">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded bg-[linear-gradient(180deg,#ffffff,var(--color-brand-soft))] text-lg font-bold text-(--color-brand-ink) shadow-[0_10px_24px_var(--color-brand-shadow)]">
+    <div className="space-y-5">
+      {/* ===== Profile ===== */}
+      <section className={cardClassName}>
+        <div className="flex flex-col gap-5 p-5 min-[760px]:flex-row min-[760px]:items-center min-[760px]:justify-between">
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[linear-gradient(180deg,#ffffff,var(--color-brand-soft))] text-xl font-bold text-(--color-brand-ink) shadow-[0_8px_24px_var(--color-brand-shadow)] ring-1 ring-black/10">
               {userImage ? (
                 <img
                   src={userImage}
@@ -80,152 +94,235 @@ export function SettingsAccountSection({
               )}
             </div>
             <div className="min-w-0">
-              <h2 className="mt-1 text-xl font-bold tracking-tight text-slate-950">
-                {isPending
-                  ? "Checking account..."
-                  : user
-                    ? userLabel
-                    : "Not signed in"}
-              </h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl font-bold tracking-tight text-slate-950">
+                  {isPending
+                    ? "Checking account..."
+                    : isSignedIn
+                      ? userLabel
+                      : "Not signed in"}
+                </h2>
+                <span className="inline-flex items-center gap-1.5 rounded border border-black/10 bg-black/3 px-2 py-0.5 font-mono text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate-600">
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      isPending
+                        ? "bg-slate-400"
+                        : isSignedIn
+                          ? "bg-emerald-500"
+                          : "bg-amber-500"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  {isPending ? "Pending" : isSignedIn ? "Signed in" : "Signed out"}
+                </span>
+              </div>
               {user?.email ? (
-                <p className="mt-1 text-sm font-medium text-slate-600">
+                <p className="mt-1 truncate text-sm font-medium text-slate-600">
                   {user.email}
+                </p>
+              ) : null}
+              {!isSignedIn && !isPending ? (
+                <p className="mt-1 text-[0.82rem] leading-relaxed text-slate-500">
+                  Sign in to sync your profile and authorize remote access.
                 </p>
               ) : null}
             </div>
           </div>
-          <div className="w-full min-[760px]:w-56">
+          <div className="w-full min-[760px]:w-60 min-[760px]:shrink-0">
             <AccountAuthButton tone="light" />
           </div>
         </div>
 
-        <div className="p-2 flex min-w-0 items-baseline justify-between gap-4">
-          <p className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.12em] text-slate-500">
-            Sessions
-          </p>
-          <p className="text-right text-[0.95rem] font-semibold text-slate-900">
-            {sessionLabel}
-          </p>
-        </div>
-
-        {statusError ? (
-          <p className="ui-feedback mt-4 px-3 py-2.5 text-[0.84rem] font-medium leading-normal">
-            {statusError}
-          </p>
-        ) : null}
-        {connectionError ? (
-          <p className="ui-feedback-soft mt-3 px-3 py-2.5 text-[0.84rem] font-medium leading-normal">
-            {connectionError}
-          </p>
-        ) : null}
+        <dl className="grid grid-cols-2 divide-x divide-black/8 border-t border-black/8 bg-[rgba(245,245,245,0.5)]">
+          <div className="px-5 py-3">
+            <dt className="font-mono text-[0.62rem] font-bold uppercase tracking-[0.14em] text-slate-400">
+              Sessions
+            </dt>
+            <dd className="mt-1 text-[0.95rem] font-semibold text-slate-900">
+              {sessionLabel}
+            </dd>
+          </div>
+          <div className="px-5 py-3">
+            <dt className="font-mono text-[0.62rem] font-bold uppercase tracking-[0.14em] text-slate-400">
+              Connection
+            </dt>
+            <dd className="mt-1 flex items-center gap-1.5 text-[0.95rem] font-semibold text-slate-900">
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  connected ? "bg-emerald-500" : "bg-amber-500"
+                }`}
+                aria-hidden="true"
+              />
+              {connected ? "Connected" : "Offline"}
+            </dd>
+          </div>
+        </dl>
       </section>
+
+      {statusError ? (
+        <p className="ui-feedback rounded px-3 py-2.5 text-[0.84rem] font-medium leading-normal">
+          {statusError}
+        </p>
+      ) : null}
+      {connectionError ? (
+        <p className="ui-feedback-soft rounded px-3 py-2.5 text-[0.84rem] font-medium leading-normal">
+          {connectionError}
+        </p>
+      ) : null}
 
       {modelControl}
 
-      <form className="pb-2 px-2 " onSubmit={handleAppendSystemPromptSubmit}>
-        <label className="mt-4 block">
-          <textarea
-            value={appendSystemPromptDraft}
-            onChange={(event) => {
-              setAppendSystemPromptDraft(event.target.value);
-            }}
-            rows={10}
-            placeholder={"Append instructions to Apreal's system prompt"}
-            className="mt-2 min-h-56 w-full resize-y  px-2 py-3 text-[0.95rem] leading-[1.6] border rounded"
-            spellCheck={false}
-          />
-        </label>
+      {/* ===== Custom instructions ===== */}
+      <form
+        className={cardClassName}
+        onSubmit={handleAppendSystemPromptSubmit}
+      >
+        <FieldSet className="gap-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <FieldLegend>Custom instructions</FieldLegend>
+              <FieldDescription>
+                Append these instructions to every system prompt. Useful for
+                enforcing tone, style, or project conventions.
+              </FieldDescription>
+            </div>
+            <span className="mt-0.5 hidden h-9 w-9 shrink-0 items-center justify-center rounded-md bg-black/3 text-slate-500 ring-1 ring-black/8 min-[760px]:flex">
+              <FileText className="h-4.5 w-4.5" />
+            </span>
+          </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-3 ">
-          <button
-            type="submit"
-            className="ui-settings-action-button cursor-pointer rounded border px-6 py-2 transition-colors disabled:cursor-not-allowed"
-            disabled={
-              isSavingAppendPrompt ||
-              !adminStatus ||
-              appendSystemPromptDraft === (adminStatus.appendSystemPrompt ?? "")
-            }
-          >
-            {isSavingAppendPrompt ? "Saving..." : "Save"}
-          </button>
-          <button
-            type="button"
-            className="ui-settings-action-button cursor-pointer rounded border px-6 py-2 transition-colors disabled:cursor-not-allowed"
-            disabled={
-              isSavingAppendPrompt ||
-              !adminStatus ||
-              appendSystemPromptDraft.length === 0
-            }
-            onClick={() => {
-              setAppendSystemPromptDraft("");
-            }}
-          >
-            Clear
-          </button>
-        </div>
+          <FieldGroup>
+            <Field>
+              <Textarea
+                value={appendSystemPromptDraft}
+                onChange={(event) => {
+                  setAppendSystemPromptDraft(event.target.value);
+                }}
+                rows={8}
+                placeholder="e.g. Always respond in British English. Prefer concise answers and cite sources."
+                className="min-h-40 resize-y text-[0.92rem] leading-[1.6]"
+                spellCheck={false}
+              />
+              <FieldDescription>
+                {hasAppendChanges
+                  ? "Unsaved changes \u2014 save to apply to new chats."
+                  : "Saved locally on this machine."}
+              </FieldDescription>
+            </Field>
 
-        {appendPromptSubmissionMessage ? (
-          <p className="ui-feedback-soft mt-3 px-3 py-2.5 text-[0.84rem] leading-normal font-medium">
-            {appendPromptSubmissionMessage}
-          </p>
-        ) : null}
-        {appendPromptSubmissionError ? (
-          <p className="ui-feedback mt-3 px-3 py-2.5 text-[0.84rem] leading-normal font-medium">
-            {appendPromptSubmissionError}
-          </p>
-        ) : null}
+            {appendPromptSubmissionError ? (
+              <p className="ui-feedback rounded px-3 py-2.5 text-[0.82rem] font-medium leading-normal">
+                {appendPromptSubmissionError}
+              </p>
+            ) : null}
+            {appendPromptSubmissionMessage ? (
+              <p className="ui-feedback-soft rounded px-3 py-2.5 text-[0.82rem] font-medium leading-normal">
+                {appendPromptSubmissionMessage}
+              </p>
+            ) : null}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="submit"
+                className="ui-settings-action-button rounded"
+                disabled={!canEditAppend || !hasAppendChanges}
+              >
+                {isSavingAppendPrompt ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <Save />
+                )}
+                {isSavingAppendPrompt ? "Saving..." : "Save changes"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded"
+                disabled={!canEditAppend || !hasAppendChanges}
+                onClick={() => {
+                  setAppendSystemPromptDraft(appendBaseline);
+                }}
+              >
+                <RotateCcw />
+                Revert
+              </Button>
+            </div>
+          </FieldGroup>
+        </FieldSet>
       </form>
 
-      <section className="pt-10">
-        <h2 className="m-1 text-red-700">
-          Delete saved chats This removes saved chat sessions from the server
-          and clears them from connected browsers.
-        </h2>
-        <button
-          type="button"
-          className="ui-settings-danger-button cursor-pointer rounded border px-6 py-2 transition-colors disabled:cursor-not-allowed"
-          onClick={onDeleteAllSessions}
-          disabled={deletingAllSessions}
-        >
-          {deletingAllSessions ? "Deleting chats..." : "Delete all chats"}
-        </button>
+      {/* ===== Danger zone ===== */}
+      <section className="rounded-lg border border-red-200 bg-white p-5 shadow-[0_12px_36px_rgba(15,23,42,0.05)]">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-red-50 text-red-600 ring-1 ring-red-200">
+            <AlertTriangle className="h-4.5 w-4.5" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-[0.98rem] font-bold text-slate-950">
+              Delete saved chats
+            </h3>
+            <p className="mt-1 text-[0.84rem] leading-relaxed text-slate-600">
+              Removes every saved chat session from this server and clears them
+              from connected browsers. This cannot be undone.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <Button
+            type="button"
+            className="ui-settings-danger-button rounded"
+            onClick={onDeleteAllSessions}
+            disabled={deletingAllSessions}
+          >
+            {deletingAllSessions ? (
+              <LoaderCircle className="animate-spin" />
+            ) : (
+              <Trash2 />
+            )}
+            {deletingAllSessions ? "Deleting chats..." : "Delete all chats"}
+          </Button>
+        </div>
+
         {deleteSessionsMessage ? (
-          <p className="ui-feedback-soft mt-3 px-3 py-2.5 text-[0.84rem] leading-normal font-medium">
+          <p className="ui-feedback-soft mt-3 rounded px-3 py-2.5 text-[0.82rem] font-medium leading-normal">
             {deleteSessionsMessage}
           </p>
         ) : null}
         {deleteSessionsError ? (
-          <p className="ui-feedback mt-3 px-3 py-2.5 text-[0.84rem] leading-normal font-medium">
+          <p className="ui-feedback mt-3 rounded px-3 py-2.5 text-[0.82rem] font-medium leading-normal">
             {deleteSessionsError}
           </p>
         ) : null}
-        <p className="mt-3 text-[0.68rem] leading-normal text-slate-400">
-          {BUILD_VERSION.label}
-          {BUILD_VERSION.shortCommitHash !== "unknown" ? (
-            <>
-              {" · "}
-              {BUILD_VERSION.commitUrl ? (
-                <a
-                  href={BUILD_VERSION.commitUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-mono text-slate-500 underline underline-offset-2"
-                  title={BUILD_VERSION.commitHash}
-                >
-                  {BUILD_VERSION.shortCommitHash}
-                </a>
-              ) : (
-                <span
-                  className="font-mono text-slate-500"
-                  title={BUILD_VERSION.commitHash}
-                >
-                  {BUILD_VERSION.shortCommitHash}
-                </span>
-              )}
-            </>
-          ) : null}
-        </p>
       </section>
+
+      {/* ===== Build version ===== */}
+      <p className="px-1 pt-1 text-[0.68rem] leading-normal text-slate-400">
+        {BUILD_VERSION.label}
+        {BUILD_VERSION.shortCommitHash !== "unknown" ? (
+          <>
+            {" \u00b7 "}
+            {BUILD_VERSION.commitUrl ? (
+              <a
+                href={BUILD_VERSION.commitUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-slate-500 underline underline-offset-2"
+                title={BUILD_VERSION.commitHash}
+              >
+                {BUILD_VERSION.shortCommitHash}
+              </a>
+            ) : (
+              <span
+                className="font-mono text-slate-500"
+                title={BUILD_VERSION.commitHash}
+              >
+                {BUILD_VERSION.shortCommitHash}
+              </span>
+            )}
+          </>
+        ) : null}
+      </p>
     </div>
   );
 }

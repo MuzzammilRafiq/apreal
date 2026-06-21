@@ -13,6 +13,7 @@ import {
 	type ServerPayload,
 } from "./app-state";
 import type { WebRuntime } from "./runtime";
+import { ensureLocalBrowserAuthSession } from "./local-auth";
 import {
 	createMcpServer as createMcpServerRequest,
 	deleteMcpServer as deleteMcpServerRequest,
@@ -358,6 +359,7 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 				return null;
 			}
 
+			await ensureLocalBrowserAuthSession();
 			return await updateScheduledJobRequest(jobId, changes);
 		},
 		onSuccess: (job) => {
@@ -378,6 +380,7 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 				return jobId;
 			}
 
+			await ensureLocalBrowserAuthSession();
 			await deleteScheduledJobRequest(jobId);
 			return jobId;
 		},
