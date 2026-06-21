@@ -69,6 +69,7 @@ export interface AgentController {
 	readonly modelInfo: AgentModelInfo;
 	isStreaming(): boolean;
 	getContextUsage(): AgentContextUsage | undefined;
+	setModel(provider: string, modelId: string): Promise<void>;
 	prompt(input: string): Promise<void>;
 	abort(): Promise<void>;
 	dispose(): void;

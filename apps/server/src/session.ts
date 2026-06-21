@@ -7,7 +7,7 @@ import {
 	SettingsManager,
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { getProviders, type Api, type AssistantMessage, type Model } from "@earendil-works/pi-ai";
+import { getProviders, type Api, type AssistantMessage, type Message, type Model } from "@earendil-works/pi-ai";
 import { agentToolsConfig, getConfiguredToolNames } from "./agent-tools.ts";
 import { getAprealAgentDir, getAprealAgentPath } from "./agent-dir.ts";
 import { getDefaultFileMemoryStore } from "./file-memory-store.ts";
@@ -47,6 +47,13 @@ type AgentControllerOptions = {
 	sessionId?: string;
 	transport?: string;
 	customTools?: ToolDefinition[];
+	history?: AgentHistoryMessage[];
+};
+
+export type AgentHistoryMessage = {
+	role: "user" | "assistant";
+	body: string;
+	createdAt: number;
 };
 
 type PiRuntime = {
@@ -185,9 +192,52 @@ function createPiRuntime(cwd: string): PiRuntime {
 	};
 }
 
-async function createPiSession(cwd: string, customTools: ToolDefinition[] = agentToolsConfig.customTools) {
+export function buildAgentHistory(
+	history: AgentHistoryMessage[],
+	model: Pick<Model<any>, "api" | "provider" | "id">,
+): Message[] {
+	return history.flatMap((entry): Message[] => {
+		const body = entry.body.trim();
+		if (!body) {
+			return [];
+		}
+
+		if (entry.role === "user") {
+			return [{
+				role: "user",
+				content: body,
+				timestamp: entry.createdAt,
+			}];
+		}
+
+		return [{
+			role: "assistant",
+			content: [{ type: "text", text: body }],
+			api: model.api,
+			provider: model.provider,
+			model: model.id,
+			usage: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 0,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			stopReason: "stop",
+			timestamp: entry.createdAt,
+		}];
+	});
+}
+
+async function createPiSession(
+	cwd: string,
+	customTools: ToolDefinition[] = agentToolsConfig.customTools,
+	history: AgentHistoryMessage[] = [],
+) {
 	const runtime = createPiRuntime(cwd);
 	const resourceLoader = await createResourceLoader(cwd, runtime.settingsManager);
+	const sessionManager = SessionManager.inMemory(cwd);
 	const result = await createAgentSession({
 		cwd,
 		agentDir: APREAL_AGENT_DIR,
@@ -195,7 +245,7 @@ async function createPiSession(cwd: string, customTools: ToolDefinition[] = agen
 		modelRegistry: runtime.modelRegistry,
 		resourceLoader,
 		settingsManager: runtime.settingsManager,
-		sessionManager: SessionManager.inMemory(),
+		sessionManager,
 		tools: getConfiguredToolNames(customTools),
 		customTools,
 	});
@@ -211,6 +261,13 @@ async function createPiSession(cwd: string, customTools: ToolDefinition[] = agen
 				? `The configured Pi default model (${configuredReference}) could not be resolved for this server. Open \`pi\` and pick a valid default with \`/model\`.`
 				: getMissingAuthError(),
 		);
+	}
+
+	for (const message of buildAgentHistory(history, model)) {
+		sessionManager.appendMessage(message);
+	}
+	if (history.length > 0) {
+		result.session.agent.state.messages = sessionManager.buildSessionContext().messages;
 	}
 
 	return {
@@ -233,9 +290,11 @@ export async function createAgentController(
 	const logger = createLogger(`session:${sessionId}`);
 	logger.info("creating agent session", { cwd, transport });
 
-	const { session, model, modelInfo } = await createPiSession(cwd, options?.customTools);
+	const { session, model, modelInfo } = await createPiSession(cwd, options?.customTools, options?.history);
 	const listeners = new Set<(event: AgentStreamEvent) => void>();
 	let disposed = false;
+	let activeModel = model;
+	let activeModelInfo = modelInfo;
 	logger.info("agent session ready", { cwd, model: formatModelLabel(model), transport });
 
 	const emit = (event: AgentStreamEvent) => {
@@ -361,8 +420,12 @@ export async function createAgentController(
 	return {
 		sessionId,
 		cwd,
-		model,
-		modelInfo,
+		get model() {
+			return activeModel;
+		},
+		get modelInfo() {
+			return activeModelInfo;
+		},
 		isStreaming: () => !disposed && session.isStreaming,
 		getContextUsage: () => {
 			if (disposed) {
@@ -379,6 +442,24 @@ export async function createAgentController(
 				contextWindow: usage.contextWindow,
 				percent: usage.percent ?? null,
 			};
+		},
+		setModel: async (provider: string, modelId: string) => {
+			if (disposed) {
+				throw new Error("Agent session has already been disposed.");
+			}
+			if (session.isStreaming) {
+				throw new Error("Cannot change the model while the agent is responding.");
+			}
+
+			const nextModel = session.modelRegistry.find(provider, modelId);
+			if (!nextModel) {
+				throw new Error(`The selected model (${provider}/${modelId}) is not available for this session.`);
+			}
+
+			await session.setModel(nextModel);
+			activeModel = nextModel;
+			activeModelInfo = buildAgentModelInfo(nextModel, session.modelRegistry);
+			logger.info("agent model changed", { model: formatModelLabel(nextModel) });
 		},
 		prompt: async (input: string) => {
 			if (disposed) {

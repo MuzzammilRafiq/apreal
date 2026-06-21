@@ -16,6 +16,7 @@ import {
 	formatModelLabel,
 	getErrorMessage,
 	setDefaultProviderModel,
+	type AgentHistoryMessage,
 	type AgentStreamEvent,
 } from "../session.ts";
 import {
@@ -283,7 +284,23 @@ export function createHandlers(
 	async function handleSetDefaultModel(clientId: string, provider: string, modelId: string) {
 		try {
 			const payload = await setDefaultProviderModel(cwd, provider, modelId);
-			recycleIdleSessionControllers?.();
+			for (const session of sessions.values()) {
+				if (session.busy || !session.controller) {
+					continue;
+				}
+
+				await session.controller.setModel(provider, modelId);
+				session.model = formatModelLabel(session.controller.model);
+				setAssistantModelInfo(
+					session,
+					session.controller.modelInfo.modelLabel,
+					session.controller.modelInfo.modelSource,
+				);
+				touchSession(session);
+				chatStore.saveSession(session);
+				clientActions.broadcastSessionSnapshot(session);
+				clientActions.broadcastSessionSummaryUpdated(session);
+			}
 			clientActions.broadcast({
 				type: "providers_snapshot",
 				...payload,
@@ -515,7 +532,7 @@ export function createHandlers(
 		}
 	}
 
-	async function ensureController(session: SharedSessionState) {
+	async function ensureController(session: SharedSessionState, history: AgentHistoryMessage[]) {
 		const sessionLogger = createScopedLogger(`web-session:${session.id}`);
 		if (session.controller) {
 			sessionLogger.info("reusing existing shared browser session controller", { sessionId: session.id });
@@ -533,6 +550,7 @@ export function createHandlers(
 				sessionId: session.id,
 				transport: "http",
 				customTools: getCustomTools?.(),
+				history,
 			});
 			session.controller = controller;
 			session.model = formatModelLabel(controller.model);
@@ -593,6 +611,12 @@ export function createHandlers(
 			return;
 		}
 
+		const controllerHistory: AgentHistoryMessage[] = session.transcript.flatMap((message) =>
+			(message.role === "user" || message.role === "assistant") && !message.pending
+				? [{ role: message.role, body: message.body, createdAt: message.createdAt }]
+				: []
+		);
+
 		session.abortRequested = false;
 		session.busy = true;
 		appendTranscriptMessage(session, {
@@ -621,7 +645,7 @@ export function createHandlers(
 		clientActions.broadcastSessionSummaryUpdated(session);
 
 		try {
-			const controller = await ensureController(session);
+			const controller = await ensureController(session, controllerHistory);
 			if (controller.isStreaming()) {
 				logger.warn("prompt rejected because controller is already streaming", {
 					clientId,
