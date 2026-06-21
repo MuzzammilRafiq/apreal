@@ -95,6 +95,11 @@ export function createProviderLoginManager({
 				};
 				attempt.resolveAuthUrl(info.url);
 			},
+			onDeviceCode: (info) => {
+				throw new Error(
+					"Provider " + normalizedProviderId + " requested device-code login (" + info.verificationUri + ", code " + info.userCode + "). Web login currently supports browser-based Pi OAuth only.",
+				);
+			},
 			onPrompt: async (prompt) => {
 				throw new Error(
 					`Provider ${normalizedProviderId} requested extra input (${prompt.message}). Web login currently supports browser-based Pi OAuth only.`,

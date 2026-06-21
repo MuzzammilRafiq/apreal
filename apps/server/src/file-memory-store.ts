@@ -5,17 +5,42 @@ import { getAprealAgentPath } from "./agent-dir.ts";
 const MEMORY_DIR = getAprealAgentPath("memory");
 const SEARCH_MEMORY_DIR = join(MEMORY_DIR, "search");
 const ALWAYS_MEMORY_FILE = join(MEMORY_DIR, "always.md");
+const AGENT_MEMORY_FILE = join(MEMORY_DIR, "MEMORY.md");
+const USER_MEMORY_FILE = join(MEMORY_DIR, "USER.md");
 const ALWAYS_MEMORY_VIRTUAL_PATH = "/virtual/APREAL_ALWAYS_MEMORY.md";
 const SEARCH_MEMORY_INDEX_VIRTUAL_PATH = "/virtual/APREAL_SEARCH_MEMORY_INDEX.md";
+const AGENT_MEMORY_VIRTUAL_PATH = "/virtual/APREAL_AGENT_MEMORY.md";
+const USER_MEMORY_VIRTUAL_PATH = "/virtual/APREAL_USER_MEMORY.md";
 const MAX_MEMORY_LINES = 50;
 const MAX_SEARCH_MEMORY_FILES = 10;
+const ENTRY_DELIMITER = "\n§\n";
+const AGENT_MEMORY_CHAR_LIMIT = 2200;
+const USER_MEMORY_CHAR_LIMIT = 1375;
 
-export type MemoryKind = "always" | "search";
+export type MemoryKind = "always" | "search" | CuratedMemoryTarget;
+export type CuratedMemoryTarget = "agent" | "user";
 
 export type SearchMemoryFile = {
 	fileName: string;
 	lineCount: number;
 	preview: string;
+};
+
+export type CuratedMemorySnapshot = {
+	entries: string[];
+	blockedEntries: number;
+};
+
+export type FileMemoryContext = {
+	path: string;
+	content: string;
+};
+
+export type FileMemoryPromptSnapshot = {
+	always: string;
+	searchFiles: SearchMemoryFile[];
+	agent: CuratedMemorySnapshot;
+	user: CuratedMemorySnapshot;
 };
 
 export interface FileMemoryStore {
@@ -25,6 +50,15 @@ export interface FileMemoryStore {
 	readSearch(fileName: string): string;
 	writeSearch(fileName: string, content: string): void;
 	deleteSearch(fileName: string): boolean;
+	readCurated(target: CuratedMemoryTarget): string;
+	listCurated(target: CuratedMemoryTarget): string[];
+	writeCurated(target: CuratedMemoryTarget, content: string): void;
+	addCurated(target: CuratedMemoryTarget, content: string): { index: number; count: number };
+	replaceCurated(target: CuratedMemoryTarget, match: string, content: string): { index: number; count: number };
+	removeCurated(target: CuratedMemoryTarget, match: string): { index: number; count: number };
+	clearCurated(target: CuratedMemoryTarget): void;
+	createPromptSnapshot(): FileMemoryPromptSnapshot;
+	renderPromptContexts(snapshot: FileMemoryPromptSnapshot): FileMemoryContext[];
 	renderAlwaysContext(): { path: string; content: string } | null;
 	renderSearchIndexContext(): { path: string; content: string } | null;
 }
@@ -33,6 +67,12 @@ function ensureMemoryDirs() {
 	mkdirSync(SEARCH_MEMORY_DIR, { recursive: true });
 	if (!existsSync(ALWAYS_MEMORY_FILE)) {
 		writeFileSync(ALWAYS_MEMORY_FILE, "", "utf8");
+	}
+	if (!existsSync(AGENT_MEMORY_FILE)) {
+		writeFileSync(AGENT_MEMORY_FILE, "", "utf8");
+	}
+	if (!existsSync(USER_MEMORY_FILE)) {
+		writeFileSync(USER_MEMORY_FILE, "", "utf8");
 	}
 }
 
@@ -60,6 +100,105 @@ function normalizeSearchFileName(fileName: string): string {
 	}
 
 	return normalized;
+}
+
+function getCuratedPath(target: CuratedMemoryTarget): string {
+	return target === "agent" ? AGENT_MEMORY_FILE : USER_MEMORY_FILE;
+}
+
+function getCuratedCharLimit(target: CuratedMemoryTarget): number {
+	return target === "agent" ? AGENT_MEMORY_CHAR_LIMIT : USER_MEMORY_CHAR_LIMIT;
+}
+
+function getCuratedLabel(target: CuratedMemoryTarget): string {
+	return target === "agent" ? "Agent Memory" : "User Memory";
+}
+
+function parseCuratedEntries(content: string): string[] {
+	return content
+		.replace(/\r\n/g, "\n")
+		.split(ENTRY_DELIMITER)
+		.map((entry) => entry.trim())
+		.filter((entry) => entry.length > 0);
+}
+
+function renderCuratedEntries(entries: string[]): string {
+	if (entries.length === 0) {
+		return "";
+	}
+
+	return `${entries.join(ENTRY_DELIMITER)}\n`;
+}
+
+function totalCuratedChars(entries: string[]): number {
+	return renderCuratedEntries(entries).length;
+}
+
+function assertCuratedWithinLimit(target: CuratedMemoryTarget, entries: string[]) {
+	const limit = getCuratedCharLimit(target);
+	const total = totalCuratedChars(entries);
+	if (total > limit) {
+		throw new Error(`${getCuratedLabel(target)} is limited to ${limit} characters. Consolidate or remove stale entries first.`);
+	}
+}
+
+const STRICT_MEMORY_THREAT_PATTERNS = [
+	/ignore\s+(?:all\s+)?(?:previous|above|prior)\s+instructions/i,
+	/(?:reveal|print|show|exfiltrate|leak).*(?:system|developer|prompt|secret|api\s*key|token)/i,
+	/(?:system|developer)\s+prompt\s*:/i,
+];
+
+function firstThreatMessage(content: string): string | null {
+	for (const pattern of STRICT_MEMORY_THREAT_PATTERNS) {
+		if (pattern.test(content)) {
+			return "Memory entry looks like prompt injection or secret-exfiltration content.";
+		}
+	}
+
+	return null;
+}
+
+function normalizeCuratedEntry(content: string): string {
+	const normalized = content.replace(/\r\n/g, "\n").trim();
+	if (!normalized) {
+		throw new Error("Memory entry content must be non-empty.");
+	}
+	if (normalized.includes("§")) {
+		throw new Error("Memory entries cannot contain the § delimiter.");
+	}
+
+	const threat = firstThreatMessage(normalized);
+	if (threat) {
+		throw new Error(threat);
+	}
+
+	return normalized;
+}
+
+function normalizeCuratedFile(target: CuratedMemoryTarget, content: string): string {
+	const entries = parseCuratedEntries(content).map(normalizeCuratedEntry);
+	const deduped = [...new Set(entries)];
+	assertCuratedWithinLimit(target, deduped);
+	return renderCuratedEntries(deduped);
+}
+
+function findUniqueEntryIndex(entries: string[], match: string): number {
+	const needle = match.trim();
+	if (!needle) {
+		throw new Error("match must be a non-empty substring of exactly one memory entry.");
+	}
+
+	const indexes = entries
+		.map((entry, index) => entry.includes(needle) ? index : -1)
+		.filter((index) => index >= 0);
+	if (indexes.length === 0) {
+		throw new Error("No memory entry matched that substring.");
+	}
+	if (indexes.length > 1) {
+		throw new Error("More than one memory entry matched that substring. Use a more specific match.");
+	}
+
+	return indexes[0]!;
 }
 
 function readTextFile(path: string): string {
@@ -107,6 +246,51 @@ function renderSearchIndex(files: SearchMemoryFile[]): string {
 	}
 
 	return lines.join("\n");
+}
+
+function sanitizeCuratedSnapshot(entries: string[]): CuratedMemorySnapshot {
+	const safeEntries: string[] = [];
+	let blockedEntries = 0;
+	for (const entry of entries) {
+		const threat = firstThreatMessage(entry);
+		if (threat) {
+			blockedEntries += 1;
+			safeEntries.push("[BLOCKED: memory entry contained a prompt-injection or secret-exfiltration pattern and was removed from the system prompt.]");
+			continue;
+		}
+
+		safeEntries.push(entry);
+	}
+
+	return { entries: safeEntries, blockedEntries };
+}
+
+function renderCuratedContext(target: CuratedMemoryTarget, snapshot: CuratedMemorySnapshot): FileMemoryContext | null {
+	if (snapshot.entries.length === 0 && snapshot.blockedEntries === 0) {
+		return null;
+	}
+
+	const title = target === "agent" ? "Agent Memory" : "User Memory";
+	const path = target === "agent" ? AGENT_MEMORY_VIRTUAL_PATH : USER_MEMORY_VIRTUAL_PATH;
+	const description = target === "agent"
+		? "Durable notes about Apreal, project conventions, environment facts, and workflow quirks."
+		: "Durable notes about the user's preferences, communication style, and expectations.";
+	const lines = [
+		`# ${title}`,
+		"Frozen snapshot loaded when this Apreal agent session was created.",
+		description,
+		"",
+	];
+
+	if (snapshot.entries.length === 0) {
+		lines.push("- No entries yet.");
+	} else {
+		for (const entry of snapshot.entries) {
+			lines.push(`- ${entry.replace(/\n/g, "\n  ")}`);
+		}
+	}
+
+	return { path, content: lines.join("\n") };
 }
 
 let defaultFileMemoryStore: FileMemoryStore | null = null;
@@ -170,6 +354,87 @@ export function createFileMemoryStore(): FileMemoryStore {
 
 			rmSync(path);
 			return true;
+		},
+		readCurated(target) {
+			ensureMemoryDirs();
+			return readTextFile(getCuratedPath(target));
+		},
+		listCurated(target) {
+			ensureMemoryDirs();
+			return parseCuratedEntries(readTextFile(getCuratedPath(target)));
+		},
+		writeCurated(target, content) {
+			ensureMemoryDirs();
+			writeFileSync(getCuratedPath(target), normalizeCuratedFile(target, content), "utf8");
+		},
+		addCurated(target, content) {
+			ensureMemoryDirs();
+			const entries = parseCuratedEntries(readTextFile(getCuratedPath(target)));
+			const entry = normalizeCuratedEntry(content);
+			if (!entries.includes(entry)) {
+				entries.push(entry);
+			}
+			assertCuratedWithinLimit(target, entries);
+			writeFileSync(getCuratedPath(target), renderCuratedEntries(entries), "utf8");
+			return { index: entries.indexOf(entry), count: entries.length };
+		},
+		replaceCurated(target, match, content) {
+			ensureMemoryDirs();
+			const entries = parseCuratedEntries(readTextFile(getCuratedPath(target)));
+			const index = findUniqueEntryIndex(entries, match);
+			entries[index] = normalizeCuratedEntry(content);
+			const deduped = [...new Set(entries)];
+			assertCuratedWithinLimit(target, deduped);
+			writeFileSync(getCuratedPath(target), renderCuratedEntries(deduped), "utf8");
+			return { index, count: deduped.length };
+		},
+		removeCurated(target, match) {
+			ensureMemoryDirs();
+			const entries = parseCuratedEntries(readTextFile(getCuratedPath(target)));
+			const index = findUniqueEntryIndex(entries, match);
+			entries.splice(index, 1);
+			writeFileSync(getCuratedPath(target), renderCuratedEntries(entries), "utf8");
+			return { index, count: entries.length };
+		},
+		clearCurated(target) {
+			ensureMemoryDirs();
+			writeFileSync(getCuratedPath(target), "", "utf8");
+		},
+		createPromptSnapshot() {
+			ensureMemoryDirs();
+			return {
+				always: this.readAlways(),
+				searchFiles: this.listSearchFiles(),
+				agent: sanitizeCuratedSnapshot(this.listCurated("agent")),
+				user: sanitizeCuratedSnapshot(this.listCurated("user")),
+			};
+		},
+		renderPromptContexts(snapshot) {
+			const contexts: FileMemoryContext[] = [];
+			const alwaysContent = snapshot.always.trim();
+			if (alwaysContent) {
+				contexts.push({
+					path: ALWAYS_MEMORY_VIRTUAL_PATH,
+					content: ["# Always Memory", "Frozen snapshot loaded when this Apreal agent session was created.", "", alwaysContent].join("\n"),
+				});
+			}
+
+			contexts.push({
+				path: SEARCH_MEMORY_INDEX_VIRTUAL_PATH,
+				content: renderSearchIndex(snapshot.searchFiles),
+			});
+
+			const agentContext = renderCuratedContext("agent", snapshot.agent);
+			if (agentContext) {
+				contexts.push(agentContext);
+			}
+
+			const userContext = renderCuratedContext("user", snapshot.user);
+			if (userContext) {
+				contexts.push(userContext);
+			}
+
+			return contexts;
 		},
 		renderAlwaysContext() {
 			const content = this.readAlways().trim();

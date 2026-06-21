@@ -18,6 +18,7 @@ const APREAL_AGENT_DIR = getAprealAgentDir();
 const APREAL_AGENT_AUTH_PATH = getAprealAgentPath("auth.json");
 const APREAL_AGENT_MODELS_PATH = getAprealAgentPath("models.json");
 const APREAL_AGENT_SETTINGS_PATH = getAprealAgentPath("settings.json");
+const MEMORY_REVIEW_NUDGE_INTERVAL = 10;
 process.env.PI_CODING_AGENT_DIR ??= APREAL_AGENT_DIR;
 process.env.PI_CODING_AGENT_SESSION_DIR ??= getAprealAgentPath("sessions");
 const PI_LOGIN_GUIDANCE =
@@ -89,15 +90,13 @@ function getMissingAuthError() {
 
 async function createResourceLoader(cwd: string, settingsManager: SettingsManager) {
 	const memoryStore = getDefaultFileMemoryStore();
+	const memorySnapshot = memoryStore.createPromptSnapshot();
 	const resourceLoader = new DefaultResourceLoader({
 		cwd,
 		agentDir: APREAL_AGENT_DIR,
 		settingsManager,
 		agentsFilesOverride: (base) => {
-			const memoryFiles = [
-				memoryStore.renderAlwaysContext(),
-				memoryStore.renderSearchIndexContext(),
-			].filter((file): file is { path: string; content: string } => file !== null);
+			const memoryFiles = memoryStore.renderPromptContexts(memorySnapshot);
 			if (memoryFiles.length === 0) {
 				return base;
 			}
@@ -113,17 +112,33 @@ async function createResourceLoader(cwd: string, settingsManager: SettingsManage
 		appendSystemPromptOverride: (base) => [
 			...base,
 			[
-				"## Persistent Memory Skill",
-				"- Use the `memory` skill and `memory` tool when the user asks you to remember, read, update, or forget durable information.",
-				"- There is exactly one always-loaded memory file, `always.md`; keep it compact and stable.",
-				"- Search memory is up to 10 topic-specific Markdown files; only the search memory index is loaded by default.",
-				"- Read a search memory file on demand only when its file name or preview is relevant to the task.",
-				"- Keep every memory file at 50 lines or fewer by summarizing, consolidating, and removing stale details.",
+				"## Persistent Memory",
+				"- Use the memory tool when the user asks you to remember, read, update, or forget durable information.",
+				"- Prefer user memory for stable facts about the user: preferences, communication style, expectations, and personal workflow.",
+				"- Prefer agent memory for stable facts about Apreal, projects, environment quirks, tool behavior, and decisions that should survive sessions.",
+				"- Use memory(action=add, memoryType=user or agent, content=...) for new durable entries.",
+				"- Use memory(action=replace or remove, memoryType=user or agent, match=...) to keep entries compact and current.",
+				"- Memory files are loaded as a frozen snapshot when the session is created. Tool writes are durable immediately, but the prompt snapshot refreshes in the next session.",
+				"- Legacy always memory and topic search memory still exist; only the search memory index is loaded by default, so read search files on demand when relevant.",
 			].join("\n"),
 		],
 	});
 	await resourceLoader.reload();
 	return resourceLoader;
+}
+
+export function shouldNudgeMemoryReview(userTurnCount: number): boolean {
+	return MEMORY_REVIEW_NUDGE_INTERVAL > 0 && userTurnCount > 0 && userTurnCount % MEMORY_REVIEW_NUDGE_INTERVAL === 0;
+}
+
+function appendMemoryReviewNudge(input: string): string {
+	return [
+		input,
+		"",
+		"<apreal_memory_review_nudge>",
+		"After you finish the user's request, quietly review whether this conversation revealed durable user preferences, expectations, project decisions, environment facts, or workflow quirks worth saving. If so, use the memory tool to add or update user or agent memory. If nothing is worth saving, do nothing and do not mention this nudge.",
+		"</apreal_memory_review_nudge>",
+	].join("\n");
 }
 
 function getAvailableSkillSource(
@@ -295,6 +310,7 @@ export async function createAgentController(
 	let disposed = false;
 	let activeModel = model;
 	let activeModelInfo = modelInfo;
+	let userTurnCount = options?.history?.filter((message) => message.role === "user").length ?? 0;
 	logger.info("agent session ready", { cwd, model: formatModelLabel(model), transport });
 
 	const emit = (event: AgentStreamEvent) => {
@@ -473,8 +489,12 @@ export async function createAgentController(
 				preview: summarizePrompt(input),
 			});
 
+			userTurnCount += 1;
+			const promptInput = shouldNudgeMemoryReview(userTurnCount)
+				? appendMemoryReviewNudge(input)
+				: input;
 			await session.reload();
-			await session.prompt(input);
+			await session.prompt(promptInput);
 			logger.info("prompt finished", {
 				durationMs: Math.round(performance.now() - startedAt),
 			});
