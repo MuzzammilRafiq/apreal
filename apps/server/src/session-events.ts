@@ -215,6 +215,34 @@ export function formatToolExecutionSummary(name: string, args: unknown): string 
 
 			return truncateToolSummary(stringifyToolArguments(record));
 		}
+		case "skills_list": {
+			const query = readStringField(record, ["query"]);
+			const source = readStringField(record, ["source"]);
+			if (query && source) {
+				return truncateToolSummary(`${query} in ${source} skills`);
+			}
+			return truncateToolSummary(query ?? source ?? "all skills");
+		}
+		case "skill_view": {
+			const skillName = readStringField(record, ["name"]);
+			const filePath = readStringField(record, ["filePath", "file", "path"]);
+			if (skillName && filePath) {
+				return truncateToolSummary(`${skillName}: ${filePath}`);
+			}
+			return truncateToolSummary(skillName ?? stringifyToolArguments(record));
+		}
+		case "skill_manage": {
+			const action = readStringField(record, ["action"]);
+			const skillName = readStringField(record, ["name"]);
+			const filePath = readStringField(record, ["filePath", "file", "path"]);
+			if (action && skillName && filePath) {
+				return truncateToolSummary(`${action}: ${skillName}/${filePath}`);
+			}
+			if (action && skillName) {
+				return truncateToolSummary(`${action}: ${skillName}`);
+			}
+			return truncateToolSummary(action ?? skillName ?? stringifyToolArguments(record));
+		}
 		default: {
 			if (path) {
 				return truncateToolSummary(path);

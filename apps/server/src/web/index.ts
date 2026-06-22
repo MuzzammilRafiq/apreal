@@ -143,7 +143,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		sessions.set(sessionId, session);
 	}
 
-	let customTools = createCustomTools();
+	let customTools = createCustomTools(undefined, undefined, [], cwd);
 	const schedulerLogger = createLogger("scheduler");
 	const clientManager = createClientManager({
 		logger,
@@ -179,7 +179,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 			});
 		}
 
-		customTools = createCustomTools(jobStore, scheduler, mcpTools);
+		customTools = createCustomTools(jobStore, scheduler, mcpTools, cwd);
 		inventorySnapshotExpiresAt = 0;
 	};
 	await rebuildCustomTools();
