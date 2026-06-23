@@ -25,12 +25,57 @@ class SearchWorker {
 	private nextId = 0;
 	private buffer = "";
 	private disposed = false;
+	private killTimers = new Map<ChildProcess, ReturnType<typeof setTimeout>>();
 
 	private rejectAllPending(error: Error): void {
 		for (const [, pending] of this.pending) {
 			pending.reject(error);
 		}
 		this.pending.clear();
+	}
+
+	private clearKillTimer(worker: ChildProcess): void {
+		const timer = this.killTimers.get(worker);
+		if (timer) {
+			clearTimeout(timer);
+			this.killTimers.delete(worker);
+		}
+	}
+
+	private killWorker(worker: ChildProcess, signal: NodeJS.Signals): void {
+		if (!worker || worker.killed) {
+			return;
+		}
+
+		if (worker.pid && process.platform !== "win32") {
+			try {
+				process.kill(-worker.pid, signal);
+				return;
+			} catch {
+				// Fall through to killing the direct child if process-group kill fails.
+			}
+		}
+
+		worker.kill(signal);
+	}
+
+	private terminateWorker(error: Error): void {
+		const worker = this.worker;
+		this.rejectAllPending(error);
+		this.buffer = "";
+		if (!worker || worker.killed) {
+			this.worker = null;
+			return;
+		}
+
+		this.killWorker(worker, "SIGTERM");
+		this.clearKillTimer(worker);
+		const killTimer = setTimeout(() => {
+			this.killWorker(worker, "SIGKILL");
+		}, 5_000);
+		killTimer.unref?.();
+		this.killTimers.set(worker, killTimer);
+		this.worker = null;
 	}
 
 	private ensureWorker(): ChildProcess {
@@ -41,7 +86,9 @@ class SearchWorker {
 		const worker = spawn("uv", ["run", "worker.py"], {
 			cwd: PYTHON_SCRIPTS_DIR,
 			env: process.env,
+			detached: process.platform !== "win32",
 			stdio: ["pipe", "pipe", "pipe"],
+			windowsHide: true,
 		});
 
 		worker.stdout!.on("data", (chunk: Buffer) => {
@@ -72,71 +119,86 @@ class SearchWorker {
 		});
 
 		worker.on("exit", (code) => {
+			this.clearKillTimer(worker);
 			if (!this.disposed && code !== 0) {
 				console.error(`[web_search worker] exited with code ${code}`);
 			}
-			this.rejectAllPending(new Error(`Worker exited with code ${code ?? "unknown"}`));
-			this.buffer = "";
-			this.worker = null;
+			if (this.worker === worker) {
+				this.rejectAllPending(new Error(`Worker exited with code ${code ?? "unknown"}`));
+				this.buffer = "";
+				this.worker = null;
+			}
 		});
 
 		worker.on("error", (err) => {
+			this.clearKillTimer(worker);
 			console.error("[web_search worker] spawn error:", err.message);
-			this.rejectAllPending(new Error(`Worker spawn failed: ${err.message}`));
-			this.worker = null;
+			if (this.worker === worker) {
+				this.rejectAllPending(new Error(`Worker spawn failed: ${err.message}`));
+				this.worker = null;
+			}
 		});
 
 		this.worker = worker;
 		return worker;
 	}
 
-	async search(params: WebSearchParams): Promise<unknown[]> {
+	async search(params: WebSearchParams, signal?: AbortSignal): Promise<unknown[]> {
 		if (this.disposed) {
 			throw new Error("SearchWorker has been disposed");
+		}
+		if (signal?.aborted) {
+			throw new Error("Search request aborted.");
 		}
 
 		const id = this.nextId++;
 		const worker = this.ensureWorker();
 
 		return new Promise((resolve, reject) => {
-			this.pending.set(id, { resolve, reject });
+			const cleanup = () => {
+				clearTimeout(timeout);
+				signal?.removeEventListener("abort", onAbort);
+			};
+
+			const wrappedResolve = (value: unknown[]) => {
+				cleanup();
+				resolve(value);
+			};
+			const wrappedReject = (error: Error) => {
+				cleanup();
+				reject(error);
+			};
+
+			const abortError = () => new Error("Search request aborted.");
+			const onAbort = () => {
+				this.pending.delete(id);
+				wrappedReject(abortError());
+				this.terminateWorker(abortError());
+			};
 
 			const timeout = setTimeout(() => {
 				this.pending.delete(id);
-				reject(new Error("Search request timed out after 60s"));
+				const error = new Error("Search request timed out after 60s");
+				wrappedReject(error);
+				this.terminateWorker(error);
 			}, 60_000);
 
-			const originalResolve = resolve;
-			const originalReject = reject;
-
-			const wrappedResolve = (value: unknown[]) => {
-				clearTimeout(timeout);
-				originalResolve(value);
-			};
-			const wrappedReject = (error: Error) => {
-				clearTimeout(timeout);
-				originalReject(error);
-			};
-
 			this.pending.set(id, { resolve: wrappedResolve, reject: wrappedReject });
+			signal?.addEventListener("abort", onAbort, { once: true });
 
 			const request = JSON.stringify({ id, query: params.query, params });
 			try {
 				worker.stdin!.write(request + "\n");
 			} catch (err) {
-				clearTimeout(timeout);
 				this.pending.delete(id);
-				reject(new Error(`Failed to write to worker stdin: ${err instanceof Error ? err.message : String(err)}`));
+				wrappedReject(new Error(`Failed to write to worker stdin: ${err instanceof Error ? err.message : String(err)}`));
 			}
 		});
 	}
 
 	dispose(): void {
 		this.disposed = true;
-		if (this.worker && !this.worker.killed) {
-			this.worker.kill("SIGTERM");
-		}
-		this.rejectAllPending(new Error("SearchWorker has been disposed"));
+		this.terminateWorker(new Error("SearchWorker has been disposed"));
 		this.worker = null;
 	}
 }
@@ -149,8 +211,8 @@ export const webSearchTool = defineTool({
 	description:
 		"Searches the public web and returns extracted page text. Uses JavaScript rendering for sites that need it. Use this when the answer depends on current external information.",
 	parameters: webSearchParameters as any,
-	async execute(_toolCallId, params: WebSearchParams) {
-		const results = await searchWorker.search(params);
+	async execute(_toolCallId, params: WebSearchParams, signal) {
+		const results = await searchWorker.search(params, signal);
 
 		return {
 			content: [

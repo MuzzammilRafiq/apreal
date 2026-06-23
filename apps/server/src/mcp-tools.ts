@@ -174,6 +174,12 @@ function normalizeMcpToolResult(
 	};
 }
 
+function createAbortError(message: string): Error {
+	const error = new Error(message);
+	error.name = "AbortError";
+	return error;
+}
+
 class McpServerConnection {
 	private client: Client | null = null;
 	private transport: { close(): Promise<void> } | null = null;
@@ -287,17 +293,26 @@ class McpServerConnection {
 		return this.connectPromise;
 	}
 
-	private async withReconnect<T>(operation: (client: Client) => Promise<T>): Promise<T> {
+	private async withReconnect<T>(
+		operation: (client: Client) => Promise<T>,
+		options?: { signal?: AbortSignal },
+	): Promise<T> {
 		let attempt = 0;
 		let lastError: unknown = null;
 		while (attempt < 2) {
 			try {
+				if (options?.signal?.aborted) {
+					throw createAbortError("MCP operation aborted.");
+				}
 				const client = await this.ensureConnected();
 				return await operation(client);
 			} catch (error) {
 				lastError = error;
 				attempt += 1;
 				await this.resetConnection(true);
+				if (options?.signal?.aborted) {
+					throw error;
+				}
 				if (attempt >= 2) {
 					throw error;
 				}
@@ -329,12 +344,36 @@ class McpServerConnection {
 	}
 
 	async callTool(tool: McpToolDescriptor, args: Record<string, unknown>, signal?: AbortSignal) {
-		const result = await this.withReconnect((client) =>
-			client.callTool({
-				name: tool.name,
-				arguments: args,
-			}, undefined, { signal, timeout: 120_000 }),
-		);
+		if (signal?.aborted) {
+			throw createAbortError("MCP tool call aborted.");
+		}
+
+		const closeStdioTransportForAbort = () => {
+			if (this.server.transport !== "stdio") {
+				return;
+			}
+			this.logger.warn("aborting stdio MCP tool call; closing MCP server process", {
+				server: this.server.name,
+				tool: tool.name,
+			});
+			void this.resetConnection(true);
+		};
+		signal?.addEventListener("abort", closeStdioTransportForAbort, { once: true });
+
+		const result = await this.withReconnect(
+			(client) =>
+				client.callTool(
+					{
+						name: tool.name,
+						arguments: args,
+					},
+					undefined,
+					{ signal, timeout: 120_000 },
+				),
+			{ signal },
+		).finally(() => {
+			signal?.removeEventListener("abort", closeStdioTransportForAbort);
+		});
 
 		return normalizeMcpToolResult(result, this.server, tool);
 	}
