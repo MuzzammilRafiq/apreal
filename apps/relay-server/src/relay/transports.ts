@@ -89,6 +89,29 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 		return Buffer.from(data).toString("utf8");
 	}
 
+	function isWebSocketOpenOrConnecting(ws: WebSocket): boolean {
+		return ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING;
+	}
+
+	function closeWebSocket(ws: WebSocket, reason: string) {
+		if (isWebSocketOpenOrConnecting(ws)) {
+			ws.close(1000, reason);
+		}
+	}
+
+	function sendJsonOverWebSocket(
+		ws: WebSocket,
+		payload: unknown,
+		onError: (error: Error) => void,
+	): boolean {
+		ws.send(JSON.stringify(payload), (error) => {
+			if (error) {
+				onError(error);
+			}
+		});
+		return true;
+	}
+
 	function rejectWebSocketUpgrade(socket: Duplex, statusCode: number, message: string) {
 		socket.write([
 			`HTTP/1.1 ${statusCode} ${message}`,
@@ -172,6 +195,25 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 				connection.close(reason);
 			}
 		}
+	}
+
+	function replaceBrowserClientConnection(clientId: string, connection: RelayBrowserClientConnection) {
+		const existing = state.browserClients.get(clientId);
+		if (existing) {
+			existing.close("browser_stream_replaced");
+		}
+		state.browserClients.set(clientId, connection);
+	}
+
+	function replaceAgentConnection(principal: ReturnType<typeof readRelayToken>, connection: RelayAgentConnection) {
+		const existing = state.agentConnections.get(principal.id);
+		if (existing) {
+			existing.close("agent_stream_replaced");
+		}
+		if (principal.ownerUserId) {
+			closeAgentConnectionsForOwner(principal.ownerUserId, principal.id, "agent_owner_session_replaced");
+		}
+		state.agentConnections.set(principal.id, connection);
 	}
 
 	// Replays synthetic client_connect events when an agent stream appears after
@@ -301,13 +343,8 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 			},
 		};
 
-		const existing = state.browserClients.get(target.clientId);
-		if (existing) {
-			existing.close("browser_stream_replaced");
-		}
-
-		state.browserClients.set(target.clientId, connection);
-		const openCommentAccepted = response.write(createSseComment("connected"));
+		replaceBrowserClientConnection(target.clientId, connection);
+		response.write(createSseComment("connected"));
 		heartbeatTimer = setInterval(() => {
 			if (!closed) {
 				const heartbeatAccepted = response.write(createSseComment("ping"));
@@ -363,9 +400,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 				});
 			}
 
-			if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-				ws.close(1000, reason);
-			}
+			closeWebSocket(ws, reason);
 		};
 
 		const connection: RelayBrowserClientConnection = {
@@ -385,8 +420,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 					return false;
 				}
 
-				const data = JSON.stringify(payload);
-				ws.send(data, (error) => {
+				return sendJsonOverWebSocket(ws, payload, (error) => {
 					if (error) {
 						log("warn", "relay browser websocket payload send failed", {
 							clientId: target.clientId,
@@ -397,19 +431,12 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 						close("browser_ws_send_failed");
 						return;
 					}
-
 				});
-				return true;
 			},
 			close,
 		};
 
-		const existing = state.browserClients.get(target.clientId);
-		if (existing) {
-			existing.close("browser_stream_replaced");
-		}
-
-		state.browserClients.set(target.clientId, connection);
+		replaceBrowserClientConnection(target.clientId, connection);
 
 		ws.on("message", (data) => {
 			let message: unknown;
@@ -629,15 +656,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 			close: closeConnection,
 		};
 
-		const existing = state.agentConnections.get(principal.id);
-		if (existing) {
-			existing.close("agent_stream_replaced");
-		}
-		if (principal.ownerUserId) {
-			closeAgentConnectionsForOwner(principal.ownerUserId, principal.id, "agent_owner_session_replaced");
-		}
-
-		state.agentConnections.set(principal.id, connection);
+		replaceAgentConnection(principal, connection);
 		response.write(createSseComment("connected"));
 		heartbeatTimer = setInterval(() => {
 			if (!closed) {
@@ -700,9 +719,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 				}
 			}
 
-			if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-				ws.close(1000, reason);
-			}
+			closeWebSocket(ws, reason);
 		};
 
 		const connection: RelayAgentConnection = {
@@ -722,8 +739,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 					return false;
 				}
 
-				const data = JSON.stringify(command);
-				ws.send(data, (error) => {
+				return sendJsonOverWebSocket(ws, command, (error) => {
 					if (error) {
 						log("warn", "relay agent websocket command send failed", {
 							agentId: principal.id,
@@ -734,22 +750,12 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 						close("agent_ws_send_failed");
 						return;
 					}
-
 				});
-				return true;
 			},
 			close,
 		};
 
-		const existing = state.agentConnections.get(principal.id);
-		if (existing) {
-			existing.close("agent_stream_replaced");
-		}
-		if (principal.ownerUserId) {
-			closeAgentConnectionsForOwner(principal.ownerUserId, principal.id, "agent_owner_session_replaced");
-		}
-
-		state.agentConnections.set(principal.id, connection);
+		replaceAgentConnection(principal, connection);
 
 		ws.on("message", (data) => {
 			let parsed: unknown;

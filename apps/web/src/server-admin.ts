@@ -57,6 +57,45 @@ async function parseJsonResponse(response: Response): Promise<unknown> {
 	}
 }
 
+async function requestJson(
+	requestUrl: string,
+	init: RequestInit,
+	failureMessage: string,
+): Promise<unknown> {
+	const response = await localSessionFetch(requestUrl, init);
+	const payload = await parseJsonResponse(response);
+	if (!response.ok) {
+		throw new Error(getResponseMessage(payload, `${failureMessage} failed with status ${response.status}`));
+	}
+
+	return payload;
+}
+
+function jsonBodyRequest(method: string, body: unknown): RequestInit {
+	return {
+		method,
+		headers: {
+			"content-type": "application/json",
+			accept: "application/json",
+		},
+		body: JSON.stringify(body),
+	};
+}
+
+const getJsonRequest: RequestInit = {
+	method: "GET",
+	headers: {
+		accept: "application/json",
+	},
+};
+
+const deleteJsonRequest: RequestInit = {
+	method: "DELETE",
+	headers: {
+		accept: "application/json",
+	},
+};
+
 function parseAvailableTool(payload: unknown): AvailableTool {
 	if (
 		!isObjectRecord(payload) ||
@@ -209,17 +248,7 @@ function parseSessionSummaries(payload: unknown): SessionSummary[] {
 }
 
 export async function readLocalAdminStatus(statusUrl: string): Promise<LocalWebAdminStatus> {
-	const response = await localSessionFetch(statusUrl, {
-		method: "GET",
-		headers: {
-			accept: "application/json",
-		},
-	});
-	const payload = await parseJsonResponse(response);
-	if (!response.ok) {
-		throw new Error(getResponseMessage(payload, `Server status failed with status ${response.status}`));
-	}
-
+	const payload = await requestJson(statusUrl, getJsonRequest, "Server status");
 	return parseStatus(payload);
 }
 
@@ -228,19 +257,7 @@ export async function authenticateRelayWithOwnerGrant(
 	requestUrl = ADMIN_RELAY_AUTHENTICATE_PATH,
 ): Promise<RelayAuthenticateResponse> {
 	const requestBody: RelayAuthenticateRequest = { ownerGrant };
-	const response = await localSessionFetch(requestUrl, {
-		method: "POST",
-		headers: {
-			"content-type": "application/json",
-			accept: "application/json",
-		},
-		body: JSON.stringify(requestBody),
-	});
-	const payload = await parseJsonResponse(response);
-	if (!response.ok) {
-		throw new Error(getResponseMessage(payload, `Relay authentication failed with status ${response.status}`));
-	}
-
+	const payload = await requestJson(requestUrl, jsonBodyRequest("POST", requestBody), "Relay authentication");
 	if (!isObjectRecord(payload) || !("status" in payload) || typeof payload.sessionSecret !== "string") {
 		throw new Error("Relay authentication returned an invalid response.");
 	}
@@ -254,17 +271,7 @@ export async function authenticateRelayWithOwnerGrant(
 export async function readLocalAuthSession(
 	requestUrl = LOCAL_AUTH_SESSION_PATH,
 ): Promise<LocalAuthSessionResponse> {
-	const response = await localSessionFetch(requestUrl, {
-		method: "GET",
-		headers: {
-			accept: "application/json",
-		},
-	});
-	const payload = await parseJsonResponse(response);
-	if (!response.ok) {
-		throw new Error(getResponseMessage(payload, `Local auth status failed with status ${response.status}`));
-	}
-
+	const payload = await requestJson(requestUrl, getJsonRequest, "Local auth status");
 	if (!isObjectRecord(payload) || typeof payload.authenticated !== "boolean") {
 		throw new Error("Local auth status returned an invalid response.");
 	}
@@ -275,16 +282,7 @@ export async function readLocalAuthSession(
 }
 
 export async function clearLocalAuthSession(requestUrl = LOCAL_AUTH_SESSION_PATH): Promise<void> {
-	const response = await localSessionFetch(requestUrl, {
-		method: "DELETE",
-		headers: {
-			accept: "application/json",
-		},
-	});
-	const payload = await parseJsonResponse(response);
-	if (!response.ok) {
-		throw new Error(getResponseMessage(payload, `Local auth sign-out failed with status ${response.status}`));
-	}
+	await requestJson(requestUrl, deleteJsonRequest, "Local auth sign-out");
 }
 
 export async function saveAppendSystemPrompt(
@@ -292,19 +290,7 @@ export async function saveAppendSystemPrompt(
 	requestUrl = ADMIN_APPEND_SYSTEM_PROMPT_PATH,
 ): Promise<UpdateAppendSystemPromptResponse> {
 	const requestBody: UpdateAppendSystemPromptRequest = { appendSystemPrompt };
-	const response = await localSessionFetch(requestUrl, {
-		method: "POST",
-		headers: {
-			"content-type": "application/json",
-			accept: "application/json",
-		},
-		body: JSON.stringify(requestBody),
-	});
-	const payload = await parseJsonResponse(response);
-	if (!response.ok) {
-		throw new Error(getResponseMessage(payload, `System prompt update failed with status ${response.status}`));
-	}
-
+	const payload = await requestJson(requestUrl, jsonBodyRequest("POST", requestBody), "System prompt update");
 	if (!isObjectRecord(payload) || !("status" in payload)) {
 		throw new Error("System prompt update returned an invalid response.");
 	}
@@ -315,32 +301,16 @@ export async function saveAppendSystemPrompt(
 }
 
 export async function readScheduledJobs(requestUrl = ADMIN_JOBS_PATH): Promise<ScheduledJobDetails[]> {
-	const response = await localSessionFetch(requestUrl, {
-		method: "GET",
-		headers: {
-			accept: "application/json",
-		},
-	});
-	const payload = await parseJsonResponse(response);
-	if (!response.ok) {
-		throw new Error(getResponseMessage(payload, `Scheduled jobs request failed with status ${response.status}`));
-	}
-
+	const payload = await requestJson(requestUrl, getJsonRequest, "Scheduled jobs request");
 	return parseScheduledJobs(payload);
 }
 
 export async function readScheduledJobRuns(jobId: string): Promise<SessionSummary[]> {
-	const response = await localSessionFetch(`${ADMIN_JOBS_PATH}/${encodeURIComponent(jobId)}${ADMIN_JOB_RUNS_PATH_SUFFIX}`, {
-		method: "GET",
-		headers: {
-			accept: "application/json",
-		},
-	});
-	const payload = await parseJsonResponse(response);
-	if (!response.ok) {
-		throw new Error(getResponseMessage(payload, `Scheduled job runs request failed with status ${response.status}`));
-	}
-
+	const payload = await requestJson(
+		`${ADMIN_JOBS_PATH}/${encodeURIComponent(jobId)}${ADMIN_JOB_RUNS_PATH_SUFFIX}`,
+		getJsonRequest,
+		"Scheduled job runs request",
+	);
 	return parseSessionSummaries(payload);
 }
 
@@ -348,19 +318,11 @@ export async function updateScheduledJob(
 	jobId: string,
 	requestBody: { intervalMinutes?: number; enabled?: boolean },
 ): Promise<ScheduledJobDetails> {
-	const response = await localSessionFetch(`${ADMIN_JOBS_PATH}/${encodeURIComponent(jobId)}`, {
-		method: "PATCH",
-		headers: {
-			"content-type": "application/json",
-			accept: "application/json",
-		},
-		body: JSON.stringify(requestBody),
-	});
-	const payload = await parseJsonResponse(response);
-	if (!response.ok) {
-		throw new Error(getResponseMessage(payload, `Scheduled job update failed with status ${response.status}`));
-	}
-
+	const payload = await requestJson(
+		`${ADMIN_JOBS_PATH}/${encodeURIComponent(jobId)}`,
+		jsonBodyRequest("PATCH", requestBody),
+		"Scheduled job update",
+	);
 	if (!isObjectRecord(payload) || !("job" in payload)) {
 		throw new Error("Scheduled job update returned an invalid response.");
 	}
@@ -369,16 +331,11 @@ export async function updateScheduledJob(
 }
 
 export async function deleteScheduledJob(jobId: string): Promise<void> {
-	const response = await localSessionFetch(`${ADMIN_JOBS_PATH}/${encodeURIComponent(jobId)}`, {
-		method: "DELETE",
-		headers: {
-			accept: "application/json",
-		},
-	});
-	const payload = await parseJsonResponse(response);
-	if (!response.ok) {
-		throw new Error(getResponseMessage(payload, `Scheduled job delete failed with status ${response.status}`));
-	}
+	await requestJson(
+		`${ADMIN_JOBS_PATH}/${encodeURIComponent(jobId)}`,
+		deleteJsonRequest,
+		"Scheduled job delete",
+	);
 }
 
 export {
@@ -514,50 +471,26 @@ function parseMcpServersResponse(payload: unknown): McpServersResponse {
 }
 
 export async function readProviders(): Promise<ProvidersResponse> {
-	const response = await localSessionFetch(ADMIN_PROVIDERS_PATH, {
-		method: "GET",
-		headers: { accept: "application/json" },
-	});
-	const payload = await parseJsonResponse(response);
-	if (!response.ok) {
-		throw new Error(getResponseMessage(payload, `Providers request failed with status ${response.status}`));
-	}
-
+	const payload = await requestJson(ADMIN_PROVIDERS_PATH, getJsonRequest, "Providers request");
 	return parseProvidersResponse(payload);
 }
 
 export async function updateDefaultModel(requestBody: SetDefaultModelRequest): Promise<ProvidersResponse> {
-	const response = await localSessionFetch(ADMIN_PROVIDERS_PATH, {
-		method: "PATCH",
-		headers: {
-			"content-type": "application/json",
-			accept: "application/json",
-		},
-		body: JSON.stringify(requestBody),
-	});
-	const payload = await parseJsonResponse(response);
-	if (!response.ok) {
-		throw new Error(getResponseMessage(payload, `Default model update failed with status ${response.status}`));
-	}
-
+	const payload = await requestJson(
+		ADMIN_PROVIDERS_PATH,
+		jsonBodyRequest("PATCH", requestBody),
+		"Default model update",
+	);
 	return parseProvidersResponse(payload);
 }
 
 export async function startProviderLogin(provider: string): Promise<ProviderLoginResponse> {
 	const requestBody: ProviderLoginRequest = { provider };
-	const response = await localSessionFetch(ADMIN_PROVIDER_LOGIN_PATH, {
-		method: "POST",
-		headers: {
-			"content-type": "application/json",
-			accept: "application/json",
-		},
-		body: JSON.stringify(requestBody),
-	});
-	const payload = await parseJsonResponse(response);
-	if (!response.ok) {
-		throw new Error(getResponseMessage(payload, `Provider login failed with status ${response.status}`));
-	}
-
+	const payload = await requestJson(
+		ADMIN_PROVIDER_LOGIN_PATH,
+		jsonBodyRequest("POST", requestBody),
+		"Provider login",
+	);
 	if (!isObjectRecord(payload) || typeof payload.provider !== "string" || !("loginState" in payload)) {
 		throw new Error("Provider login returned an invalid response.");
 	}
@@ -571,19 +504,11 @@ export async function startProviderLogin(provider: string): Promise<ProviderLogi
 
 export async function saveProviderApiKey(provider: string, apiKey: string): Promise<ProviderApiKeyResponse> {
 	const requestBody: ProviderApiKeyRequest = { provider, apiKey };
-	const response = await localSessionFetch(ADMIN_PROVIDER_API_KEY_PATH, {
-		method: "POST",
-		headers: {
-			"content-type": "application/json",
-			accept: "application/json",
-		},
-		body: JSON.stringify(requestBody),
-	});
-	const payload = await parseJsonResponse(response);
-	if (!response.ok) {
-		throw new Error(getResponseMessage(payload, `Saving API key failed with status ${response.status}`));
-	}
-
+	const payload = await requestJson(
+		ADMIN_PROVIDER_API_KEY_PATH,
+		jsonBodyRequest("POST", requestBody),
+		"Saving API key",
+	);
 	if (!isObjectRecord(payload) || typeof payload.provider !== "string") {
 		throw new Error("Provider API key save returned an invalid response.");
 	}
@@ -595,78 +520,39 @@ export async function saveProviderApiKey(provider: string, apiKey: string): Prom
 }
 
 export async function readMcpServers(): Promise<McpServersResponse> {
-	const response = await localSessionFetch(ADMIN_MCP_PATH, {
-		method: "GET",
-		headers: { accept: "application/json" },
-	});
-	const payload = await parseJsonResponse(response);
-	if (!response.ok) {
-		throw new Error(getResponseMessage(payload, `MCP servers request failed with status ${response.status}`));
-	}
-
+	const payload = await requestJson(ADMIN_MCP_PATH, getJsonRequest, "MCP servers request");
 	return parseMcpServersResponse(payload);
 }
 
 export async function createMcpServer(requestBody: CreateMcpServerRequest): Promise<McpServersResponse> {
-	const response = await localSessionFetch(ADMIN_MCP_PATH, {
-		method: "POST",
-		headers: {
-			"content-type": "application/json",
-			accept: "application/json",
-		},
-		body: JSON.stringify(requestBody),
-	});
-	const payload = await parseJsonResponse(response);
-	if (!response.ok) {
-		throw new Error(getResponseMessage(payload, `MCP server create failed with status ${response.status}`));
-	}
-
+	const payload = await requestJson(ADMIN_MCP_PATH, jsonBodyRequest("POST", requestBody), "MCP server create");
 	return parseMcpServersResponse(payload);
 }
 
 export async function updateMcpServer(serverId: string, requestBody: UpdateMcpServerRequest): Promise<McpServersResponse> {
-	const response = await localSessionFetch(`${ADMIN_MCP_PATH_PREFIX}${encodeURIComponent(serverId)}`, {
-		method: "PATCH",
-		headers: {
-			"content-type": "application/json",
-			accept: "application/json",
-		},
-		body: JSON.stringify(requestBody),
-	});
-	const payload = await parseJsonResponse(response);
-	if (!response.ok) {
-		throw new Error(getResponseMessage(payload, `MCP server update failed with status ${response.status}`));
-	}
-
+	const payload = await requestJson(
+		`${ADMIN_MCP_PATH_PREFIX}${encodeURIComponent(serverId)}`,
+		jsonBodyRequest("PATCH", requestBody),
+		"MCP server update",
+	);
 	return parseMcpServersResponse(payload);
 }
 
 export async function deleteMcpServer(serverId: string): Promise<McpServersResponse> {
-	const response = await localSessionFetch(`${ADMIN_MCP_PATH_PREFIX}${encodeURIComponent(serverId)}`, {
-		method: "DELETE",
-		headers: {
-			accept: "application/json",
-		},
-	});
-	const payload = await parseJsonResponse(response);
-	if (!response.ok) {
-		throw new Error(getResponseMessage(payload, `MCP server delete failed with status ${response.status}`));
-	}
-
+	const payload = await requestJson(
+		`${ADMIN_MCP_PATH_PREFIX}${encodeURIComponent(serverId)}`,
+		deleteJsonRequest,
+		"MCP server delete",
+	);
 	return parseMcpServersResponse(payload);
 }
 
 export async function refreshMcpServers(): Promise<McpServersResponse> {
-	const response = await localSessionFetch(ADMIN_MCP_REFRESH_PATH, {
+	const payload = await requestJson(ADMIN_MCP_REFRESH_PATH, {
 		method: "POST",
 		headers: {
 			accept: "application/json",
 		},
-	});
-	const payload = await parseJsonResponse(response);
-	if (!response.ok) {
-		throw new Error(getResponseMessage(payload, `MCP server refresh failed with status ${response.status}`));
-	}
-
+	}, "MCP server refresh");
 	return parseMcpServersResponse(payload);
 }
