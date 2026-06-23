@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { SessionCacheEntry, TranscriptMessage } from "./chatTypes";
-import { appendAssistantDeltaToMessage, cloneTranscript } from "./app-state";
+import { appendAssistantDeltaToMessage } from "./app-state";
 
 type BufferedAssistantDelta = {
 	messageId: string;
@@ -95,7 +95,7 @@ export function useBufferedAssistantDeltas(
 					continue;
 				}
 
-				let transcript = cloneTranscript(sourceTranscript);
+				let transcript = sourceTranscript;
 				for (const bufferedDelta of pending) {
 					transcript = applyBufferedAssistantDelta(transcript, bufferedDelta);
 				}

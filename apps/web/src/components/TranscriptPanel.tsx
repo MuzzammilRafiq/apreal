@@ -1,3 +1,4 @@
+import { memo, useMemo } from "react";
 import type { SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "../chatTypes";
 import {
 	ChainOfThought,
@@ -237,10 +238,16 @@ function AssistantReasoningBlock({ item, segments }: { item: TranscriptMessage; 
 	);
 }
 
-function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
+const TranscriptMessageCard = memo(function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 	const assistantSegments = item.role === "assistant" ? item.segments : [];
-	const assistantTextSegments = assistantSegments.filter(isTextSegment);
-	const assistantSegmentGroups = groupAssistantSegments(assistantSegments);
+	const assistantTextSegments = useMemo(
+		() => assistantSegments.filter(isTextSegment),
+		[assistantSegments],
+	);
+	const assistantSegmentGroups = useMemo(
+		() => groupAssistantSegments(assistantSegments),
+		[assistantSegments],
+	);
 	const shouldShowPlaceholder = item.pending && !item.body && assistantSegments.length === 0;
 	const shouldShowStandaloneBody = item.role !== "assistant" && (item.body || shouldShowPlaceholder);
 	const shouldShowAssistantBodyFallback = item.role === "assistant" && assistantTextSegments.length === 0 && Boolean(item.body);
@@ -297,10 +304,13 @@ function TranscriptMessageCard({ item }: { item: TranscriptMessage }) {
 			)}
 		</Message>
 	);
-}
+});
 
 export function TranscriptPanel({ activeTranscript, emptyState, connectionError }: TranscriptPanelProps) {
-	const renderedTranscript = mergeConsecutiveAssistantMessages(activeTranscript);
+	const renderedTranscript = useMemo(
+		() => mergeConsecutiveAssistantMessages(activeTranscript),
+		[activeTranscript],
+	);
 
 	return (
 		<div className="min-h-0 min-w-0 flex-1 bg-white">
