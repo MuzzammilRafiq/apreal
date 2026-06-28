@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export const CLIENT_EVENT_STREAM_PATH = "/api/client/stream";
 export const CLIENT_MESSAGE_PATH = "/api/client/message";
 export const LOCAL_AUTH_SESSION_PATH = "/api/local-auth/session";
@@ -74,6 +76,31 @@ export type McpServerConfig = {
 	runtime?: McpServerRuntimeStatus;
 };
 
+export const McpServerTransportSchema = z.enum(["stdio", "http", "sse"]);
+export const StringRecordSchema = z.record(z.string().trim().min(1), z.string());
+
+export const CreateMcpServerRequestSchema = z.object({
+	name: z.string(),
+	transport: McpServerTransportSchema,
+	enabled: z.boolean().optional(),
+	command: z.string().nullable().optional(),
+	args: z.array(z.string()).optional(),
+	env: StringRecordSchema.optional(),
+	url: z.string().nullable().optional(),
+	headers: StringRecordSchema.optional(),
+});
+
+export const UpdateMcpServerRequestSchema = z.object({
+	name: z.string().optional(),
+	transport: McpServerTransportSchema.optional(),
+	enabled: z.boolean().optional(),
+	command: z.string().nullable().optional(),
+	args: z.array(z.string()).optional(),
+	env: StringRecordSchema.optional(),
+	url: z.string().nullable().optional(),
+	headers: StringRecordSchema.optional(),
+});
+
 export type McpServerRuntimeState = "idle" | "connecting" | "ready" | "error" | "disabled";
 
 export type McpServerRuntimeStatus = {
@@ -87,27 +114,9 @@ export type McpServersResponse = {
 	servers: McpServerConfig[];
 };
 
-export type CreateMcpServerRequest = {
-	name: string;
-	transport: McpServerTransport;
-	enabled?: boolean;
-	command?: string | null;
-	args?: string[];
-	env?: Record<string, string>;
-	url?: string | null;
-	headers?: Record<string, string>;
-};
+export type CreateMcpServerRequest = z.infer<typeof CreateMcpServerRequestSchema>;
 
-export type UpdateMcpServerRequest = {
-	name?: string;
-	transport?: McpServerTransport;
-	enabled?: boolean;
-	command?: string | null;
-	args?: string[];
-	env?: Record<string, string>;
-	url?: string | null;
-	headers?: Record<string, string>;
-};
+export type UpdateMcpServerRequest = z.infer<typeof UpdateMcpServerRequestSchema>;
 
 export type RelayAuthTarget = {
 	id: string;
@@ -280,6 +289,30 @@ export type ProviderApiKeyRequest = {
 	provider: string;
 	apiKey: string;
 };
+
+const NonEmptyStringSchema = z.string().trim().min(1);
+
+export const SetDefaultModelRequestSchema = z.object({
+	provider: NonEmptyStringSchema,
+	modelId: NonEmptyStringSchema,
+});
+
+export const ProviderLoginRequestSchema = z.object({
+	provider: NonEmptyStringSchema,
+});
+
+export const ProviderApiKeyRequestSchema = z.object({
+	provider: NonEmptyStringSchema,
+	apiKey: NonEmptyStringSchema,
+});
+
+export const UpdateAppendSystemPromptRequestSchema = z.object({
+	appendSystemPrompt: z.string(),
+});
+
+export const RelayAuthenticateRequestSchema = z.object({
+	ownerGrant: NonEmptyStringSchema,
+});
 
 export type ProviderApiKeyResponse = {
 	provider: string;
@@ -454,6 +487,106 @@ export type ServerJobsMessage =
 export type ServerMcpMessage = {
 	type: "mcp_servers_snapshot";
 } & McpServersResponse;
+
+const ScheduledJobUpdateRequestSchema = z.object({
+	intervalMinutes: z.number().optional(),
+	enabled: z.boolean().optional(),
+}).refine((value) => value.intervalMinutes !== undefined || value.enabled !== undefined, {
+	message: "At least one scheduled job field is required.",
+});
+
+export const ClientAppMessageSchema = z.discriminatedUnion("type", [
+	z.object({
+		type: z.literal("prompt"),
+		prompt: z.string(),
+		sessionId: z.string().nullable().optional(),
+		userMessageId: NonEmptyStringSchema.optional(),
+		assistantMessageId: NonEmptyStringSchema.optional(),
+	}),
+	z.object({ type: z.literal("abort"), sessionId: z.string() }),
+	z.object({ type: z.literal("delete_session"), sessionId: z.string() }),
+	z.object({ type: z.literal("delete_all_sessions") }),
+	z.object({
+		type: z.literal("load_session"),
+		sessionId: z.string(),
+		knownRevision: z.number().int().nonnegative().optional(),
+	}),
+	z.object({
+		type: z.literal("load_sessions_page"),
+		offset: z.number().int().nonnegative().optional(),
+		limit: z.number().int().positive().optional(),
+	}),
+	z.object({ type: z.literal("ping") }),
+	z.object({ type: z.literal("load_jobs") }),
+	z.object({ type: z.literal("load_job_runs"), jobId: z.string() }),
+	z.object({
+		type: z.literal("update_job"),
+		jobId: z.string(),
+		changes: ScheduledJobUpdateRequestSchema,
+	}),
+	z.object({ type: z.literal("delete_job"), jobId: z.string() }),
+	z.object({ type: z.literal("load_providers") }),
+	SetDefaultModelRequestSchema.extend({ type: z.literal("set_default_model") }),
+	ProviderLoginRequestSchema.extend({ type: z.literal("start_provider_login") }),
+	ProviderApiKeyRequestSchema.extend({ type: z.literal("save_provider_api_key") }),
+	z.object({ type: z.literal("load_status") }),
+	UpdateAppendSystemPromptRequestSchema.extend({ type: z.literal("save_append_system_prompt") }),
+	z.object({ type: z.literal("load_mcp_servers") }),
+	z.object({ type: z.literal("create_mcp_server"), request: CreateMcpServerRequestSchema }),
+	z.object({
+		type: z.literal("update_mcp_server"),
+		serverId: z.string(),
+		request: UpdateMcpServerRequestSchema,
+	}),
+	z.object({ type: z.literal("delete_mcp_server"), serverId: z.string() }),
+	z.object({ type: z.literal("refresh_mcp_servers") }),
+]);
+
+export type ClientAppMessage = z.infer<typeof ClientAppMessageSchema>;
+
+export type ServerAppPayload<SessionSummary, TranscriptMessage> =
+	| { type: "connected"; clientId: string; message: string; tools?: string }
+	| { type: "disconnected"; reason: string; message: string }
+	| { type: "sessions_page"; sessions: SessionSummary[]; offset: number; limit: number; total: number }
+	| { type: "session_summary_updated"; session: SessionSummary }
+	| { type: "session_created"; session: SessionSummary; transcript: TranscriptMessage[] }
+	| { type: "session_snapshot"; session: SessionSummary; transcript: TranscriptMessage[] }
+	| { type: "session_deleted"; sessionId: string }
+	| { type: "assistant_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
+	| { type: "assistant_thinking_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
+	| { type: "error"; message: string; sessionId?: string }
+	| { type: "pong" }
+	| ServerJobsMessage
+	| ServerProvidersMessage
+	| ServerStatusMessage
+	| ServerMcpMessage;
+
+export type ServerAppMessage<SessionSummary, TranscriptMessage> =
+	| ServerAppPayload<SessionSummary, TranscriptMessage>
+	| ServerSyncEnvelope<ServerAppPayload<SessionSummary, TranscriptMessage>>;
+
+export const ServerPayloadEnvelopeSchema = z.union([
+	z.object({
+		type: z.literal("sync_event"),
+		seq: z.number().int().nonnegative(),
+		scope: z.string(),
+		emittedAt: z.number(),
+		payload: z.object({ type: z.string() }).passthrough(),
+	}).passthrough(),
+	z.object({
+		type: z.string().refine((value) => value !== "sync_event"),
+	}).passthrough(),
+]);
+
+export function parseClientAppMessage(rawMessage: unknown): ClientAppMessage | null {
+	const result = ClientAppMessageSchema.safeParse(rawMessage);
+	return result.success ? result.data : null;
+}
+
+export function parseServerPayloadEnvelope(rawMessage: unknown): unknown | null {
+	const result = ServerPayloadEnvelopeSchema.safeParse(rawMessage);
+	return result.success ? result.data : null;
+}
 
 const PRINCIPAL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;
 export function isRelayPrincipalType(value: unknown): value is RelayPrincipalType {

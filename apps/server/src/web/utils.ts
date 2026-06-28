@@ -4,13 +4,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	type RelayAgentCommand,
+	type ServerAppMessage,
+	type ServerAppPayload,
 } from "@apreal/shared";
 import type {
 	SessionSummary,
 	TranscriptMessage,
 } from "./session-state.ts";
 import { getServerEnv } from "../env.ts";
-import type { ServerAppMessage, ServerAppPayload } from "../protocol.ts";
 
 export const DEFAULT_PORT = 3000;
 export const DEFAULT_SESSION_PAGE_LIMIT = 50;

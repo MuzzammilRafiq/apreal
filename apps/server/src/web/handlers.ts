@@ -8,8 +8,8 @@ import type {
 	ScheduledJobUpdateRequest,
 	UpdateAppendSystemPromptResponse,
 	UpdateMcpServerRequest,
+	ClientAppMessage,
 } from "@apreal/shared";
-import type { ClientAppMessage } from "../protocol.ts";
 import {
 	buildProvidersPayload,
 	createAgentController,

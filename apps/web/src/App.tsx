@@ -24,74 +24,30 @@ import {
 	getErrorMessage,
 	isClientStreamRequiredError,
 	isScheduledSessionSummary,
-	navigateToRoute,
 	parseServerMessage,
-	readCurrentRoute,
-	readSelectedJobIdFromRoute,
 	readStoredSessionId,
 	storeActiveSessionId,
 	upsertSessionInList,
-	type AppRoute,
 	type ClientMessage,
 } from "./app-state";
-import { coerceRouteForCapabilities, type WebEventStream, type WebRuntime, type SettingsSectionId } from "./runtime";
+import { type WebEventStream, type WebRuntime } from "./runtime";
 import { useAppAdmin } from "./useAppAdmin";
 import { useBufferedAssistantDeltas } from "./useBufferedAssistantDeltas";
 import { useConnectionWaiters } from "./useConnectionWaiters";
+import { useAppRouting } from "./useAppRouting";
+import {
+	createOptimisticTranscript,
+	transcriptContainsPrompt,
+	type PendingPrompt,
+} from "./optimistic-transcript";
 
 type AppProps = {
 	runtime: WebRuntime;
 };
 
-type PendingPrompt = {
-	id: string;
-	prompt: string;
-	sessionId: string | null;
-};
-
-function createOptimisticTranscript(transcript: TranscriptMessage[], pendingPrompt: PendingPrompt | null): TranscriptMessage[] {
-	if (!pendingPrompt) {
-		return transcript;
-	}
-
-	const now = Date.now();
-	return [
-		...transcript,
-		{
-			id: `${pendingPrompt.id}:user`,
-			role: "user",
-			body: pendingPrompt.prompt,
-			thinking: "",
-			modelLabel: null,
-			modelSource: null,
-			toolCalls: [],
-			segments: [],
-			pending: true,
-			createdAt: now,
-		},
-		{
-			id: `${pendingPrompt.id}:assistant`,
-			role: "assistant",
-			body: "",
-			thinking: "",
-			modelLabel: null,
-			modelSource: null,
-			toolCalls: [],
-			segments: [],
-			pending: true,
-			createdAt: now,
-		},
-	];
-}
-
-function transcriptContainsPrompt(transcript: TranscriptMessage[], prompt: string): boolean {
-	return transcript.some((message) => message.role === "user" && message.body.trim() === prompt);
-}
-
 export function App({ runtime }: AppProps) {
 	const { data: authSession, isPending: authSessionPending } = authClient.useSession();
-	const [route, setRoute] = useState<AppRoute>(() => coerceRouteForCapabilities(readCurrentRoute(), runtime.capabilities));
-	const [requestedSettingsSection, setRequestedSettingsSection] = useState<SettingsSectionId | null>(null);
+	const [routeCapabilities, setRouteCapabilities] = useState(runtime.capabilities);
 	const [connected, setConnected] = useState(false);
 	const [pendingDraft, setPendingDraft] = useState(false);
 	const [pendingPrompt, setPendingPrompt] = useState<PendingPrompt | null>(null);
@@ -110,6 +66,19 @@ export function App({ runtime }: AppProps) {
 	const signedIn = Boolean(authSession?.user);
 	const signInRequired = !authSessionPending && !signedIn;
 	const connectedRef = useRef(connected);
+	const handleRefreshJobRunsRef = useRef<(jobId: string) => void>(() => {});
+	const {
+		route,
+		selectedJobId,
+		requestedSettingsSection,
+		handleRouteChange,
+		handleOpenJob,
+		handleBackToJobsPanel,
+		consumeRequestedSettingsSection,
+	} = useAppRouting({
+		capabilities: routeCapabilities,
+		onOpenJobRuns: (jobId) => handleRefreshJobRunsRef.current(jobId),
+	});
 	const restartEventStream = useCallback(() => {
 		connectedRef.current = false;
 		setConnected(false);
@@ -207,6 +176,12 @@ export function App({ runtime }: AppProps) {
 		settings: authorizedSettingsSections.length > 0,
 		settingsSections: authorizedSettingsSections,
 	}), [authorizedSettingsSections, runtime.capabilities]);
+	useEffect(() => {
+		setRouteCapabilities(effectiveCapabilities);
+	}, [effectiveCapabilities]);
+	useEffect(() => {
+		handleRefreshJobRunsRef.current = handleRefreshJobRuns;
+	}, [handleRefreshJobRuns]);
 	const composerBlockedReason = authSessionPending ? "Checking your sign-in status..." : null;
 	const chatTransportReady = relayReady && !composerBlockedReason;
 	const previousChatTransportReadyRef = useRef(chatTransportReady);
@@ -232,25 +207,6 @@ export function App({ runtime }: AppProps) {
 			promptInputRef.current?.focus();
 		});
 	}, []);
-
-	useEffect(() => {
-		const handlePopState = () => {
-			setRoute(coerceRouteForCapabilities(readCurrentRoute(), effectiveCapabilities));
-		};
-
-		window.addEventListener("popstate", handlePopState);
-		return () => {
-			window.removeEventListener("popstate", handlePopState);
-		};
-	}, [effectiveCapabilities]);
-
-	useEffect(() => {
-		const supportedRoute = coerceRouteForCapabilities(readCurrentRoute(), effectiveCapabilities);
-		if (supportedRoute !== readCurrentRoute()) {
-			navigateToRoute(supportedRoute);
-		}
-		setRoute(supportedRoute);
-	}, [effectiveCapabilities]);
 
 	const ensureClientTransport = useCallback(async () => {
 		if (!serverReady) {
@@ -901,29 +857,6 @@ export function App({ runtime }: AppProps) {
 			}
 			: null;
 	const canLoadMoreSessions = visibleSessionLimit < Math.max(totalSessionCount ?? 0, sessions.length);
-	const selectedJobId = route === "jobs" ? readSelectedJobIdFromRoute() : null;
-
-	const handleRouteChange = useCallback((nextRoute: AppRoute) => {
-		const supportedRoute = coerceRouteForCapabilities(nextRoute, effectiveCapabilities);
-		navigateToRoute(supportedRoute);
-		setRoute(supportedRoute);
-	}, [effectiveCapabilities]);
-
-	const handleOpenJob = useCallback((jobId: string) => {
-		navigateToRoute("jobs", { jobId });
-		setRoute(coerceRouteForCapabilities("jobs", effectiveCapabilities));
-		handleRefreshJobRuns(jobId);
-	}, [effectiveCapabilities, handleRefreshJobRuns]);
-
-	const handleBackToJobsPanel = useCallback(() => {
-		setRequestedSettingsSection("jobs");
-		const supportedRoute = coerceRouteForCapabilities("settings", effectiveCapabilities);
-		navigateToRoute(supportedRoute);
-		setRoute(supportedRoute);
-	}, [effectiveCapabilities]);
-
-
-
 	if (authSessionPending || signInRequired) {
 		return <AuthGate pending={authSessionPending} />;
 	}
@@ -951,7 +884,7 @@ export function App({ runtime }: AppProps) {
 			onRouteChange={handleRouteChange}
 			onOpenJob={handleOpenJob}
 			requestedSettingsSection={requestedSettingsSection}
-			onConsumeRequestedSettingsSection={() => setRequestedSettingsSection(null)}
+			onConsumeRequestedSettingsSection={consumeRequestedSettingsSection}
 			onBackToJobsPanel={handleBackToJobsPanel}
 			onRefreshJobs={handleRefreshJobs} onRefreshJobRuns={handleRefreshJobRuns}
 			onUpdateJobInterval={updateScheduledJob} onToggleJobEnabled={toggleScheduledJobEnabled}

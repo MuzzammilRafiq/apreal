@@ -577,7 +577,7 @@ export function SettingsPage({
 							}
 						/>
 
-						<SettingsInventorySections activeSection={activeSection} availableSkills={availableSkills} availableTools={availableTools} adminStatus={adminStatus} />
+						<SettingsInventorySections activeSection={activeSection} availableSkills={availableSkills} availableTools={availableTools} />
 
 						<SettingsMcpSection
 							activeSection={activeSection}

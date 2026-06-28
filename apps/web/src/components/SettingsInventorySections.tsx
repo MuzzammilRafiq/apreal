@@ -1,17 +1,20 @@
 import {
-  getSkillToneClassName,
   getToolKindLabel,
   getToolToneClassName,
-  StatusPill,
+  type SettingsSection,
 } from "./settings-helpers";
+import type { AvailableSkill, AvailableTool } from "@apreal/shared";
 
-type SettingsInventorySectionsProps = Record<string, any>;
+type SettingsInventorySectionsProps = {
+  activeSection: SettingsSection;
+  availableSkills: AvailableSkill[];
+  availableTools: AvailableTool[];
+};
 
 export function SettingsInventorySections({
   activeSection,
   availableSkills,
   availableTools,
-  adminStatus,
 }: SettingsInventorySectionsProps) {
   return (
     <>
@@ -23,7 +26,7 @@ export function SettingsInventorySections({
               </p>
             ) : (
               <div className="p-2 mt-3 grid gap-2 min-[980px]:grid-cols-2 ">
-                {availableSkills.map((skill: any) => (
+                {availableSkills.map((skill) => (
                   <article
                     key={`${skill.name}:${skill.location}`}
                     className="border border-slate-200 bg-white/70 px-3 py-3 rounded"
@@ -52,7 +55,7 @@ export function SettingsInventorySections({
               </p>
             ) : (
               <div className="overflow-hidden ">
-                {availableTools.map((tool: any, index: number) => (
+                {availableTools.map((tool, index) => (
                   <div
                     key={tool.name}
                     className={`grid gap-2 px-0 py-3 min-[760px]:grid-cols-[minmax(0,1fr)_auto] min-[760px]:items-start ${

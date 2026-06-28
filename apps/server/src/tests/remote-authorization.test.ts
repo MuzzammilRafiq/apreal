@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { ClientAppMessage } from "../protocol.ts";
+import type { ClientAppMessage } from "@apreal/shared";
 import { isRelayClientMessageAllowed } from "../web/handlers.ts";
 
 test("allows relay chat and model selection while rejecting laptop administration", () => {

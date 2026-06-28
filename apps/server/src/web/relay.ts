@@ -12,7 +12,7 @@ import {
 	readClientTokenFromRequest,
 	verifyRelayClientAccess,
 } from "../relay-auth.ts";
-import { parseClientAppMessage, type ClientAppMessage } from "../protocol.ts";
+import { parseClientAppMessage, type ClientAppMessage } from "@apreal/shared";
 import {
 	isObjectRecord,
 	parseRelayAgentCommand,

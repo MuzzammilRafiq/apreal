@@ -1,14 +1,9 @@
 import type {
-	ClientJobsCommand,
-	ClientMcpCommand,
-	ClientProvidersCommand,
-	ClientStatusCommand,
-	ServerJobsMessage,
-	ServerMcpMessage,
-	ServerProvidersMessage,
-	ServerStatusMessage,
+	ClientAppMessage,
+	ServerAppPayload,
 	ServerSyncEnvelope,
 } from "@apreal/shared";
+import { parseServerPayloadEnvelope } from "@apreal/shared";
 import type { SessionCacheEntry, SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "./chatTypes";
 import { createBrowserUuid } from "./local-client";
 
@@ -22,41 +17,9 @@ export const RELAY_STATUS_REFRESH_INTERVAL_MS = 15_000;
 
 export type AppRoute = "chat" | "settings" | "jobs";
 
-export type ClientMessage =
-	| {
-		type: "prompt";
-		prompt: string;
-		sessionId?: string | null;
-		userMessageId?: string;
-		assistantMessageId?: string;
-	}
-	| { type: "abort"; sessionId: string }
-	| { type: "delete_session"; sessionId: string }
-	| { type: "delete_all_sessions" }
-	| { type: "load_session"; sessionId: string; knownRevision?: number }
-	| { type: "load_sessions_page"; offset?: number; limit?: number }
-	| { type: "ping" }
-	| ClientJobsCommand
-	| ClientProvidersCommand
-	| ClientStatusCommand
-	| ClientMcpCommand;
+export type ClientMessage = ClientAppMessage;
 
-export type ServerPayload =
-	| { type: "connected"; clientId: string; message: string; tools?: string }
-	| { type: "disconnected"; reason: string; message: string }
-	| { type: "sessions_page"; sessions: SessionSummary[]; offset: number; limit: number; total: number }
-	| { type: "session_summary_updated"; session: SessionSummary }
-	| { type: "session_created"; session: SessionSummary; transcript: TranscriptMessage[] }
-	| { type: "session_snapshot"; session: SessionSummary; transcript: TranscriptMessage[] }
-	| { type: "session_deleted"; sessionId: string }
-	| { type: "assistant_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
-	| { type: "assistant_thinking_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
-	| { type: "error"; message: string; sessionId?: string }
-	| { type: "pong" }
-	| ServerJobsMessage
-	| ServerProvidersMessage
-	| ServerStatusMessage
-	| ServerMcpMessage;
+export type ServerPayload = ServerAppPayload<SessionSummary, TranscriptMessage>;
 
 export type ServerMessage = ServerPayload | ServerSyncEnvelope<ServerPayload>;
 
@@ -146,11 +109,12 @@ export function parseServerMessage(rawData: string): ServerMessage | null {
 		return null;
 	}
 
-	if (!isObjectRecord(value) || typeof value.type !== "string") {
+	const parsed = parseServerPayloadEnvelope(value);
+	if (!parsed || !isObjectRecord(parsed) || typeof parsed.type !== "string") {
 		return null;
 	}
 
-	return value as ServerMessage;
+	return parsed as ServerMessage;
 }
 
 export function cloneTranscript(transcript: TranscriptMessage[]): TranscriptMessage[] {

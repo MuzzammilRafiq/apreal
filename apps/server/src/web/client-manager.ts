@@ -1,6 +1,5 @@
 import { getConfiguredToolsLabel } from "../agent-tools.ts";
-import type { ClientAppMessage } from "../protocol.ts";
-import { parseClientAppMessage } from "../protocol.ts";
+import { parseClientAppMessage, type ClientAppMessage } from "@apreal/shared";
 import { SYNC_LAST_SEQ_QUERY_PARAM, type ServerSyncEnvelope, type ServerSyncScope } from "@apreal/shared";
 import {
 	buildSessionPayload,
