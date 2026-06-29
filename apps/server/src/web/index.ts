@@ -1,26 +1,14 @@
-import { access, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { extname, join, resolve, sep } from "node:path";
+import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
 import {
-	ADMIN_APPEND_SYSTEM_PROMPT_PATH,
-	ADMIN_MCP_PATH,
-	ADMIN_MCP_REFRESH_PATH,
-	ADMIN_PROVIDER_API_KEY_PATH,
-	ADMIN_PROVIDER_LOGIN_PATH,
-	ADMIN_PROVIDERS_PATH,
 	ADMIN_STATUS_PATH,
 	CLIENT_EVENT_STREAM_PATH,
-	CLIENT_MESSAGE_PATH,
 	LOCAL_CLIENT_ID_HEADER,
 	LOCAL_CLIENT_ID_QUERY_PARAM,
 	normalizeRelayPrincipalId,
 	type CreateMcpServerRequest,
 	type LocalWebAdminStatus,
 	type McpServersResponse,
-	type ProviderApiKeyRequest,
-	type SetDefaultModelRequest,
-	type UpdateAppendSystemPromptRequest,
-	type UpdateAppendSystemPromptResponse,
 	type UpdateMcpServerRequest,
 } from "@apreal/shared";
 import { createChatStore } from "../chat-store.ts";
@@ -34,9 +22,9 @@ import { McpStore } from "../mcp-store.ts";
 import { getRelayServerUrl } from "../relay-auth.ts";
 import { createCustomTools } from "../tools/index.ts";
 import { createJobExecutor, JobStore, Scheduler } from "../scheduled-jobs/index.ts";
-import { getAvailableSkills, getErrorMessage, prewarmAgentRuntime, setDefaultProviderModel } from "../session.ts";
+import { getAvailableSkills, getErrorMessage, prewarmAgentRuntime } from "../session.ts";
 import { listScheduledJobRuns, parseAdminJobRoute, parseAdminMcpRoute } from "./admin-routes.ts";
-import { createClientManager, type Logger } from "./client-manager.ts";
+import { createClientManager } from "./client-manager.ts";
 import { createHandlers } from "./handlers.ts";
 import { startHttpServer } from "./http-server.ts";
 import { hasLocalBrowserAuthSession } from "./local-browser-auth.ts";
@@ -44,7 +32,6 @@ import { createProviderLoginManager } from "./provider-login.ts";
 import { initializeRelayState } from "./relay-state.ts";
 import { WEB_DIST_DIR, WEB_INDEX_PATH, createMissingWebUiResponse, createStaticResponse } from "./web-static.ts";
 import { createWebRequestHandler } from "./web-request-handler.ts";
-import type { SharedSessionState } from "./session-state.ts";
 
 const APREAL_AGENT_AUTH_PATH = getAprealAgentPath("auth.json");
 const APREAL_AGENT_MCP_PATH = getAprealAgentPath("mcp.json");
@@ -61,7 +48,6 @@ import {
 	json,
 	DEFAULT_PORT,
 	DEFAULT_WORKSPACE_ROOT,
-	SERVER_SRC_DIR,
 	type ClientConnection,
 } from "./utils.ts";
 
