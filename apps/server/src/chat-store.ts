@@ -33,11 +33,12 @@ CREATE TABLE IF NOT EXISTS messages (
 	model_source TEXT,
 	pending INTEGER NOT NULL DEFAULT 0,
 	created_at INTEGER NOT NULL,
+	message_order INTEGER NOT NULL DEFAULT 0,
 	segments_json TEXT NOT NULL DEFAULT '[]',
 	tool_calls_json TEXT NOT NULL DEFAULT '[]'
 );
 
-CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, message_order, created_at);
 `;
 
 type SessionRow = {
@@ -60,6 +61,7 @@ type MessageRow = {
 	model_source: string | null;
 	pending: number;
 	created_at: number;
+	message_order: number;
 	segments_json: string;
 	tool_calls_json: string;
 };
@@ -144,6 +146,11 @@ function ensureChatStoreSchema(database: import("node:sqlite").DatabaseSync) {
 	const hasModelSourceColumn = messageColumns.some((column) => column.name === "model_source");
 	if (!hasModelSourceColumn) {
 		database.exec("ALTER TABLE messages ADD COLUMN model_source TEXT;");
+	}
+
+	const hasMessageOrderColumn = messageColumns.some((column) => column.name === "message_order");
+	if (!hasMessageOrderColumn) {
+		database.exec("ALTER TABLE messages ADD COLUMN message_order INTEGER NOT NULL DEFAULT 0;");
 	}
 }
 
@@ -317,10 +324,10 @@ export function createChatStore(dbPath: string): ChatStore {
 		ORDER BY updated_at DESC, created_at DESC
 	`);
 	const loadMessagesStatement = database.prepare(`
-		SELECT id, session_id, role, body, thinking, model_label, model_source, pending, created_at, segments_json, tool_calls_json
+		SELECT id, session_id, role, body, thinking, model_label, model_source, pending, created_at, message_order, segments_json, tool_calls_json
 		FROM messages
 		WHERE session_id = ?
-		ORDER BY created_at ASC, id ASC
+		ORDER BY message_order ASC, created_at ASC, CASE role WHEN 'user' THEN 0 WHEN 'assistant' THEN 1 WHEN 'system' THEN 2 ELSE 3 END, id ASC
 	`);
 	const upsertSessionStatement = database.prepare(`
 		INSERT INTO sessions (id, title, created_at, updated_at, revision, busy, model)
@@ -335,8 +342,8 @@ export function createChatStore(dbPath: string): ChatStore {
 	`);
 	const deleteMessagesStatement = database.prepare("DELETE FROM messages WHERE session_id = ?");
 	const insertMessageStatement = database.prepare(`
-		INSERT INTO messages (id, session_id, role, body, thinking, model_label, model_source, pending, created_at, segments_json, tool_calls_json)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO messages (id, session_id, role, body, thinking, model_label, model_source, pending, created_at, message_order, segments_json, tool_calls_json)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`);
 	const deleteSessionStatement = database.prepare("DELETE FROM sessions WHERE id = ?");
 
@@ -425,10 +432,7 @@ export function createChatStore(dbPath: string): ChatStore {
 					);
 					deleteMessagesStatement.run(session.id);
 
-					const transcript = [...session.transcript].sort(
-						(left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id),
-					);
-					for (const message of transcript) {
+					for (const [messageOrder, message] of session.transcript.entries()) {
 						insertMessageStatement.run(
 							message.id,
 							session.id,
@@ -439,6 +443,7 @@ export function createChatStore(dbPath: string): ChatStore {
 							message.modelSource,
 							message.pending ? 1 : 0,
 							message.createdAt,
+							messageOrder,
 							JSON.stringify(message.segments ?? []),
 							JSON.stringify(message.toolCalls ?? []),
 						);
