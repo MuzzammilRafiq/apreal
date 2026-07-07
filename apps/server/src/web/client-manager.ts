@@ -326,7 +326,9 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 		const buffer = clientSyncBuffers.get(clientId) ?? [];
 		const firstBufferedSeq = buffer[0]?.seq;
 		const nextSeq = clientNextSyncSeqs.get(clientId) ?? 1;
-		if (lastSeq > 0 && lastSeq < nextSeq - 1 && (firstBufferedSeq === undefined || lastSeq < firstBufferedSeq - 1)) {
+		const serverCursorWasReset = lastSeq >= nextSeq;
+		const requestedSeqExpired = lastSeq < nextSeq - 1 && (firstBufferedSeq === undefined || lastSeq < firstBufferedSeq - 1);
+		if (lastSeq > 0 && (serverCursorWasReset || requestedSeqExpired)) {
 			client.send({
 				type: "replay_reset",
 				reason: "replay_unavailable",

@@ -499,7 +499,7 @@ export function App({ runtime }: AppProps) {
 					break;
 				}
 				case "replay_reset": {
-					lastSeenSyncSeqRef.current = Math.max(lastSeenSyncSeqRef.current, serverPayload.nextSeq - 1);
+					lastSeenSyncSeqRef.current = Math.max(0, serverPayload.nextSeq - 1);
 					clearBufferedAssistantDeltas();
 					requestSessionPageRef.current(0, Math.max(visibleSessionLimitRef.current, SESSION_PAGE_SIZE));
 					ensureSessionLoadedRef.current(activeSessionIdRef.current);
