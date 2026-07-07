@@ -72,12 +72,12 @@ const localCapabilities: WebCapabilities = {
 
 const remoteCapabilities: WebCapabilities = {
 	settings: true,
-	jobs: true,
+	jobs: false,
 	providers: true,
-	mcpServers: true,
-	systemPrompt: true,
-	inventory: true,
-	settingsSections: ["account", "models", "skills", "mcp", "tools", "jobs"],
+	mcpServers: false,
+	systemPrompt: false,
+	inventory: false,
+	settingsSections: ["account"],
 };
 
 function resolveSameOriginBaseUrl(): URL {

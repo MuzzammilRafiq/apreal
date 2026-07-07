@@ -69,6 +69,12 @@ type ChatStore = {
 	saveSession(session: SharedSessionState): void;
 	deleteSession?(sessionId: string): void;
 	deleteSessions?(sessionIds: string[]): void;
+	getStatus(): {
+		enabled: boolean;
+		degraded: boolean;
+		path: string;
+		error: string | null;
+	};
 };
 
 type SqliteModule = typeof import("node:sqlite");
@@ -82,12 +88,21 @@ function formatError(error: unknown): string {
 	return String(error);
 }
 
-function createNoopStore(): ChatStore {
+function createNoopStore(dbPath: string, error: unknown): ChatStore {
+	const errorMessage = formatError(error);
 	return {
 		loadSessions() {
 			return new Map();
 		},
 		saveSession() {},
+		getStatus() {
+			return {
+				enabled: false,
+				degraded: true,
+				path: dbPath,
+				error: errorMessage,
+			};
+		},
 	};
 }
 
@@ -275,7 +290,7 @@ export function createChatStore(dbPath: string): ChatStore {
 			dbPath,
 			error: formatError(error),
 		});
-		return createNoopStore();
+		return createNoopStore(dbPath, error);
 	}
 
 	let database: import("node:sqlite").DatabaseSync;
@@ -286,13 +301,14 @@ export function createChatStore(dbPath: string): ChatStore {
 			timeout: 1_000,
 		});
 		database.exec("PRAGMA foreign_keys = ON;");
+		database.exec("PRAGMA journal_mode = WAL;");
 		ensureChatStoreSchema(database);
 	} catch (error) {
 		logger.error("failed to initialize chat-store database; persistence disabled", {
 			dbPath,
 			error: formatError(error),
 		});
-		return createNoopStore();
+		return createNoopStore(dbPath, error);
 	}
 
 	const loadSessionsStatement = database.prepare(`
@@ -458,6 +474,14 @@ export function createChatStore(dbPath: string): ChatStore {
 					error: formatError(error),
 				});
 			}
+		},
+		getStatus() {
+			return {
+				enabled: true,
+				degraded: false,
+				path: dbPath,
+				error: null,
+			};
 		},
 	};
 }

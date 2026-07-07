@@ -228,6 +228,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 			relayTransportConnected: relayState.transportConnected,
 			relayStartupError: relayState.startupError,
 			agentId: relayState.auth?.agentId ?? null,
+			chatPersistence: chatStore.getStatus(),
 			webUiReady,
 			webUiPath: WEB_DIST_DIR,
 			appendSystemPrompt: await readAppendSystemPrompt(),

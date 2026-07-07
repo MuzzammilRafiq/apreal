@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -79,6 +79,8 @@ function parseCredential(value: unknown): RelayCredential | null {
 // issued by the relay; this store additionally proves its individual browser
 // or agent credential has not subsequently been revoked.
 export class RelayCredentialStore {
+	private backedUpCorruptRead = false;
+
 	constructor(private readonly filePath = getDefaultStorePath()) {}
 
 	getFilePath(): string {
@@ -152,10 +154,12 @@ export class RelayCredentialStore {
 		try {
 			const parsed: unknown = JSON.parse(readFileSync(this.filePath, "utf8"));
 			if (!isObjectRecord(parsed) || !Array.isArray(parsed.credentials)) {
+				this.backupCorruptStore();
 				return [];
 			}
 			return parsed.credentials.map(parseCredential).filter((value): value is RelayCredential => value !== null);
 		} catch {
+			this.backupCorruptStore();
 			return [];
 		}
 	}
@@ -165,7 +169,23 @@ export class RelayCredentialStore {
 		mkdirSync(directory, { recursive: true, mode: 0o700 });
 		chmodSync(directory, 0o700);
 		const payload: CredentialStoreFile = { credentials };
-		writeFileSync(this.filePath, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+		const tempPath = `${this.filePath}.tmp-${process.pid}-${randomUUID()}`;
+		writeFileSync(tempPath, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+		chmodSync(tempPath, 0o600);
+		renameSync(tempPath, this.filePath);
 		chmodSync(this.filePath, 0o600);
+	}
+
+	private backupCorruptStore() {
+		if (this.backedUpCorruptRead || !existsSync(this.filePath)) {
+			return;
+		}
+
+		this.backedUpCorruptRead = true;
+		try {
+			copyFileSync(this.filePath, `${this.filePath}.corrupt-${Date.now()}`);
+		} catch {
+			// Keep auth rejection behavior deterministic even if backup creation fails.
+		}
 	}
 }

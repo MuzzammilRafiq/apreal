@@ -1,5 +1,6 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 
 import { assertRelayPrincipalId } from "@apreal/shared";
 
@@ -75,6 +76,7 @@ function parseStoredBinding(value: unknown): StoredOwnerAgentBinding | null {
 // signed-in owner.
 export class RelayOwnerBindingStore {
 	private readonly filePath: string;
+	private backedUpCorruptRead = false;
 
 	// Allows tests to inject an isolated store path while production uses the
 	// default relay data location.
@@ -161,6 +163,7 @@ export class RelayOwnerBindingStore {
 			const content = readFileSync(this.filePath, "utf8");
 			const parsed: unknown = JSON.parse(content);
 			if (!isObjectRecord(parsed) || !Array.isArray(parsed.agents)) {
+				this.backupCorruptStore();
 				return [];
 			}
 
@@ -169,6 +172,7 @@ export class RelayOwnerBindingStore {
 				.filter((binding): binding is StoredOwnerAgentBinding => binding !== null)
 				.sort((left, right) => right.updatedAt - left.updatedAt);
 		} catch {
+			this.backupCorruptStore();
 			return [];
 		}
 	}
@@ -183,10 +187,26 @@ export class RelayOwnerBindingStore {
 			agents: bindings,
 		};
 
-		writeFileSync(this.filePath, `${JSON.stringify(payload, null, 2)}\n`, {
+		const tempPath = `${this.filePath}.tmp-${process.pid}-${randomUUID()}`;
+		writeFileSync(tempPath, `${JSON.stringify(payload, null, 2)}\n`, {
 			encoding: "utf8",
 			mode: 0o600,
 		});
+		chmodSync(tempPath, 0o600);
+		renameSync(tempPath, this.filePath);
 		chmodSync(this.filePath, 0o600);
+	}
+
+	private backupCorruptStore() {
+		if (this.backedUpCorruptRead || !existsSync(this.filePath)) {
+			return;
+		}
+
+		this.backedUpCorruptRead = true;
+		try {
+			copyFileSync(this.filePath, `${this.filePath}.corrupt-${Date.now()}`);
+		} catch {
+			// Store reads should stay deterministic even if backup creation fails.
+		}
 	}
 }

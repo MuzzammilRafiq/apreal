@@ -220,6 +220,12 @@ export type LocalWebAdminStatus = {
 	relayTransportConnected: boolean;
 	relayStartupError: string | null;
 	agentId: string | null;
+	chatPersistence: {
+		enabled: boolean;
+		degraded: boolean;
+		path: string;
+		error: string | null;
+	};
 	webUiReady: boolean;
 	webUiPath: string;
 	appendSystemPrompt: string;
@@ -554,6 +560,7 @@ export type ServerAppPayload<SessionSummary, TranscriptMessage> =
 	| { type: "session_deleted"; sessionId: string }
 	| { type: "assistant_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
 	| { type: "assistant_thinking_delta"; sessionId: string; messageId: string; delta: string; contentIndex: number }
+	| { type: "replay_reset"; reason: "replay_unavailable"; lastSeq: number; nextSeq: number }
 	| { type: "error"; message: string; sessionId?: string }
 	| { type: "pong" }
 	| ServerJobsMessage

@@ -498,6 +498,13 @@ export function App({ runtime }: AppProps) {
 					setConnectionError(serverPayload.message);
 					break;
 				}
+				case "replay_reset": {
+					lastSeenSyncSeqRef.current = Math.max(lastSeenSyncSeqRef.current, serverPayload.nextSeq - 1);
+					clearBufferedAssistantDeltas();
+					requestSessionPageRef.current(0, Math.max(visibleSessionLimitRef.current, SESSION_PAGE_SIZE));
+					ensureSessionLoadedRef.current(activeSessionIdRef.current);
+					break;
+				}
 				case "sessions_page": {
 					setLoadingMoreSessions(false);
 					serverLoadedSessionCountRef.current = serverPayload.offset === 0

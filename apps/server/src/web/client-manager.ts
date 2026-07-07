@@ -137,6 +137,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 	function shouldWrapPayload(payload: ServerPayload): boolean {
 		return payload.type !== "connected" &&
 			payload.type !== "error" &&
+			payload.type !== "replay_reset" &&
 			payload.type !== "pong";
 	}
 
@@ -323,6 +324,18 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 		}
 
 		const buffer = clientSyncBuffers.get(clientId) ?? [];
+		const firstBufferedSeq = buffer[0]?.seq;
+		const nextSeq = clientNextSyncSeqs.get(clientId) ?? 1;
+		if (lastSeq > 0 && lastSeq < nextSeq - 1 && (firstBufferedSeq === undefined || lastSeq < firstBufferedSeq - 1)) {
+			client.send({
+				type: "replay_reset",
+				reason: "replay_unavailable",
+				lastSeq,
+				nextSeq,
+			});
+			return;
+		}
+
 		for (const event of buffer) {
 			if (event.seq > lastSeq) {
 				client.send(event);
