@@ -752,6 +752,7 @@ export function createHandlers(
 		session.abortRequested = true;
 		session.unsubscribe?.();
 		session.unsubscribe = null;
+		session.controller?.dispose();
 		session.controller = null;
 		session.controllerPromise = null;
 		sessions.delete(sessionId);
