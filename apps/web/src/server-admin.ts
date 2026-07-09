@@ -338,16 +338,6 @@ export async function deleteScheduledJob(jobId: string): Promise<void> {
 	);
 }
 
-export {
-	ADMIN_APPEND_SYSTEM_PROMPT_PATH,
-	ADMIN_PROVIDER_API_KEY_PATH,
-	ADMIN_PROVIDER_LOGIN_PATH,
-	ADMIN_JOBS_PATH,
-	ADMIN_PROVIDERS_PATH,
-	ADMIN_RELAY_AUTHENTICATE_PATH,
-	ADMIN_STATUS_PATH,
-};
-
 function isProviderLoginStatus(value: unknown): value is ProviderLoginStatus {
 	return value === "idle" || value === "pending" || value === "succeeded" || value === "failed";
 }

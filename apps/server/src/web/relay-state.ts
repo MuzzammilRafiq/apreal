@@ -1,9 +1,10 @@
-import { ensureRelayAgentAuth, getRelayServerUrl } from "../relay-auth.ts";
+import { PI_RELAY_URL } from "@apreal/shared";
+import { ensureRelayAgentAuth } from "../relay-auth.ts";
 import { getErrorMessage } from "../session.ts";
 import type { Logger } from "./client-manager.ts";
 import type { RelayMutableState } from "./relay.ts";
 
-export async function initializeRelayState(logger: Logger, relayUrl = getRelayServerUrl()): Promise<RelayMutableState> {
+export async function initializeRelayState(logger: Logger, relayUrl =PI_RELAY_URL): Promise<RelayMutableState> {
 	const relayState: RelayMutableState = {
 		auth: null,
 		startupError: null,

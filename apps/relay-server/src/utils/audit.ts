@@ -2,7 +2,7 @@ import type { IncomingMessage } from "node:http";
 
 import { log } from "./log.ts";
 
-export const AUDIT_EVENTS = [
+const AUDIT_EVENTS = [
 	"auth.sign_in",
 	"auth.sign_out",
 	"auth.owner_grant_issued",

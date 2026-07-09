@@ -5,7 +5,7 @@ import { createCustomTools } from "./tools/index.ts";
 // Built-in Pi tools you can enable in agentToolsConfig.builtInTools.
 export type BuiltInToolName = "read" | "bash" | "edit" | "write" | "grep" | "find" | "ls";
 
-export const BUILT_IN_TOOL_PRESETS = {
+const BUILT_IN_TOOL_PRESETS = {
 	readonly: ["read", "grep", "find", "ls"],
 	coding: ["read", "bash", "edit", "write"],
 	extendedCoding: ["read", "bash", "edit", "write", "grep", "find", "ls"],
@@ -33,10 +33,6 @@ export const agentToolsConfig: AgentToolsConfig = {
 	builtInTools: [...BUILT_IN_TOOL_PRESETS.extendedCoding],
 	customTools: defaultCustomTools,
 };
-
-export function getConfiguredBuiltInToolNames() {
-	return [...agentToolsConfig.builtInTools];
-}
 
 export function getConfiguredToolNames(customTools: ToolDefinition[] = agentToolsConfig.customTools): string[] {
 	return [...agentToolsConfig.builtInTools, ...customTools.map((tool) => tool.name)];

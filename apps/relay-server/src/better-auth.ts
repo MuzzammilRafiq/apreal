@@ -155,7 +155,7 @@ export function isBetterAuthConfigured(): boolean {
 }
 
 // Lazily creates and caches the Better Auth instance for request handlers.
-export function getBetterAuth(): Auth {
+function getBetterAuth(): Auth {
 	cachedAuth ??= createAuth();
 	return cachedAuth;
 }

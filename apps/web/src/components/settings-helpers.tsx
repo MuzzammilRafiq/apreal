@@ -1,7 +1,7 @@
 import type { AvailableSkill, AvailableTool, McpServerConfig, McpServerTransport, ProvidersResponse } from "@apreal/shared";
 import type { SettingsSectionId } from "../runtime";
 
-export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
 	"anthropic": "Anthropic",
 	"openai": "OpenAI",
 	"openrouter": "OpenRouter",
@@ -110,8 +110,6 @@ export type SearchableProvider = {
 	loginState: ProvidersResponse["providers"][number]["loginState"];
 	models: ProvidersResponse["providers"][number]["models"];
 };
-
-export const DEFAULT_VISIBLE_PROVIDER_COUNT = 8;
 
 export function normalizeSearchValue(value: string): string {
 	return value.trim().toLowerCase();
@@ -238,22 +236,6 @@ export function getToolToneClassName(kind: AvailableTool["kind"]): string {
 
 export function getToolKindLabel(kind: AvailableTool["kind"]): string {
 	return kind === "built_in" ? "Default" : "Custom";
-}
-
-export function getSkillToneClassName(source: AvailableSkill["source"]): string {
-	switch (source) {
-		case "project":
-			return "border-sky-300 bg-sky-50 text-sky-800";
-		case "extension":
-			return "border-amber-300 bg-amber-50 text-amber-800";
-		case "temporary":
-			return "border-fuchsia-300 bg-fuchsia-50 text-fuchsia-800";
-		case "path":
-			return "border-slate-300 bg-white text-slate-700";
-		case "user":
-		default:
-			return "border-emerald-300 bg-emerald-50 text-emerald-800";
-	}
 }
 
 export function SectionIcon({ section }: { section: SettingsSection }) {

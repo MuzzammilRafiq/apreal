@@ -11,12 +11,11 @@ import type { RelayCredentialStore } from "./credential-store.ts";
 // The relay accepts only two authenticated peer roles.
 // Keeping the role set explicit prevents accidental support for extra values
 // that might slip in through a malformed or malicious token.
-export const USER_TYPES = ["agent", "client"] as const;
-export const RELAY_JWT_EXPIRES_IN = "1h" as const;
-export const RELAY_JWT_TTL_MS = 60 * 60 * 1000;
-export const OWNER_AGENT_GRANT_EXPIRES_IN_SECONDS = 5 * 60;
-export const RELAY_BROWSER_IDENTITY_COOKIE_NAME = "__Secure-apreal_relay_identity";
-export const RELAY_BROWSER_IDENTITY_TTL_SECONDS = 400 * 24 * 60 * 60;
+const USER_TYPES = ["agent", "client"] as const;
+const RELAY_JWT_EXPIRES_IN = "1h" as const;
+const OWNER_AGENT_GRANT_EXPIRES_IN_SECONDS = 5 * 60;
+const RELAY_BROWSER_IDENTITY_COOKIE_NAME = "__Secure-apreal_relay_identity";
+const RELAY_BROWSER_IDENTITY_TTL_SECONDS = 400 * 24 * 60 * 60;
 
 export type UserType = RelayPrincipalType;
 
@@ -232,15 +231,9 @@ export function readBearerTokenFromRequest(request: IncomingMessage): string {
 	return extractBearerToken(request.headers.authorization);
 }
 
-// Authenticates an HTTP request end-to-end and returns the verified relay
-// principal payload.
-export function authenticateHttpRequest(request: IncomingMessage): AuthTokenPayload {
-	return readRelayToken(readBearerTokenFromRequest(request));
-}
-
 // Helper used for provisioning and local testing. Keeping the helper here
 // ensures token creation and token validation share one contract.
-export function generateToken({ type, id, credentialId, key, targetId, targetType, serverUrl, ownerUserId }: GenerateTokenInput): string {
+function generateToken({ type, id, credentialId, key, targetId, targetType, serverUrl, ownerUserId }: GenerateTokenInput): string {
 	if (!isUserType(type)) {
 		throw new AuthError("invalid token role");
 	}

@@ -8,7 +8,6 @@ import {
 import {
 	ensureRelayAgentAuth,
 	authenticateRelayAgentWithOwnerGrant,
-	getRelayServerUrl,
 	readClientTokenFromRequest,
 	verifyRelayClientAccess,
 } from "../relay-auth.ts";

@@ -105,7 +105,7 @@ function createSessionPreview(transcript: TranscriptMessage[]): string {
 	return "No messages yet";
 }
 
-export function cloneTranscript(transcript: TranscriptMessage[]): TranscriptMessage[] {
+function cloneTranscript(transcript: TranscriptMessage[]): TranscriptMessage[] {
 	return transcript.map((entry) => ({
 		...entry,
 		modelLabel: entry.modelLabel ?? null,
