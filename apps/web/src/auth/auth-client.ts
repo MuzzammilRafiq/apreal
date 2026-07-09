@@ -1,25 +1,11 @@
+import { PI_RELAY_URL } from "@apreal/shared";
 import { createAuthClient } from "better-auth/react";
 
 declare const __APREAL_WEB_TARGET__: "local" | "remote";
 
-function trimTrailingSlash(value: string): string {
-	return value.replace(/\/$/, "");
-}
 
 function resolveAuthBaseUrl(): string {
-	const explicitAuthUrl = import.meta.env.VITE_APREAL_AUTH_URL?.trim();
-	if (explicitAuthUrl) {
-		return trimTrailingSlash(explicitAuthUrl);
-	}
-
-	if (__APREAL_WEB_TARGET__ === "local") {
-		const relayUrl = import.meta.env.VITE_PI_RELAY_URL?.trim();
-		if (relayUrl) {
-			return trimTrailingSlash(relayUrl);
-		}
-	}
-
-	return window.location.origin;
+	return PI_RELAY_URL
 }
 
 export const authBaseUrl = resolveAuthBaseUrl();

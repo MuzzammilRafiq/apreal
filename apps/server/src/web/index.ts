@@ -6,6 +6,7 @@ import {
 	LOCAL_CLIENT_ID_HEADER,
 	LOCAL_CLIENT_ID_QUERY_PARAM,
 	normalizeRelayPrincipalId,
+	PI_RELAY_URL,
 	type CreateMcpServerRequest,
 	type LocalWebAdminStatus,
 	type McpServersResponse,
@@ -14,12 +15,11 @@ import {
 import { createChatStore } from "../chat-store.ts";
 import { createComputerUseMcpDefinition } from "../computer-use-mcp.ts";
 import { getConfiguredToolInventory, getConfiguredToolsLabel } from "../agent-tools.ts";
-import { getAprealAgentPath, getAprealServerDatabasePath } from "../agent-dir.ts";
+import { getAprealAgentPath, getAprealHomeDir, getAprealServerDatabasePath } from "../agent-dir.ts";
 import { getServerEnv } from "../env.ts";
 import { createLogger } from "../logger.ts";
 import { McpToolRegistry } from "../mcp-tools.ts";
 import { McpStore } from "../mcp-store.ts";
-import { getRelayServerUrl } from "../relay-auth.ts";
 import { createCustomTools } from "../tools/index.ts";
 import { createJobExecutor, JobStore, Scheduler } from "../scheduled-jobs/index.ts";
 import { getAvailableSkills, getErrorMessage, prewarmAgentRuntime } from "../session.ts";
@@ -47,7 +47,6 @@ import {
 	isPrivateNetworkClientRequest,
 	json,
 	DEFAULT_PORT,
-	DEFAULT_WORKSPACE_ROOT,
 	type ClientConnection,
 } from "./utils.ts";
 
@@ -103,13 +102,12 @@ async function writeAppendSystemPrompt(value: string): Promise<void> {
 	await writeFile(APREAL_AGENT_APPEND_SYSTEM_PROMPT_PATH, normalizedValue, "utf8");
 }
 
-export async function runWebServer(options?: { cwd?: string; port?: number }) {
+export async function runWebServer() {
 	const env = getServerEnv();
-	const cwd = options?.cwd ?? env.PI_WORKSPACE_ROOT ?? DEFAULT_WORKSPACE_ROOT;
-	const port = options?.port ?? env.PORT ?? DEFAULT_PORT;
+	const cwd = getAprealHomeDir();
+	const port = env.PORT ?? DEFAULT_PORT;
 	const logger = createLogger("web-server");
-	const relayUrl = getRelayServerUrl();
-	const relayState = await initializeRelayState(logger, relayUrl);
+	const relayState = await initializeRelayState(logger, PI_RELAY_URL);
 	const providerLogin = createProviderLoginManager({
 		authPath: APREAL_AGENT_AUTH_PATH,
 		cwd,
@@ -223,7 +221,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 			sessions: sessions.size,
 			port: listeningPort,
 			cwd,
-			relayUrl,
+			relayUrl:PI_RELAY_URL,
 			relayReady: Boolean(relayState.auth),
 			relayTransportConnected: relayState.transportConnected,
 			relayStartupError: relayState.startupError,
@@ -296,7 +294,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		clientManager,
 	);
 	const relay = createRelay(
-		{ logger, relayUrl, relayState, clients },
+		{ logger, relayUrl:PI_RELAY_URL, relayState, clients },
 		clientManager,
 		handlers.handleClientMessage,
 	);
@@ -417,7 +415,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 		logLevel: env.LOG_LEVEL ?? "info",
 		transport: "http-sse+relay",
 		agentId: relayState.auth?.agentId ?? null,
-		relayUrl,
+		relayUrl:PI_RELAY_URL,
 		relayReady: Boolean(relayState.auth),
 		relayTransportConnected: relayState.transportConnected,
 	});
@@ -434,7 +432,7 @@ export async function runWebServer(options?: { cwd?: string; port?: number }) {
 	if (allowPrivateNetworkAdmin) {
 		console.log("Private-network admin access: enabled");
 	}
-	console.log(`Relay auth: ${relayUrl}`);
+	console.log(`Relay auth: ${PI_RELAY_URL}`);
 	console.log(`Agent id: ${relayState.auth?.agentId ?? "not registered"}`);
 	console.log(`Scheduled jobs: ${activeJobCount} active`);
 	if (relayState.startupError) {

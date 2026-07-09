@@ -107,16 +107,6 @@ function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
   )
 }
 
-function FieldSeparator({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="field-separator"
-      className={cn("h-px w-full bg-border", className)}
-      {...props}
-    />
-  )
-}
-
 function FieldError({ className, ...props }: React.ComponentProps<"p">) {
   return (
     <p
@@ -135,7 +125,6 @@ export {
   FieldGroup,
   FieldLabel,
   FieldLegend,
-  FieldSeparator,
   FieldSet,
   FieldTitle,
 }

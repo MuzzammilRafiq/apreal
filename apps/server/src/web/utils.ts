@@ -1,6 +1,6 @@
 import { isIP } from "node:net";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	type RelayAgentCommand,
@@ -17,7 +17,6 @@ export const DEFAULT_PORT = 3000;
 export const DEFAULT_SESSION_PAGE_LIMIT = 50;
 export const MAX_SESSION_PAGE_LIMIT = 200;
 export const SERVER_SRC_DIR = dirname(fileURLToPath(import.meta.url));
-export const DEFAULT_WORKSPACE_ROOT = join(SERVER_SRC_DIR, "..", "..", "..");
 export const RELAY_STREAM_RETRY_MS = 1_000;
 export const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 export const SSE_ENCODER = new TextEncoder();
@@ -89,16 +88,7 @@ export function parseRelayAgentCommand(rawMessage: string): RelayAgentCommand | 
 	return null;
 }
 
-export function parsePort(rawPort: string | undefined): number {
-	const candidate = Number.parseInt(rawPort ?? `${DEFAULT_PORT}`, 10);
-	if (Number.isNaN(candidate) || candidate <= 0) {
-		return DEFAULT_PORT;
-	}
-
-	return candidate;
-}
-
-export function mergeResponseHeaders(headers?: ResponseInit["headers"]): Record<string, string> {
+function mergeResponseHeaders(headers?: ResponseInit["headers"]): Record<string, string> {
 	const mergedHeaders: Record<string, string> = {
 		"cache-control": "no-store",
 	};
@@ -215,12 +205,12 @@ export function createCorsHeaders(request?: Request): Record<string, string> {
 	};
 }
 
-export function getRequestRemoteAddress(request: Request): string | null {
+function getRequestRemoteAddress(request: Request): string | null {
 	const remoteAddress = request.headers.get("x-pi-remote-address")?.trim();
 	return remoteAddress || null;
 }
 
-export function isLoopbackAddress(value: string): boolean {
+function isLoopbackAddress(value: string): boolean {
 	const normalized = value.trim().toLowerCase();
 	return normalized === "::1" || normalized === "127.0.0.1" || normalized === "::ffff:127.0.0.1";
 }
@@ -230,7 +220,7 @@ function normalizeIpAddress(value: string): string {
 	return normalized.startsWith("::ffff:") ? normalized.slice("::ffff:".length) : normalized;
 }
 
-export function isPrivateNetworkAddress(value: string): boolean {
+function isPrivateNetworkAddress(value: string): boolean {
 	const normalized = normalizeIpAddress(value);
 
 	if (normalized === "localhost" || isLoopbackAddress(normalized)) {

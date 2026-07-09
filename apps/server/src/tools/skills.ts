@@ -321,7 +321,7 @@ function buildDetails(details: Record<string, unknown>): Record<string, unknown>
 	return details;
 }
 
-export function createSkillsListTool(cwd = process.cwd()) {
+function createSkillsListTool(cwd = process.cwd()) {
 	return defineTool({
 		name: "skills_list",
 		label: "Skills List",
@@ -364,7 +364,7 @@ export function createSkillsListTool(cwd = process.cwd()) {
 	});
 }
 
-export function createSkillViewTool(cwd = process.cwd()) {
+function createSkillViewTool(cwd = process.cwd()) {
 	return defineTool({
 		name: "skill_view",
 		label: "Skill View",
@@ -402,7 +402,7 @@ export function createSkillViewTool(cwd = process.cwd()) {
 	});
 }
 
-export function createSkillManageTool() {
+function createSkillManageTool() {
 	return defineTool({
 		name: "skill_manage",
 		label: "Skill Manage",

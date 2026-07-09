@@ -25,6 +25,7 @@ export const LOCAL_CLIENT_ID_QUERY_PARAM = "clientId";
 export const LOCAL_AUTH_SESSION_HEADER = "x-apreal-local-session";
 export const LOCAL_AUTH_SESSION_QUERY_PARAM = "localSession";
 export const SYNC_LAST_SEQ_QUERY_PARAM = "lastSeq";
+export const PI_RELAY_URL = "https://api.malikmuzzammilrafiq.store"
 
 export type ServerSyncScope = "global" | `session:${string}` | `client:${string}`;
 

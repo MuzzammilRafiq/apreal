@@ -7,11 +7,11 @@ import { parseServerPayloadEnvelope } from "@apreal/shared";
 import type { SessionCacheEntry, SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "./chatTypes";
 import { createBrowserUuid } from "./local-client";
 
-export const ACTIVE_SESSION_STORAGE_KEY = "pi-browser-active-session";
+const ACTIVE_SESSION_STORAGE_KEY = "pi-browser-active-session";
 export const SESSION_PAGE_SIZE = 50;
 export const STREAM_DISCONNECTED_MESSAGE = "Disconnected from the server stream. Reconnecting...";
 export const STREAM_REQUIRED_MESSAGE = "Client event stream is not connected.";
-export const RELAY_STREAM_REQUIRED_MESSAGE = "browser client stream is not connected";
+const RELAY_STREAM_REQUIRED_MESSAGE = "browser client stream is not connected";
 export const LOCAL_ADMIN_STATUS_REFRESH_INTERVAL_MS = 3_000;
 export const RELAY_STATUS_REFRESH_INTERVAL_MS = 15_000;
 
@@ -147,7 +147,7 @@ export function createSummaryOnlyCacheEntry(session: SessionSummary): SessionCac
 	};
 }
 
-export function getSegmentSortValue(segment: TranscriptMessageSegment): number {
+function getSegmentSortValue(segment: TranscriptMessageSegment): number {
 	return segment.contentIndex ?? Number.MAX_SAFE_INTEGER;
 }
 

@@ -11,7 +11,7 @@ import { getErrorMessage } from "./http.ts";
 import type { RelayCredentialStore } from "../credential-store.ts";
 
 // Computes the opposite peer role a token is expected to target by default.
-export function getDefaultTargetType(type: UserType): RelayPrincipalType {
+function getDefaultTargetType(type: UserType): RelayPrincipalType {
 	return type === "client" ? "agent" : "client";
 }
 
@@ -67,7 +67,7 @@ export function mapRelayConnectionErrorStatus(error: unknown): number {
 
 // Best-effort bearer token reader used in places where missing auth is handled
 // by fallback logic rather than immediate failure.
-export function readOptionalBearerToken(headerValue: string | string[] | undefined): string | null {
+function readOptionalBearerToken(headerValue: string | string[] | undefined): string | null {
 	if (!headerValue) {
 		return null;
 	}

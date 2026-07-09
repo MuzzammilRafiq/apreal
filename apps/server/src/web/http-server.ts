@@ -5,7 +5,7 @@ import { pipeline } from "node:stream/promises";
 import { createCorsHeaders } from "./utils.ts";
 import { getErrorMessage } from "../session.ts";
 
-export function createNodeRequest(request: IncomingMessage, response: ServerResponse): Request {
+function createNodeRequest(request: IncomingMessage, response: ServerResponse): Request {
 	const protocol = request.headers["x-forwarded-proto"] ?? "http";
 	const host = request.headers.host ?? "localhost";
 	const url = new URL(request.url ?? "/", `${protocol}://${host}`);
@@ -61,7 +61,7 @@ export function createNodeRequest(request: IncomingMessage, response: ServerResp
 	return new Request(url, init);
 }
 
-export async function sendNodeResponse(response: ServerResponse, webResponse: Response) {
+async function sendNodeResponse(response: ServerResponse, webResponse: Response) {
 	response.statusCode = webResponse.status;
 	response.statusMessage = webResponse.statusText;
 	webResponse.headers.forEach((value, key) => {

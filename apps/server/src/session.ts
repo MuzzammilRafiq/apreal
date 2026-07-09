@@ -42,7 +42,7 @@ const LEGACY_ENV_CREDENTIAL_PROVIDERS: Record<string, string> = {
 };
 
 import { BUILT_IN_TOOLS_LABEL, getErrorMessage, formatModelLabel, buildAgentModelInfo, stringifyToolArguments, truncateToolSummary, readStringField, readNumberField, formatToolExecutionSummary, extractAssistantMessageSnapshot, type ToolExecutionStatus, type ToolExecutionSummary, type AgentTextSegment, type AgentThinkingSegment, type AgentToolCallSegment, type AgentMessageSegment, type AgentContextUsage, type AgentModelInfo, type AgentStreamEvent, type AgentController } from "./session-events.ts";
-export { BUILT_IN_TOOLS_LABEL, getErrorMessage, formatModelLabel, buildAgentModelInfo, stringifyToolArguments, truncateToolSummary, readStringField, readNumberField, formatToolExecutionSummary, extractAssistantMessageSnapshot } from "./session-events.ts";
+export { getErrorMessage, formatModelLabel } from "./session-events.ts";
 export type { ToolExecutionStatus, ToolExecutionSummary, AgentTextSegment, AgentThinkingSegment, AgentToolCallSegment, AgentMessageSegment, AgentContextUsage, AgentModelInfo, AgentStreamEvent, AgentController } from "./session-events.ts";
 type AgentControllerOptions = {
 	sessionId?: string;
@@ -136,7 +136,7 @@ async function createResourceLoader(cwd: string, settingsManager: SettingsManage
 	return resourceLoader;
 }
 
-export function shouldNudgeMemoryReview(userTurnCount: number): boolean {
+function shouldNudgeMemoryReview(userTurnCount: number): boolean {
 	return MEMORY_REVIEW_NUDGE_INTERVAL > 0 && userTurnCount > 0 && userTurnCount % MEMORY_REVIEW_NUDGE_INTERVAL === 0;
 }
 

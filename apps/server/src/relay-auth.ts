@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import {
 	RELAY_AGENT_AUTH_PATH,
 	RELAY_CONNECTION_PATH,
+	PI_RELAY_URL,
 	type RelayAgentAuthRequest,
 	type RelayAgentAuthResponse,
 	type RelayPrincipalType,
@@ -141,13 +142,10 @@ async function requestAgentAuth(relayUrl: string, request: RelayAgentAuthRequest
 	return payload as RelayAgentAuthResponse;
 }
 
-export function getRelayServerUrl(): string {
-	return getServerEnv().PI_RELAY_URL || "https://api.malikmuzzammilrafiq.store";
-}
 
 export async function ensureRelayAgentAuth(
 	logger: LoggerLike,
-	relayUrl = getRelayServerUrl(),
+	relayUrl = PI_RELAY_URL,
 ): Promise<StoredRelayAgentAuth> {
 	const storedIdentity = createAgentIdentity(readStoredRelayAgentIdentity(), relayUrl);
 	writeStoredRelayAgentIdentity(storedIdentity);
@@ -183,7 +181,7 @@ export async function ensureRelayAgentAuth(
 export async function authenticateRelayAgentWithOwnerGrant(
 	logger: LoggerLike,
 	ownerGrant: string,
-	relayUrl = getRelayServerUrl(),
+	relayUrl = PI_RELAY_URL,
 ): Promise<StoredRelayAgentAuth> {
 	const storedIdentity = createAgentIdentity(readStoredRelayAgentIdentity(), relayUrl);
 	if (!ownerGrant.trim()) {

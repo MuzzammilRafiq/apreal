@@ -294,7 +294,7 @@ export function getDefaultFileMemoryStore(): FileMemoryStore {
 	return defaultFileMemoryStore;
 }
 
-export function createFileMemoryStore(): FileMemoryStore {
+function createFileMemoryStore(): FileMemoryStore {
 	ensureMemoryDirs();
 
 	return {

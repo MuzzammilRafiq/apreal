@@ -7,7 +7,6 @@ config();
 
 const optionalNonEmptyString = z.string().trim().min(1).optional();
 const optionalPort = z.coerce.number().int().min(1).max(65535).optional();
-const optionalUrl = z.string().trim().url().optional();
 
 export function getServerEnv() {
 	return createEnv({
@@ -19,8 +18,6 @@ export function getServerEnv() {
 			APREAL_HOME: optionalNonEmptyString,
 			LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).optional(),
 			NO_COLOR: optionalNonEmptyString,
-			PI_RELAY_URL: optionalUrl,
-			PI_WORKSPACE_ROOT: optionalNonEmptyString,
 			PORT: optionalPort,
 		},
 		runtimeEnv: process.env,

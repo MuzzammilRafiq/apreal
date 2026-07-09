@@ -23,7 +23,7 @@ export function readStringField(value: unknown): string | null {
 }
 
 // Reads and normalizes an HTTP(S) URL field from parsed JSON.
-export function readUrlField(value: unknown): string | null {
+function readUrlField(value: unknown): string | null {
 	if (typeof value !== "string") {
 		return null;
 	}
