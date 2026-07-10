@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { authBaseUrl, authClient } from "../auth/auth-client";
 import { clearLocalBrowserAuthSession, ensureLocalBrowserAuthSession } from "../local-auth";
 
@@ -18,8 +18,6 @@ export function AccountAuthButton({
 	buttonClassName,
 }: AccountAuthButtonProps) {
 	const { data: session, isPending } = authClient.useSession();
-	const [relayLinkError, setRelayLinkError] = useState<string | null>(null);
-	const [relayLinking, setRelayLinking] = useState(false);
 	const linkedUserRef = useRef<string | null>(null);
 	const user = session?.user;
 
@@ -40,18 +38,10 @@ export function AccountAuthButton({
 
 		let cancelled = false;
 		linkedUserRef.current = user.id;
-		setRelayLinking(true);
-		setRelayLinkError(null);
 		void ensureLocalBrowserAuthSession()
-			.catch((error) => {
+			.catch(() => {
 				if (!cancelled) {
 					linkedUserRef.current = null;
-					setRelayLinkError(error instanceof Error ? error.message : "Failed to link the local relay agent.");
-				}
-			})
-			.finally(() => {
-				if (!cancelled) {
-					setRelayLinking(false);
 				}
 			});
 

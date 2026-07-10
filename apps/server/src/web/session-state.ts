@@ -23,7 +23,7 @@ export type TranscriptToolCall = {
 	updatedAt: number;
 };
 
-export type TranscriptThinkingSegment = {
+type TranscriptThinkingSegment = {
 	id: string;
 	type: "thinking";
 	content: string;
@@ -32,7 +32,7 @@ export type TranscriptThinkingSegment = {
 	updatedAt: number;
 };
 
-export type TranscriptTextSegment = {
+type TranscriptTextSegment = {
 	id: string;
 	type: "text";
 	content: string;

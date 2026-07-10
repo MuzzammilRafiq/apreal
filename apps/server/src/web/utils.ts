@@ -1,5 +1,4 @@
 import { isIP } from "node:net";
-import { homedir } from "node:os";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -35,17 +34,6 @@ export type ClientConnection = {
 	send(payload: ServerMessage): boolean | void;
 	close?(reason: string): void;
 };
-
-export {
-	type SessionSummary,
-	type SharedSessionState,
-	type TranscriptMessage,
-	type TranscriptMessageSegment,
-	type TranscriptTextSegment,
-	type TranscriptThinkingSegment,
-	type TranscriptToolCall,
-	type TranscriptToolCallSegment,
-} from "./session-state.ts";
 
 export function parseRelayAgentCommand(rawMessage: string): RelayAgentCommand | null {
 	let value: unknown;

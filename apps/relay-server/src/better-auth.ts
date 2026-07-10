@@ -138,8 +138,7 @@ function createAuth() {
 	return betterAuth(createAuthOptions());
 }
 
-export type Auth = ReturnType<typeof createAuth>;
-export type AuthSession = Auth["$Infer"]["Session"];
+type Auth = ReturnType<typeof createAuth>;
 
 let cachedAuth: Auth | null = null;
 let cachedAuthHandler: ReturnType<typeof toNodeHandler> | null = null;

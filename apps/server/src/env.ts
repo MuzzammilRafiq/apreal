@@ -24,5 +24,3 @@ export function getServerEnv() {
 		emptyStringAsUndefined: true,
 	});
 }
-
-export type ServerEnv = ReturnType<typeof getServerEnv>;

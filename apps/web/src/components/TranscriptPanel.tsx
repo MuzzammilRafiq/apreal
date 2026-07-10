@@ -189,7 +189,7 @@ function getReasoningStepStatus(segment: TranscriptReasoningSegment): "complete"
 	}
 }
 
-function AssistantReasoningBlock({ item, segments }: { item: TranscriptMessage; segments: TranscriptReasoningSegment[] }) {
+function AssistantReasoningBlock({ segments }: { segments: TranscriptReasoningSegment[] }) {
 	const mergedSegments = mergeConsecutiveThinkingSegments(segments);
 
 	return (
@@ -295,7 +295,7 @@ const TranscriptMessageCard = memo(function TranscriptMessageCard({ item }: { it
 				<MessageContent className="w-full bg-transparent p-0">
 					<div className="flex w-full flex-col gap-3">
 						{assistantSegmentGroups.map((group) => group.type === "reasoning" ? (
-							<AssistantReasoningBlock key={group.id} item={item} segments={group.segments} />
+							<AssistantReasoningBlock key={group.id} segments={group.segments} />
 						) : (
 							<StreamingMarkdownText key={group.segment.id} content={group.segment.content} pending={item.pending} />
 						))}

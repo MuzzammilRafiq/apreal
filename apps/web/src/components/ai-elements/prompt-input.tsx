@@ -12,7 +12,6 @@ import type { ChatStatus, FileUIPart } from "ai";
 import { CornerDownLeftIcon, SquareIcon, XIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import type {
-  ChangeEvent,
   ChangeEventHandler,
   ClipboardEventHandler,
   ComponentProps,

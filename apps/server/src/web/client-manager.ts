@@ -64,30 +64,6 @@ export interface ClientActions {
 const SYNC_EVENT_BUFFER_LIMIT = 1_000;
 const DISCONNECTED_CLIENT_SYNC_RETENTION_MS = 5 * 60_000;
 
-function describePayload(payload: ServerPayload): Record<string, string | number | boolean | null | undefined> {
-	const sessionId =
-		"sessionId" in payload && typeof payload.sessionId === "string"
-			? payload.sessionId
-			: "session" in payload && payload.session && typeof payload.session === "object" && "id" in payload.session && typeof payload.session.id === "string"
-				? payload.session.id
-				: undefined;
-
-	return {
-		type: payload.type,
-		sessionId,
-		revision: "session" in payload && payload.session && typeof payload.session === "object" && "revision" in payload.session && typeof payload.session.revision === "number"
-			? payload.session.revision
-			: undefined,
-		busy: "session" in payload && payload.session && typeof payload.session === "object" && "busy" in payload.session && typeof payload.session.busy === "boolean"
-			? payload.session.busy
-			: undefined,
-		transcriptLength: "transcript" in payload && Array.isArray(payload.transcript) ? payload.transcript.length : undefined,
-		deltaLength: "delta" in payload && typeof payload.delta === "string" ? payload.delta.length : undefined,
-		messageId: "messageId" in payload && typeof payload.messageId === "string" ? payload.messageId : undefined,
-		contentIndex: "contentIndex" in payload && typeof payload.contentIndex === "number" ? payload.contentIndex : undefined,
-	};
-}
-
 function createSseChunk(payload: ServerMessage): Uint8Array {
 	const id = payload.type === "sync_event" ? `id: ${payload.seq}\n` : "";
 	return SSE_ENCODER.encode(`${id}data: ${JSON.stringify(payload)}\n\n`);

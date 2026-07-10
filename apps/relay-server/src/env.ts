@@ -75,5 +75,3 @@ export function readRequiredRelayEnv(...names: RelayEnvStringKey[]): string {
 export function hasRelayJwtSecret(): boolean {
 	return Boolean(getRelayEnv().JWT_SECRET);
 }
-
-export type { RelayEnv, RelayEnvStringKey };
