@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { Check, ChevronDown, LoaderCircle } from "lucide-react";
-import { StatusPill, type SearchableModel, type SearchableProvider } from "./settings-helpers";
+import { type SearchableModel, type SearchableProvider } from "./settings-helpers";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "./ui/command";
 
 type SettingsModelsSectionProps = {

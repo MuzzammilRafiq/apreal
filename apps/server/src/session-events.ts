@@ -1,10 +1,7 @@
 import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
 import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
-import { getConfiguredToolsLabel } from "./agent-tools.ts";
 
-export const BUILT_IN_TOOLS_LABEL = getConfiguredToolsLabel();
-
-export type ToolExecutionStatus = "running" | "completed" | "failed";
+type ToolExecutionStatus = "running" | "completed" | "failed";
 
 export type ToolExecutionSummary = {
 	id: string;
@@ -13,24 +10,24 @@ export type ToolExecutionSummary = {
 	status: ToolExecutionStatus;
 };
 
-export type AgentTextSegment = {
+type AgentTextSegment = {
 	type: "text";
 	content: string;
 	contentIndex: number;
 };
 
-export type AgentThinkingSegment = {
+type AgentThinkingSegment = {
 	type: "thinking";
 	content: string;
 	contentIndex: number;
 };
 
-export type AgentToolCallSegment = ToolExecutionSummary & {
+type AgentToolCallSegment = ToolExecutionSummary & {
 	type: "tool_call";
 	contentIndex: number;
 };
 
-export type AgentMessageSegment = AgentTextSegment | AgentThinkingSegment | AgentToolCallSegment;
+type AgentMessageSegment = AgentTextSegment | AgentThinkingSegment | AgentToolCallSegment;
 
 export type AgentContextUsage = {
 	tokens: number | null;
@@ -101,7 +98,7 @@ export function buildAgentModelInfo(
 	};
 }
 
-export function stringifyToolArguments(argumentsValue: unknown): string {
+function stringifyToolArguments(argumentsValue: unknown): string {
 	if (typeof argumentsValue === "string") {
 		return argumentsValue;
 	}
@@ -113,7 +110,7 @@ export function stringifyToolArguments(argumentsValue: unknown): string {
 	}
 }
 
-export function truncateToolSummary(value: string, maxLength = 180): string {
+function truncateToolSummary(value: string, maxLength = 180): string {
 	const normalized = value.replace(/\s+/g, " ").trim();
 	if (!normalized) {
 		return "No arguments";
@@ -126,7 +123,7 @@ export function truncateToolSummary(value: string, maxLength = 180): string {
 	return `${normalized.slice(0, Math.max(0, maxLength - 3))}...`;
 }
 
-export function readStringField(record: Record<string, unknown>, keys: string[]): string | null {
+function readStringField(record: Record<string, unknown>, keys: string[]): string | null {
 	for (const key of keys) {
 		const value = record[key];
 		if (typeof value === "string" && value.trim()) {
@@ -137,7 +134,7 @@ export function readStringField(record: Record<string, unknown>, keys: string[])
 	return null;
 }
 
-export function readNumberField(record: Record<string, unknown>, keys: string[]): number | null {
+function readNumberField(record: Record<string, unknown>, keys: string[]): number | null {
 	for (const key of keys) {
 		const value = record[key];
 		if (typeof value === "number" && Number.isFinite(value)) {

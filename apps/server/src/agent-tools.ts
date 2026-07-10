@@ -3,7 +3,7 @@ import type { AvailableTool } from "@apreal/shared";
 import { createCustomTools } from "./tools/index.ts";
 
 // Built-in Pi tools you can enable in agentToolsConfig.builtInTools.
-export type BuiltInToolName = "read" | "bash" | "edit" | "write" | "grep" | "find" | "ls";
+type BuiltInToolName = "read" | "bash" | "edit" | "write" | "grep" | "find" | "ls";
 
 const BUILT_IN_TOOL_PRESETS = {
 	readonly: ["read", "grep", "find", "ls"],

@@ -128,7 +128,6 @@ export function ScheduledJobList({
 					<div className="space-y-2">
 						{jobs.map((job) => {
 							const isSelected = job.id === selectedJobId;
-							const tone = getJobStatusTone(job);
 							const relative = formatNextRunRelative(job.nextRunAt);
 
 							return (

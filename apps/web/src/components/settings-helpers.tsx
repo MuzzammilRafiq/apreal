@@ -1,4 +1,4 @@
-import type { AvailableSkill, AvailableTool, McpServerConfig, McpServerTransport, ProvidersResponse } from "@apreal/shared";
+import type { AvailableTool, McpServerConfig, McpServerTransport, ProvidersResponse } from "@apreal/shared";
 import type { SettingsSectionId } from "../runtime";
 
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = {

@@ -18,23 +18,23 @@ const USER_MEMORY_CHAR_LIMIT = 1375;
 export type MemoryKind = "search" | CuratedMemoryTarget;
 export type CuratedMemoryTarget = "agent" | "user";
 
-export type SearchMemoryFile = {
+type SearchMemoryFile = {
 	fileName: string;
 	lineCount: number;
 	preview: string;
 };
 
-export type CuratedMemorySnapshot = {
+type CuratedMemorySnapshot = {
 	entries: string[];
 	blockedEntries: number;
 };
 
-export type FileMemoryContext = {
+type FileMemoryContext = {
 	path: string;
 	content: string;
 };
 
-export type FileMemoryPromptSnapshot = {
+type FileMemoryPromptSnapshot = {
 	searchFiles: SearchMemoryFile[];
 	agent: CuratedMemorySnapshot;
 	user: CuratedMemorySnapshot;

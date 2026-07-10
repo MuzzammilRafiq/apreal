@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppRouteView } from "./AppRouteView";
 import { authClient } from "./auth/auth-client";
 import { AuthGate } from "./components/AuthGate";
-import type { ScheduledJobDetails, SessionCacheEntry, SessionSummary, TranscriptMessage } from "./chatTypes";
+import type { SessionCacheEntry, SessionSummary, TranscriptMessage } from "./chatTypes";
 import { createBrowserUuid } from "./local-client";
 import {
 	clearCachedSessions,
@@ -90,7 +90,7 @@ export function App({ runtime }: AppProps) {
 		authorizedSettingsSections,
 		scheduledJobs, scheduledJobsError, loadingScheduledJobs, scheduledJobRuns, scheduledJobRunsError, loadingScheduledJobRuns,
 		appendPromptMessage, appendPromptError, savingAppendPrompt,
-		setAdminStatus, setAdminStatusError, refreshAdminStatus, reloadMcpServers, handleRefreshJobs, handleRefreshJobRuns,
+		reloadMcpServers, handleRefreshJobs, handleRefreshJobRuns,
 		updateScheduledJob, toggleScheduledJobEnabled, deleteScheduledJob, handleSaveAppendSystemPrompt,
 		handleSetDefaultModel, handleStartProviderLogin, handleSaveProviderApiKey, handleCreateMcpServer, handleUpdateMcpServer, handleDeleteMcpServer,
 		handleServerMessage,

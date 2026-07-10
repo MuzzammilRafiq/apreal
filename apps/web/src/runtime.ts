@@ -29,7 +29,7 @@ export type WebCapabilities = {
 
 export type SettingsSectionId = RemoteSettingsSection;
 
-export type WebTransportStatus = {
+type WebTransportStatus = {
 	serverReady: boolean;
 	transportReady: boolean;
 	adminStatus: LocalWebAdminStatus | null;
@@ -37,7 +37,7 @@ export type WebTransportStatus = {
 	settingsSections: SettingsSectionId[];
 };
 
-export type WebClientTransport = {
+type WebClientTransport = {
 	label: string;
 	unavailableTitle: string;
 	unavailableBody: string;
@@ -131,7 +131,6 @@ class RemoteWebSocketEventStream implements WebEventStream {
 
 	constructor(
 		url: string,
-		private readonly context: { clientId: string; targetId: string | null; lastSeq: number | null },
 		private readonly onClose: (stream: RemoteWebSocketEventStream) => void,
 	) {
 		this.socket = new WebSocket(url);
@@ -293,11 +292,6 @@ export function createRemoteWebRuntime(): WebRuntime {
 				activeStream?.close();
 				const stream = new RemoteWebSocketEventStream(
 					createWebSocketUrl(eventStreamUrl.toString()),
-					{
-						clientId: auth.clientId,
-						targetId: auth.target?.id ?? null,
-						lastSeq: options?.lastSeq ?? null,
-					},
 					(closedStream) => {
 						if (activeStream === closedStream) {
 							activeStream = null;

@@ -466,7 +466,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 			}
 		});
 
-		ws.on("close", (code, reason) => {
+		ws.on("close", () => {
 			close("browser_ws_closed");
 		});
 
@@ -782,7 +782,7 @@ export function createRelayTransportHandlers(state: RelayServerState) {
 			deliverAgentMessageToBrowser(principal, payload);
 		});
 
-		ws.on("close", (code, reason) => {
+		ws.on("close", () => {
 			close("agent_ws_closed");
 		});
 

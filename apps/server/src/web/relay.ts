@@ -296,75 +296,6 @@ export function createRelay(
 		}
 	}
 
-	async function consumeRelayAgentStream(token: string, signal: AbortSignal) {
-		const response = await fetch(new URL(RELAY_AGENT_STREAM_PATH, relayUrl), {
-			method: "GET",
-			headers: {
-				authorization: `Bearer ${token}`,
-				accept: "text/event-stream",
-			},
-			signal,
-		});
-
-		if (!response.ok || !response.body) {
-			let message = `relay agent stream failed with status ${response.status}`;
-			try {
-				const body = await response.text();
-				if (body.trim()) {
-					message = body.trim();
-				}
-			} catch {
-				// Ignore malformed bodies and use the status fallback above.
-			}
-
-			throw new Error(message);
-		}
-
-		relayState.transportConnected = true;
-		logger.info("relay agent stream response opened", {
-			relayUrl,
-		});
-		const reader = response.body.getReader();
-		const decoder = new TextDecoder();
-		let buffer = "";
-
-		try {
-			while (true) {
-				const result = await reader.read();
-				if (result.done) {
-					break;
-				}
-
-				buffer += decoder.decode(result.value, { stream: true });
-				let boundaryIndex = buffer.search(/\r?\n\r?\n/);
-				while (boundaryIndex !== -1) {
-					const rawEvent = buffer.slice(0, boundaryIndex);
-					const separatorLength = buffer[boundaryIndex] === "\r" ? 4 : 2;
-					buffer = buffer.slice(boundaryIndex + separatorLength);
-
-					const data = rawEvent
-						.split(/\r?\n/)
-						.filter((line) => line.startsWith("data:"))
-						.map((line) => line.slice(5).trimStart())
-						.join("\n");
-
-					if (data) {
-						const command = parseRelayAgentCommand(data);
-						if (command) {
-							await handleRelayAgentCommand(command);
-						} else {
-							logger.warn("ignored invalid relay agent command", { raw: data });
-						}
-					}
-
-					boundaryIndex = buffer.search(/\r?\n\r?\n/);
-				}
-			}
-		} finally {
-			reader.releaseLock();
-		}
-	}
-
 	async function consumeRelayAgentWebSocket(token: string, signal: AbortSignal) {
 		const url = createRelayWebSocketUrl(RELAY_AGENT_STREAM_PATH);
 		const ws = new WebSocket(url, {
@@ -374,7 +305,6 @@ export function createRelay(
 		});
 		relayAgentWebSocket = ws;
 		let commandChain = Promise.resolve();
-		let opened = false;
 
 		const closeForAbort = () => {
 			if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
@@ -388,7 +318,6 @@ export function createRelay(
 				const handleOpen = () => {
 					ws.off("error", handleOpenError);
 					ws.off("close", handleOpenClose);
-					opened = true;
 					relayState.transportConnected = true;
 					logger.info("relay agent websocket opened", {
 						relayUrl,

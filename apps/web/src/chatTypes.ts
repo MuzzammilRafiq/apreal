@@ -1,6 +1,6 @@
 export type { ScheduledJobDetails } from "@apreal/shared";
 
-export type TranscriptToolCall = {
+type TranscriptToolCall = {
 	id: string;
 	name: string;
 	summary: string;
@@ -9,7 +9,7 @@ export type TranscriptToolCall = {
 	updatedAt: number;
 };
 
-export type TranscriptThinkingSegment = {
+type TranscriptThinkingSegment = {
 	id: string;
 	type: "thinking";
 	content: string;
@@ -18,7 +18,7 @@ export type TranscriptThinkingSegment = {
 	updatedAt: number;
 };
 
-export type TranscriptTextSegment = {
+type TranscriptTextSegment = {
 	id: string;
 	type: "text";
 	content: string;
@@ -27,7 +27,7 @@ export type TranscriptTextSegment = {
 	updatedAt: number;
 };
 
-export type TranscriptToolCallSegment = TranscriptToolCall & {
+type TranscriptToolCallSegment = TranscriptToolCall & {
 	type: "tool_call";
 	contentIndex?: number;
 };

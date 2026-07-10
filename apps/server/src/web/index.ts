@@ -50,17 +50,6 @@ import {
 	type ClientConnection,
 } from "./utils.ts";
 
-export type {
-	SessionSummary,
-	SharedSessionState,
-	TranscriptMessage,
-	TranscriptMessageSegment,
-	TranscriptTextSegment,
-	TranscriptThinkingSegment,
-	TranscriptToolCall,
-	TranscriptToolCallSegment,
-} from "./session-state.ts";
-
 function readLocalClientId(request: Request): string | null {
 	const headerClientId = normalizeRelayPrincipalId(request.headers.get(LOCAL_CLIENT_ID_HEADER));
 	if (headerClientId) {

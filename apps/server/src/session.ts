@@ -7,7 +7,7 @@ import {
 	SettingsManager,
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { getProviders, type Api, type AssistantMessage, type Message, type Model } from "@earendil-works/pi-ai";
+import { getProviders, type Message, type Model } from "@earendil-works/pi-ai";
 import { agentToolsConfig, getConfiguredToolNames } from "./agent-tools.ts";
 import { getAprealAgentDir, getAprealAgentPath } from "./agent-dir.ts";
 import { getDefaultFileMemoryStore } from "./file-memory-store.ts";
@@ -41,9 +41,9 @@ const LEGACY_ENV_CREDENTIAL_PROVIDERS: Record<string, string> = {
 	ZAI_API_KEY: "zai",
 };
 
-import { BUILT_IN_TOOLS_LABEL, getErrorMessage, formatModelLabel, buildAgentModelInfo, stringifyToolArguments, truncateToolSummary, readStringField, readNumberField, formatToolExecutionSummary, extractAssistantMessageSnapshot, type ToolExecutionStatus, type ToolExecutionSummary, type AgentTextSegment, type AgentThinkingSegment, type AgentToolCallSegment, type AgentMessageSegment, type AgentContextUsage, type AgentModelInfo, type AgentStreamEvent, type AgentController } from "./session-events.ts";
+import { formatModelLabel, buildAgentModelInfo, formatToolExecutionSummary, extractAssistantMessageSnapshot, type ToolExecutionSummary, type AgentStreamEvent, type AgentController } from "./session-events.ts";
 export { getErrorMessage, formatModelLabel } from "./session-events.ts";
-export type { ToolExecutionStatus, ToolExecutionSummary, AgentTextSegment, AgentThinkingSegment, AgentToolCallSegment, AgentMessageSegment, AgentContextUsage, AgentModelInfo, AgentStreamEvent, AgentController } from "./session-events.ts";
+export type { AgentContextUsage, AgentStreamEvent, AgentController } from "./session-events.ts";
 type AgentControllerOptions = {
 	sessionId?: string;
 	transport?: string;

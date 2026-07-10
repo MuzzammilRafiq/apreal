@@ -39,7 +39,6 @@ const sidebarNavItemClassName =
 	"ui-nav-item flex w-full items-center gap-3 rounded-lg px-3 py-1.5 text-left text-[0.9375rem] font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring";
 
 function SidebarContent({
-	pendingDraft,
 	sessions,
 	sessionIdsNeedingSync,
 	loadingMoreSessions,
