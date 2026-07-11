@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppRouteView } from "./AppRouteView";
+import { AppRouteView } from "./routing/AppRouteView";
 import { authClient } from "./auth/auth-client";
 import { AuthGate } from "./components/AuthGate";
-import type { SessionCacheEntry, SessionSummary, TranscriptMessage } from "./chatTypes";
+import type { SessionCacheEntry, SessionSummary, TranscriptMessage } from "./chat/types";
 import { createBrowserUuid } from "./local-client";
 import {
 	clearCachedSessions,
@@ -14,7 +14,7 @@ import {
 	writeSessionSnapshot,
 	writeSessionSummaries,
 	writeSessionSummary,
-} from "./session-cache";
+} from "./sessions/cache";
 import {
 	SESSION_PAGE_SIZE,
 	STREAM_DISCONNECTED_MESSAGE,
@@ -31,15 +31,15 @@ import {
 	type ClientMessage,
 } from "./app-state";
 import { type WebEventStream, type WebRuntime } from "./runtime";
-import { useAppAdmin } from "./useAppAdmin";
-import { useBufferedAssistantDeltas } from "./useBufferedAssistantDeltas";
-import { useConnectionWaiters } from "./useConnectionWaiters";
-import { useAppRouting } from "./useAppRouting";
+import { useAppAdmin } from "./admin/useAppAdmin";
+import { useBufferedAssistantDeltas } from "./chat/useBufferedAssistantDeltas";
+import { useConnectionWaiters } from "./sessions/useConnectionWaiters";
+import { useAppRouting } from "./routing/useAppRouting";
 import {
 	createOptimisticTranscript,
 	transcriptContainsPrompt,
 	type PendingPrompt,
-} from "./optimistic-transcript";
+} from "./chat/optimistic-transcript";
 
 type AppProps = {
 	runtime: WebRuntime;

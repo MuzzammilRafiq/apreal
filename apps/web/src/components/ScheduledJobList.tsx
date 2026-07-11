@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ScheduledJobDetails } from "../chatTypes";
+import type { ScheduledJobDetails } from "../chat/types";
 
 type ScheduledJobListProps = {
 	jobs: ScheduledJobDetails[];

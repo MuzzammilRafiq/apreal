@@ -1,5 +1,5 @@
 import { memo, useMemo } from "react";
-import type { SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "../chatTypes";
+import type { SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "../chat/types";
 import {
 	ChainOfThought,
 	ChainOfThoughtContent,

@@ -4,11 +4,11 @@ import {
 	authenticateRelayWithOwnerGrant,
 	clearLocalAuthSession,
 	readLocalAuthSession,
-} from "./server-admin";
+} from "./admin/server-admin";
 import {
 	clearStoredLocalBrowserSessionSecret,
 	storeLocalBrowserSessionSecret,
-} from "./local-session";
+} from "./sessions/local-session";
 
 let pendingLocalBrowserAuthSessionPromise: Promise<void> | null = null;
 

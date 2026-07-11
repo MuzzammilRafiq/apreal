@@ -1,4 +1,4 @@
-import type { SessionCacheEntry, SessionSummary, ScheduledJobDetails } from "../chatTypes";
+import type { SessionCacheEntry, SessionSummary, ScheduledJobDetails } from "../chat/types";
 import { JobsPanel } from "./JobsPanel";
 
 type ScheduledJobsPageProps = {

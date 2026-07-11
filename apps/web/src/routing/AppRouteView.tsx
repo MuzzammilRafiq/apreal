@@ -1,14 +1,14 @@
 import { useEffect } from "react";
 import type { RefObject } from "react";
 import type { CreateMcpServerRequest, LocalWebAdminStatus, McpServerConfig, ProvidersResponse, UpdateMcpServerRequest } from "@apreal/shared";
-import { Composer } from "./components/Composer";
-import { ScheduledJobsPage } from "./components/ScheduledJobsPage";
-import { SettingsPage } from "./components/SettingsPage";
-import { Sidebar } from "./components/Sidebar";
-import { TranscriptPanel } from "./components/TranscriptPanel";
-import type { ScheduledJobDetails, SessionCacheEntry, SessionSummary, TranscriptMessage } from "./chatTypes";
-import type { AppRoute } from "./app-state";
-import type { SettingsSectionId, WebCapabilities } from "./runtime";
+import { Composer } from "../components/Composer";
+import { ScheduledJobsPage } from "../components/ScheduledJobsPage";
+import { SettingsPage } from "../components/SettingsPage";
+import { Sidebar } from "../components/Sidebar";
+import { TranscriptPanel } from "../components/TranscriptPanel";
+import type { ScheduledJobDetails, SessionCacheEntry, SessionSummary, TranscriptMessage } from "../chat/types";
+import type { AppRoute } from "../app-state";
+import type { SettingsSectionId, WebCapabilities } from "../runtime";
 
 type EmptyState = { title: string; body: string | null } | null;
 

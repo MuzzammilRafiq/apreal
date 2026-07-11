@@ -40,4 +40,4 @@ __pycache__
 .venv
 
 .data
-apps/web/src/generated/build-version.ts
+apps/web/src/generated/

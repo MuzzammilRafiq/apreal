@@ -6,7 +6,7 @@ import {
 	cloneTranscript,
 	insertSegmentInOrder,
 } from "../app-state.ts";
-import type { TranscriptMessage, TranscriptMessageSegment } from "../chatTypes.ts";
+import type { TranscriptMessage, TranscriptMessageSegment } from "../chat/types.ts";
 
 function createAssistantMessage(): TranscriptMessage {
 	return {

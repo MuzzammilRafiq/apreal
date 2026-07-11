@@ -1,4 +1,4 @@
-import type { ScheduledJobDetails } from "../chatTypes";
+import type { ScheduledJobDetails } from "../chat/types";
 import { ScheduledJobList } from "./ScheduledJobList";
 import { StatusPill } from "./settings-helpers";
 

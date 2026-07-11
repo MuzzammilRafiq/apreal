@@ -1,7 +1,7 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type TouchEvent } from "react";
 import { ArrowLeft, CloudSync, Ellipsis, LoaderCircle, Menu, MessageCircle, Settings, Trash } from "lucide-react";
-import type { SessionSummary } from "../chatTypes";
-import { getSessionCardClassName } from "../chatView";
+import type { SessionSummary } from "../chat/types";
+import { getSessionCardClassName } from "../chat/view";
 import { ConnectionSidebarFooter } from "./ConnectionSidebarFooter";
 import {
 	Dialog,

@@ -1,4 +1,4 @@
-import type { TranscriptMessage } from "./chatTypes";
+import type { TranscriptMessage } from "./types";
 
 export type PendingPrompt = {
 	id: string;

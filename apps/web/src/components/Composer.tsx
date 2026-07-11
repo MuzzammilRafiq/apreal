@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { ProvidersResponse } from "@apreal/shared";
 import { Check, ChevronDown, LoaderCircle } from "lucide-react";
-import type { SessionSummary } from "../chatTypes";
+import type { SessionSummary } from "../chat/types";
 import { buildSearchableModels, normalizeSearchValue } from "./settings-helpers";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "./ui/command";
 import {

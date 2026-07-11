@@ -29,8 +29,8 @@ import {
 	type UpdateAppendSystemPromptResponse,
 	type UpdateMcpServerRequest,
 } from "@apreal/shared";
-import type { ScheduledJobDetails, SessionSummary } from "./chatTypes";
-import { localSessionFetch } from "./local-session";
+import type { ScheduledJobDetails, SessionSummary } from "../chat/types";
+import { localSessionFetch } from "../sessions/local-session";
 
 const ADMIN_JOBS_PATH = "/api/admin/jobs";
 const ADMIN_JOB_RUNS_PATH_SUFFIX = "/runs";

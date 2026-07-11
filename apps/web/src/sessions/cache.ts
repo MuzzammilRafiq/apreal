@@ -1,4 +1,4 @@
-import type { SessionSummary, TranscriptMessage } from "./chatTypes";
+import type { SessionSummary, TranscriptMessage } from "../chat/types";
 
 const DATABASE_NAME = "apreal-chat-cache";
 const DATABASE_VERSION = 2;

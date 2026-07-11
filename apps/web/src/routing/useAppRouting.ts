@@ -4,8 +4,8 @@ import {
 	readCurrentRoute,
 	readSelectedJobIdFromRoute,
 	type AppRoute,
-} from "./app-state";
-import { coerceRouteForCapabilities, type SettingsSectionId, type WebCapabilities } from "./runtime";
+} from "../app-state";
+import { coerceRouteForCapabilities, type SettingsSectionId, type WebCapabilities } from "../runtime";
 
 type UseAppRoutingOptions = {
 	capabilities: WebCapabilities;

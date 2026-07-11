@@ -4,7 +4,7 @@ import type {
 	ServerSyncEnvelope,
 } from "@apreal/shared";
 import { parseServerPayloadEnvelope } from "@apreal/shared";
-import type { SessionCacheEntry, SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "./chatTypes";
+import type { SessionCacheEntry, SessionSummary, TranscriptMessage, TranscriptMessageSegment } from "./chat/types";
 import { createBrowserUuid } from "./local-client";
 
 const ACTIVE_SESSION_STORAGE_KEY = "pi-browser-active-session";

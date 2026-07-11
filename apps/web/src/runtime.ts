@@ -12,9 +12,9 @@ import {
 import { authBaseUrl } from "./auth/auth-client";
 import { ensureLocalBrowserAuthSession } from "./local-auth";
 import { readOrCreateLocalClientId } from "./local-client";
-import { localSessionFetch, readLocalBrowserSessionSecret } from "./local-session";
+import { localSessionFetch, readLocalBrowserSessionSecret } from "./sessions/local-session";
 import { ensureRelayClientAuth, readRelayClientHeartbeat } from "./relay-auth";
-import { readLocalAdminStatus } from "./server-admin";
+import { readLocalAdminStatus } from "./admin/server-admin";
 import { isObjectRecord, type AppRoute, type ClientMessage } from "./app-state";
 
 export type WebCapabilities = {

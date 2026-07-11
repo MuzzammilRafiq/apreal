@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CreateMcpServerRequest, LocalWebAdminStatus, UpdateMcpServerRequest } from "@apreal/shared";
-import type { ScheduledJobDetails } from "./chatTypes";
+import type { ScheduledJobDetails } from "../chat/types";
 import {
 	LOCAL_ADMIN_STATUS_REFRESH_INTERVAL_MS,
 	RELAY_STATUS_REFRESH_INTERVAL_MS,
@@ -11,9 +11,9 @@ import {
 	type AppRoute,
 	type ClientMessage,
 	type ServerPayload,
-} from "./app-state";
-import type { WebRuntime } from "./runtime";
-import { ensureLocalBrowserAuthSession } from "./local-auth";
+} from "../app-state";
+import type { WebRuntime } from "../runtime";
+import { ensureLocalBrowserAuthSession } from "../local-auth";
 import {
 	createMcpServer as createMcpServerRequest,
 	deleteMcpServer as deleteMcpServerRequest,

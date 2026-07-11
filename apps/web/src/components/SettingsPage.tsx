@@ -1,7 +1,7 @@
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import type { CreateMcpServerRequest, LocalWebAdminStatus, McpServerConfig, McpServerTransport, ProvidersResponse, UpdateMcpServerRequest } from "@apreal/shared";
-import type { ScheduledJobDetails } from "../chatTypes";
+import type { ScheduledJobDetails } from "../chat/types";
 import { ConnectionSidebarFooter } from "./ConnectionSidebarFooter";
 import { SettingsJobsSection } from "./SettingsJobsSection";
 import { SettingsModelsSection } from "./SettingsModelsSection";

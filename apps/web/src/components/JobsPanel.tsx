@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { SessionCacheEntry, SessionSummary, ScheduledJobDetails } from "../chatTypes";
+import type { SessionCacheEntry, SessionSummary, ScheduledJobDetails } from "../chat/types";
 import { formatInterval, formatNextRunRelative, getJobStatusTone } from "./ScheduledJobList";
 import { TranscriptPanel } from "./TranscriptPanel";
 

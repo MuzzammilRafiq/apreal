@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import type { SessionCacheEntry, TranscriptMessage } from "./chatTypes";
-import { appendAssistantDeltaToMessage } from "./app-state";
+import type { SessionCacheEntry, TranscriptMessage } from "./types";
+import { appendAssistantDeltaToMessage } from "../app-state";
 
 type BufferedAssistantDelta = {
 	messageId: string;
