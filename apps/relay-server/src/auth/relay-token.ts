@@ -5,8 +5,8 @@ import {
 } from "@apreal/shared";
 import jwt, { type JwtPayload } from "jsonwebtoken";
 
-import { getRelayEnv } from "./env.ts";
-import type { RelayCredentialStore } from "./credential-store.ts";
+import { getRelayEnv } from "../config/env.ts";
+import type { RelayCredentialStore } from "../storage/credential-store.ts";
 
 // The relay accepts only two authenticated peer roles.
 // Keeping the role set explicit prevents accidental support for extra values

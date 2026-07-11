@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import type { IncomingMessage } from "node:http";
 import test from "node:test";
 
-import type { AuthTokenPayload } from "../auth.ts";
+import type { AuthTokenPayload } from "../auth/relay-token.ts";
 import {
 	authorizeRelayConnection,
 	mapRelayConnectionErrorStatus,
 	readClientTokenFromProxyRequest,
 	validateAgentServerUrl,
-} from "../relay/authorization.ts";
+} from "../relay/protocol/authorization.ts";
 
 function createPrincipal(overrides: Partial<AuthTokenPayload> = {}): AuthTokenPayload {
 	return {

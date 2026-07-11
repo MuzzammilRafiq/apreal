@@ -12,6 +12,7 @@
 		"test:production": "pnpm --dir dist test"
 	},
 	"devDependencies": {
+		"@types/express": "^5.0.0",
 		"@types/jsonwebtoken": "^9.0.10",
 		"@types/node": "^25.6.0",
 		"@types/ws": "^8.18.1",
@@ -22,6 +23,7 @@
 		"@t3-oss/env-core": "^0.13.11",
 		"better-auth": "^1.6.14",
 		"dotenv": "^17.4.2",
+		"express": "^5.1.0",
 		"jsonwebtoken": "^9.0.2",
 		"ws": "^8.21.0",
 		"zod": "^4.4.3"

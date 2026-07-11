@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { assertRelayPrincipalId, type RelayPrincipalType } from "@apreal/shared";
 
-import { getRelayEnv } from "./env.ts";
+import { getRelayEnv } from "../config/env.ts";
 
 export type RelayCredential = {
 	credentialId: string;

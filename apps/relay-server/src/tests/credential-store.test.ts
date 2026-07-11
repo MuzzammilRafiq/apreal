@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { RelayCredentialStore } from "../credential-store.ts";
+import { RelayCredentialStore } from "../storage/credential-store.ts";
 
 test("tracks and revokes one relay credential without affecting another", (t) => {
 	const directory = mkdtempSync(join(tmpdir(), "relay-credentials-"));

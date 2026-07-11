@@ -5,10 +5,10 @@ import {
 	readRelayToken,
 	type AuthTokenPayload,
 	type UserType,
-} from "../auth.ts";
-import { resolveRequestOrigin } from "./cors.ts";
-import { getErrorMessage } from "./http.ts";
-import type { RelayCredentialStore } from "../credential-store.ts";
+} from "../../auth/relay-token.ts";
+import type { RelayCredentialStore } from "../../storage/credential-store.ts";
+import { resolveRequestOrigin } from "../http/cors.ts";
+import { getErrorMessage } from "../http/response.ts";
 
 // Computes the opposite peer role a token is expected to target by default.
 function getDefaultTargetType(type: UserType): RelayPrincipalType {

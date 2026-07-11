@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import test from "node:test";
 import { WebSocket, WebSocketServer } from "ws";
-import { startWebSocketHeartbeat } from "../relay/websocket-heartbeat.ts";
+import { startWebSocketHeartbeat } from "../relay/transport/websocket-heartbeat.ts";
 
 async function createSocketPair(options?: { autoPong?: boolean }) {
 	const server = createServer();

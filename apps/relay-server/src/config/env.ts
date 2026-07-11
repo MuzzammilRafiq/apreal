@@ -2,7 +2,7 @@ import { createEnv } from "@t3-oss/env-core";
 import { config } from "dotenv";
 import { z } from "zod";
 
-import { DEFAULT_PORT } from "./relay/constants.ts";
+import { DEFAULT_PORT } from "../relay/transport/constants.ts";
 
 config({ path: ".env.local" });
 config();
