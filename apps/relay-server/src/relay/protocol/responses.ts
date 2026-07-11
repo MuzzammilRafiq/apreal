@@ -14,10 +14,10 @@ import {
 	type RelayClientHeartbeatResponse,
 	type RelayPrincipalType,
 } from "@apreal/shared";
-import type { AuthTokenPayload, IssuedRelayToken } from "../auth.ts";
-import { hasRelayJwtSecret } from "../env.ts";
-import { RelayOwnerBindingStore } from "../owner-binding-store.ts";
-import type { RelayAgentConnection } from "../utils/types.ts";
+import type { AuthTokenPayload, IssuedRelayToken } from "../../auth/relay-token.ts";
+import { hasRelayJwtSecret } from "../../config/env.ts";
+import { RelayOwnerBindingStore } from "../../storage/owner-binding-store.ts";
+import type { RelayAgentConnection } from "../connection-types.ts";
 
 // Infers the opposite peer role when a token did not explicitly encode its
 // target type.

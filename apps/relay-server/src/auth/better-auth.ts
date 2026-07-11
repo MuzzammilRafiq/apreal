@@ -7,8 +7,8 @@ import { betterAuth, type Session } from "better-auth";
 import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 import type { IncomingMessage } from "node:http";
 
-import { getRelayEnv, readOptionalRelayEnv, readRequiredRelayEnv } from "./env.ts";
-import { audit } from "./utils/audit.ts";
+import { getRelayEnv, readOptionalRelayEnv, readRequiredRelayEnv } from "../config/env.ts";
+import { audit } from "../observability/audit.ts";
 
 const require = createRequire(import.meta.url);
 

@@ -1,4 +1,4 @@
-import { getRelayEnv } from "../env.ts";
+import { getRelayEnv } from "../config/env.ts";
 
 export type LogLevel = "info" | "warn" | "error";
 

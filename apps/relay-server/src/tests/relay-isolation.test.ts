@@ -21,10 +21,10 @@ import {
 	type RelayClientAuthResponse,
 	type RelayClientHeartbeatResponse,
 } from "@apreal/shared";
-import { RelayCredentialStore } from "../credential-store.ts";
+import { RelayCredentialStore } from "../storage/credential-store.ts";
 
 type RelayServerModule = typeof import("../index.ts");
-type RelayAuthModule = typeof import("../auth.ts");
+type RelayAuthModule = typeof import("../auth/relay-token.ts");
 
 process.env.BETTER_AUTH_SECRET = "";
 process.env.BETTER_AUTH_GOOGLE_CLIENT_ID = "";
@@ -35,8 +35,8 @@ const relayEntryPoint = fileURLToPath(import.meta.url).includes(`${sep}dist${sep
 	: "../index.ts";
 const { runRelayServer } = (await import(relayEntryPoint)) as RelayServerModule;
 const authEntryPoint = fileURLToPath(import.meta.url).includes(`${sep}dist${sep}`)
-	? "../auth.js"
-	: "../auth.ts";
+	? "../auth/relay-token.js"
+	: "../auth/relay-token.ts";
 const { generateOwnerAgentGrant, readRelayToken } = (await import(authEntryPoint)) as RelayAuthModule;
 
 type JsonResult<T> = {

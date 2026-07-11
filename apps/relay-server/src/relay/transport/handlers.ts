@@ -2,17 +2,17 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 import { SYNC_LAST_SEQ_QUERY_PARAM, type RelayAgentCommand } from "@apreal/shared";
-import { AuthError, readBearerTokenFromRequest, readRelayToken } from "../auth.ts";
-import type { RelayServerState } from "./state.ts";
+import { AuthError, readBearerTokenFromRequest, readRelayToken } from "../../auth/relay-token.ts";
+import { audit, getAuditRequestFields } from "../../observability/audit.ts";
+import { log } from "../../observability/log.ts";
+import type { RelayAgentConnection, RelayBrowserClientConnection } from "../connection-types.ts";
+import { resolveClientRelayTarget } from "../protocol/authorization.ts";
+import { parseRelayAgentMessage } from "../protocol/parsing.ts";
+import type { RelayServerState } from "../state.ts";
 import { RELAY_SSE_HEARTBEAT_INTERVAL_MS, RELAY_WEBSOCKET_PONG_TIMEOUT_MS } from "./constants.ts";
 import { startWebSocketHeartbeat } from "./websocket-heartbeat.ts";
-import { readRequestBody, sendJson, setHeaders } from "./http.ts";
-import { resolveClientRelayTarget } from "./authorization.ts";
-import { parseRelayAgentMessage } from "./parsing.ts";
+import { readRequestBody, sendJson, setHeaders } from "../http/response.ts";
 import { createSseChunk, createSseComment, createSseHeaders } from "./sse.ts";
-import { log } from "../utils/log.ts";
-import { audit, getAuditRequestFields } from "../utils/audit.ts";
-import type { RelayAgentConnection, RelayBrowserClientConnection } from "../utils/types.ts";
 
 // Builds the in-memory transport operations that attach browser and agent SSE
 // streams and relay messages between them.

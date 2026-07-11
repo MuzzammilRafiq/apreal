@@ -2,10 +2,10 @@ import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { getRelayEnv } from "./env.ts";
-import { createRelayRequestHandler, createRelayUpgradeHandler } from "./relay/routes.ts";
+import { getRelayEnv } from "./config/env.ts";
+import { log } from "./observability/log.ts";
+import { createRelayRequestHandler, createRelayUpgradeHandler } from "./relay/app.ts";
 import { createRelayServerState } from "./relay/state.ts";
-import { log } from "./utils/log.ts";
 
 // Bootstraps the relay's shared state, attaches the request router, and starts
 // listening on the configured HTTP port.

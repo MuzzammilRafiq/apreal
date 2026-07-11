@@ -5,7 +5,7 @@ import {
 	type RelayClientAuthRequest,
 	type RelayConnectionRequest,
 } from "@apreal/shared";
-import { readRequestBody } from "./http.ts";
+import { readRequestBody } from "../http/response.ts";
 
 // Shared guard for JSON-decoded request bodies.
 export function isObjectRecord(value: unknown): value is Record<string, unknown> {

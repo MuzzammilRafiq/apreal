@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
 
-import { RelayOwnerBindingStore } from "../owner-binding-store.ts";
+import { RelayOwnerBindingStore } from "../storage/owner-binding-store.ts";
 
 function createStore(t: TestContext) {
 	const directory = mkdtempSync(join(tmpdir(), "relay-owner-store-"));

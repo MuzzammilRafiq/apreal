@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { IncomingMessage } from "node:http";
 import test from "node:test";
 
-import { createAuditRecord, getAuditRequestFields } from "../utils/audit.ts";
+import { createAuditRecord, getAuditRequestFields } from "../observability/audit.ts";
 
 test("audit records contain stable structured event fields", () => {
 	assert.deepEqual(

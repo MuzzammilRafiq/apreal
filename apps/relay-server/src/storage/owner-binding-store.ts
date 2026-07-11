@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { assertRelayPrincipalId } from "@apreal/shared";
 
-import { getRelayEnv } from "./env.ts";
+import { getRelayEnv } from "../config/env.ts";
 
 type OwnerBindingStoreFile = {
 	agents: StoredOwnerAgentBinding[];

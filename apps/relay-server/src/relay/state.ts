@@ -1,7 +1,7 @@
-import type { AuthTokenPayload } from "../auth.ts";
-import { RelayOwnerBindingStore } from "../owner-binding-store.ts";
-import { RelayCredentialStore } from "../credential-store.ts";
-import type { RelayAgentConnection, RelayBrowserClientConnection } from "../utils/types.ts";
+import type { AuthTokenPayload } from "../auth/relay-token.ts";
+import { RelayCredentialStore } from "../storage/credential-store.ts";
+import { RelayOwnerBindingStore } from "../storage/owner-binding-store.ts";
+import type { RelayAgentConnection, RelayBrowserClientConnection } from "./connection-types.ts";
 
 // In-memory process state for active streams plus the persistent owner-binding
 // store the router consults while issuing tokens.

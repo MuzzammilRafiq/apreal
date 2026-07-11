@@ -1,6 +1,6 @@
 import type { IncomingMessage } from "node:http";
 
-import { getRelayEnv } from "../env.ts";
+import { getRelayEnv } from "../../config/env.ts";
 
 // Normalizes an arbitrary URL string down to a bare origin, rejecting invalid
 // or non-HTTP(S) inputs.
