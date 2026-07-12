@@ -1,0 +1,139 @@
+name: Deploy relay server
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/relay-server/**"
+      - "apps/shared/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/deploy-relay.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: relay-production
+  cancel-in-progress: false
+
+jobs:
+  build-test-deploy:
+    name: Build, test, and deploy relay
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check relay types
+        run: pnpm --dir apps/relay-server typecheck
+
+      - name: Test relay source
+        run: pnpm test:relay
+
+      - name: Build relay artifact
+        run: pnpm build:relay
+
+      - name: Test relay artifact
+        run: pnpm test:relay:production
+
+      - name: Package relay artifact
+        run: tar -C apps/relay-server/dist -czf relay-server.tar.gz .
+
+      - name: Configure SSH
+        env:
+          RELAY_DEPLOY_KEY: ${{ secrets.RELAY_DEPLOY_KEY }}
+          RELAY_KNOWN_HOSTS: ${{ secrets.RELAY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$RELAY_DEPLOY_KEY" > ~/.ssh/relay_deploy_key
+          chmod 600 ~/.ssh/relay_deploy_key
+          printf '%s\n' "$RELAY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload relay artifact
+        env:
+          RELAY_HOST: ${{ vars.RELAY_HOST }}
+          RELAY_SSH_PORT: ${{ vars.RELAY_SSH_PORT }}
+          RELAY_SSH_USER: ${{ vars.RELAY_SSH_USER }}
+        run: |
+          set -euo pipefail
+          port="${RELAY_SSH_PORT:-22}"
+          scp -P "$port" -i ~/.ssh/relay_deploy_key \
+            relay-server.tar.gz \
+            "$RELAY_SSH_USER@$RELAY_HOST:/tmp/apreal-relay-${GITHUB_SHA}.tar.gz"
+
+      - name: Install, test, and activate on server
+        env:
+          RELAY_DEPLOY_PATH: ${{ vars.RELAY_DEPLOY_PATH }}
+          RELAY_HOST: ${{ vars.RELAY_HOST }}
+          RELAY_RESTART_COMMAND: ${{ secrets.RELAY_RESTART_COMMAND }}
+          RELAY_SSH_PORT: ${{ vars.RELAY_SSH_PORT }}
+          RELAY_SSH_USER: ${{ vars.RELAY_SSH_USER }}
+        run: |
+          set -euo pipefail
+          port="${RELAY_SSH_PORT:-22}"
+          deploy_path="${RELAY_DEPLOY_PATH:-/root/relay}"
+          archive="/tmp/apreal-relay-${GITHUB_SHA}.tar.gz"
+          staging="${deploy_path}.staging-${GITHUB_SHA}"
+
+          if [[ ! "$deploy_path" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
+            echo "RELAY_DEPLOY_PATH must be an absolute path containing only safe path characters" >&2
+            exit 1
+          fi
+          restart_command_base64="$(printf '%s' "$RELAY_RESTART_COMMAND" | base64 -w 0)"
+
+          ssh -p "$port" -i ~/.ssh/relay_deploy_key "$RELAY_SSH_USER@$RELAY_HOST" \
+            "DEPLOY_PATH='$deploy_path' ARCHIVE='$archive' STAGING='$staging' RESTART_COMMAND_BASE64='$restart_command_base64' bash -s" <<'REMOTE'
+          set -euo pipefail
+          trap 'rm -rf "$STAGING" "$ARCHIVE"' EXIT
+
+          RESTART_COMMAND="$(printf '%s' "$RESTART_COMMAND_BASE64" | base64 --decode)"
+          if [[ -z "$RESTART_COMMAND" ]]; then
+            echo "RELAY_RESTART_COMMAND must not be empty" >&2
+            exit 1
+          fi
+
+          rm -rf "$STAGING"
+          mkdir -p "$STAGING"
+          tar -xzf "$ARCHIVE" -C "$STAGING"
+          cd "$STAGING"
+          npm install --omit=dev --no-audit --no-fund
+          npm test
+
+          mkdir -p "$DEPLOY_PATH"
+          rm -rf "$DEPLOY_PATH/src" "$DEPLOY_PATH/node_modules"
+          mv "$STAGING/src" "$DEPLOY_PATH/src"
+          mv "$STAGING/node_modules" "$DEPLOY_PATH/node_modules"
+          mv "$STAGING/package.json" "$DEPLOY_PATH/package.json"
+          cd "$DEPLOY_PATH"
+          bash -lc "$RESTART_COMMAND"
+          REMOTE
+
+      - name: Verify relay health
+        if: ${{ vars.RELAY_HEALTHCHECK_URL != '' }}
+        env:
+          RELAY_HEALTHCHECK_URL: ${{ vars.RELAY_HEALTHCHECK_URL }}
+        run: curl --fail --show-error --silent --retry 6 --retry-delay 5 --retry-all-errors "$RELAY_HEALTHCHECK_URL" > /dev/null
