@@ -27,6 +27,33 @@ fail() {
 	exit 1
 }
 
+add_apreal_to_path() {
+	case "${SHELL:-}" in
+		*/zsh) shell_config="$HOME/.zshrc" ;;
+		*/bash) shell_config="$HOME/.bashrc" ;;
+		*)
+			echo "Could not determine a supported shell; add $home/bin to your PATH manually."
+			return
+			;;
+	esac
+
+	path_marker="# Added by Apreal installer"
+	# Escape characters that have special meaning inside a double-quoted shell value.
+	escaped_bin=$(printf '%s' "$home/bin" | sed 's/[\\"`$]/\\&/g')
+	path_entry=$(printf 'export PATH="%s:$PATH"' "$escaped_bin")
+	if [ -f "$shell_config" ] && grep -F "$path_entry" "$shell_config" >/dev/null 2>&1; then
+		echo "Apreal is already configured in $shell_config."
+		return
+	fi
+
+	{
+		echo
+		echo "$path_marker"
+		echo "$path_entry"
+	} >> "$shell_config"
+	echo "Added $home/bin to PATH in $shell_config."
+}
+
 cleanup() {
 	if [ -n "$work_dir" ] && [ -d "$work_dir" ]; then
 		rm -rf "$work_dir"
@@ -244,6 +271,8 @@ ln -sfn "versions/$version" "$home/current"
 cp "$destination/launcher/apreal" "$home/bin/apreal"
 chmod 755 "$home/bin/apreal"
 
+add_apreal_to_path
+
 if [ ! -f "$home/config.toml" ]; then
 	cat > "$home/config.toml" <<'EOF'
 [server]
@@ -265,8 +294,8 @@ fi
 
 echo
 echo "Apreal ${version} was installed successfully."
-echo "Start it with:"
-echo "  $home/bin/apreal start --home $home"
+echo "Open a new terminal, then start it with:"
+echo "  apreal start --home $home"
 echo
 echo "Check status with:"
-echo "  $home/bin/apreal status --home $home"
+echo "  apreal status --home $home"
