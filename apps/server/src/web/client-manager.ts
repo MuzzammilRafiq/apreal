@@ -18,7 +18,7 @@ import {
 	type ClientTransport,
 	type ServerMessage,
 	type ServerPayload,
-} from "./utils.ts";
+} from "../util/utils.ts";
 import type { createLogger } from "../logger.ts";
 
 export type Logger = ReturnType<typeof createLogger>;

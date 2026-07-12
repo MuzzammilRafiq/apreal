@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import {
 	RELAY_AGENT_AUTH_PATH,
@@ -8,7 +8,7 @@ import {
 	type RelayAgentAuthResponse,
 	type RelayPrincipalType,
 } from "@apreal/shared";
-import { getAprealAgentPath } from "./agent-dir.ts";
+import { getAprealAgentPath } from "../agent-dir.ts";
 
 const APREAL_AGENT_RELAY_AUTH_PATH = getAprealAgentPath("relay-auth.json");
 
@@ -28,7 +28,7 @@ export type StoredRelayAgentAuth = {
 	updatedAt: number;
 };
 
-type StoredRelayAgentIdentity = {
+type AgentIdentity = {
 	relayUrl: string;
 	agentId: string;
 	agentKey: string;
@@ -39,36 +39,35 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function readStoredRelayAgentIdentity(): StoredRelayAgentIdentity | null {
-	if (!existsSync(APREAL_AGENT_RELAY_AUTH_PATH)) {
-		return null;
-	}
-
+function getORCreateAgentIdentity(): AgentIdentity {
 	try {
-		const content = readFileSync(APREAL_AGENT_RELAY_AUTH_PATH, "utf8");
-		const parsed: unknown = JSON.parse(content);
-		if (!isObjectRecord(parsed)) {
-			return null;
+		const parsed: unknown = JSON.parse(readFileSync(APREAL_AGENT_RELAY_AUTH_PATH, "utf8"));
+		if (isObjectRecord(parsed) && typeof parsed.agentId === "string" && typeof parsed.agentKey === "string") {
+			const [agentId, agentKey] = [parsed.agentId.trim(), parsed.agentKey.trim()];
+			if (agentId && agentKey) {
+				return {
+					relayUrl: typeof parsed.relayUrl === "string" ? parsed.relayUrl.trim() : "",
+					agentId,
+					agentKey,
+					updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
+				};
+			}
 		}
-
-		const agentId = typeof parsed.agentId === "string" ? parsed.agentId.trim() : "";
-		const agentKey = typeof parsed.agentKey === "string" ? parsed.agentKey.trim() : "";
-		if (!agentId || !agentKey) {
-			return null;
-		}
-
-		return {
-			relayUrl: typeof parsed.relayUrl === "string" && parsed.relayUrl.trim() ? parsed.relayUrl.trim() : "",
-			agentId,
-			agentKey,
-			updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
-		};
 	} catch {
-		return null;
+		// A missing or malformed stored identity is replaced below.
 	}
+
+	return {
+		relayUrl: PI_RELAY_URL,
+		agentId: `agent-${crypto.randomUUID()}`,
+		agentKey: `key-${crypto.randomUUID()}`,
+		updatedAt: Date.now(),
+	};
 }
 
-function writeStoredRelayAgentIdentity(identity: StoredRelayAgentIdentity) {
+function writeAgentIdentity(identity: AgentIdentity) {
+	// 0o700 => only the current user can access it.
+	// 0o600 => only the current user can read or modify it.
 	const authDirectory = dirname(APREAL_AGENT_RELAY_AUTH_PATH);
 	mkdirSync(authDirectory, { recursive: true, mode: 0o700 });
 	chmodSync(authDirectory, 0o700);
@@ -79,15 +78,6 @@ function writeStoredRelayAgentIdentity(identity: StoredRelayAgentIdentity) {
 	chmodSync(APREAL_AGENT_RELAY_AUTH_PATH, 0o600);
 }
 
-function createAgentIdentity(existing: StoredRelayAgentIdentity | null, relayUrl: string): StoredRelayAgentIdentity {
-	return {
-		relayUrl,
-		agentId: existing?.agentId ?? `agent-${crypto.randomUUID()}`,
-		agentKey: existing?.agentKey ?? `key-${crypto.randomUUID()}`,
-		updatedAt: Date.now(),
-	};
-}
-
 function getErrorMessage(error: unknown): string {
 	if (error instanceof Error && error.message) {
 		return error.message;
@@ -96,8 +86,8 @@ function getErrorMessage(error: unknown): string {
 	return String(error);
 }
 
-async function requestAgentAuth(relayUrl: string, request: RelayAgentAuthRequest): Promise<RelayAgentAuthResponse> {
-	const response = await fetch(new URL(RELAY_AGENT_AUTH_PATH, relayUrl), {
+async function requestAgentAuth(request: RelayAgentAuthRequest): Promise<RelayAgentAuthResponse> {
+	const response = await fetch(new URL(RELAY_AGENT_AUTH_PATH, PI_RELAY_URL), {
 		method: "POST",
 		headers: {
 			"content-type": "application/json",
@@ -142,20 +132,17 @@ async function requestAgentAuth(relayUrl: string, request: RelayAgentAuthRequest
 }
 
 
-export async function ensureRelayAgentAuth(
-	logger: LoggerLike,
-	relayUrl = PI_RELAY_URL,
-): Promise<StoredRelayAgentAuth> {
-	const storedIdentity = createAgentIdentity(readStoredRelayAgentIdentity(), relayUrl);
-	writeStoredRelayAgentIdentity(storedIdentity);
+export async function ensureAgentAuth(logger: LoggerLike): Promise<StoredRelayAgentAuth> {
+	const identity = getORCreateAgentIdentity();
+	writeAgentIdentity(identity);
 
 	try {
-		const issued = await requestAgentAuth(relayUrl, {
-			agentId: storedIdentity.agentId,
-			agentKey: storedIdentity.agentKey,
+		const issued = await requestAgentAuth({
+			agentId: identity.agentId,
+			agentKey: identity.agentKey,
 		});
 		const nextAuth: StoredRelayAgentAuth = {
-			...storedIdentity,
+			...identity,
 			token: issued.token,
 			expiresAt: issued.expiresAt,
 			targetId: issued.target?.id ?? null,
@@ -169,25 +156,23 @@ export async function ensureRelayAgentAuth(
 		return nextAuth;
 	} catch (error) {
 		logger.warn("stored relay agent identity could not be authenticated", {
-			agentId: storedIdentity.agentId,
+			agentId: identity.agentId,
 			error: getErrorMessage(error),
 		});
 	}
-
 	throw new Error("Relay agent is not authenticated. Sign in locally to link this server to your Google account.");
 }
 
 export async function authenticateRelayAgentWithOwnerGrant(
 	logger: LoggerLike,
 	ownerGrant: string,
-	relayUrl = PI_RELAY_URL,
 ): Promise<StoredRelayAgentAuth> {
-	const storedIdentity = createAgentIdentity(readStoredRelayAgentIdentity(), relayUrl);
+	const storedIdentity = getORCreateAgentIdentity();
 	if (!ownerGrant.trim()) {
 		throw new Error("Owner grant is required.");
 	}
 
-	const issued = await requestAgentAuth(relayUrl, {
+	const issued = await requestAgentAuth({
 		agentId: storedIdentity.agentId,
 		agentKey: storedIdentity.agentKey,
 		ownerGrant,
@@ -195,7 +180,7 @@ export async function authenticateRelayAgentWithOwnerGrant(
 	});
 
 	const rotatedIdentity = { ...storedIdentity, agentKey: issued.agentKey, updatedAt: Date.now() };
-	writeStoredRelayAgentIdentity(rotatedIdentity);
+	writeAgentIdentity(rotatedIdentity);
 	const nextAuth: StoredRelayAgentAuth = {
 		...rotatedIdentity,
 		token: issued.token,

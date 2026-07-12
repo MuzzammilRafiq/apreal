@@ -6,7 +6,7 @@ import type {
 	ProvidersResponse,
 } from "@apreal/shared";
 import { buildProvidersPayload, getErrorMessage } from "../session.ts";
-import type { Logger } from "./client-manager.ts";
+import type { Logger } from "../web/client-manager.ts";
 
 function createIdleProviderLoginState(): ProviderLoginState {
 	return {

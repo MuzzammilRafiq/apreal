@@ -39,7 +39,7 @@ import {
 	type SharedSessionState,
 } from "./session-state.ts";
 import type { ClientActions, Logger } from "./client-manager.ts";
-import type { ClientConnection } from "./utils.ts";
+import type { ClientConnection } from "../util/utils.ts";
 import { createLogger as createScopedLogger } from "../logger.ts";
 import type { JobStore, Scheduler } from "../scheduled-jobs/index.ts";
 
