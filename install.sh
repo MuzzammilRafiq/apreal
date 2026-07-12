@@ -295,7 +295,15 @@ fi
 echo
 echo "Apreal ${version} was installed successfully."
 echo "Open a new terminal, then start it with:"
-echo "  apreal start --home $home"
+if [ "$home" = "$HOME/.apreal" ]; then
+	echo "  apreal start"
+else
+	echo "  apreal start --home $home"
+fi
 echo
 echo "Check status with:"
-echo "  apreal status --home $home"
+if [ "$home" = "$HOME/.apreal" ]; then
+	echo "  apreal status"
+else
+	echo "  apreal status --home $home"
+fi
