@@ -10,17 +10,18 @@ import {
 import { getProviders, type Message, type Model } from "@earendil-works/pi-ai";
 import { agentToolsConfig, getConfiguredToolNames } from "./agent-tools.ts";
 import { getAprealAgentDir, getAprealAgentPath } from "./agent-dir.ts";
+import { APREAL_STATE_DIRECTORY_NAMES, APREAL_STATE_FILENAMES } from "./constants.ts";
 import { getDefaultFileMemoryStore } from "./file-memory-store.ts";
 import { createLogger, summarizePrompt } from "./logger.ts";
 import type { AvailableSkill, ProviderLoginState, ProvidersResponse } from "@apreal/shared";
 
 const APREAL_AGENT_DIR = getAprealAgentDir();
-const APREAL_AGENT_AUTH_PATH = getAprealAgentPath("auth.json");
-const APREAL_AGENT_MODELS_PATH = getAprealAgentPath("models.json");
-const APREAL_AGENT_SETTINGS_PATH = getAprealAgentPath("settings.json");
+const APREAL_AGENT_AUTH_PATH = getAprealAgentPath(APREAL_STATE_FILENAMES.auth);
+const APREAL_AGENT_MODELS_PATH = getAprealAgentPath(APREAL_STATE_FILENAMES.models);
+const APREAL_AGENT_SETTINGS_PATH = getAprealAgentPath(APREAL_STATE_FILENAMES.settings);
 const MEMORY_REVIEW_NUDGE_INTERVAL = 10;
 process.env.PI_CODING_AGENT_DIR ??= APREAL_AGENT_DIR;
-process.env.PI_CODING_AGENT_SESSION_DIR ??= getAprealAgentPath("sessions");
+process.env.PI_CODING_AGENT_SESSION_DIR ??= getAprealAgentPath(APREAL_STATE_DIRECTORY_NAMES.sessions);
 const PI_LOGIN_GUIDANCE =
 	"Sign in from Apreal settings, then pick the default model for new chats.";
 const LEGACY_ENV_CREDENTIAL_PROVIDERS: Record<string, string> = {

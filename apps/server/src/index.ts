@@ -1,4 +1,3 @@
-import "./env.ts";
 import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
 import {
@@ -17,7 +16,8 @@ import { createChatStore } from "./chat-store.ts";
 import { createComputerUseMcpDefinition } from "./computer-use-mcp.ts";
 import { getConfiguredToolInventory, getConfiguredToolsLabel } from "./agent-tools.ts";
 import { getAprealAgentPath, getAprealHomeDir, getAprealServerDatabasePath } from "./agent-dir.ts";
-import { getServerEnv } from "./env.ts";
+import { loadAprealRuntime } from "./config.ts";
+import { APREAL_STATE_FILENAMES, INVENTORY_CACHE_TTL_MS } from "./constants.ts";
 import { createLogger } from "./logger.ts";
 import { McpToolRegistry } from "./mcp-tools.ts";
 import { McpStore } from "./mcp-store.ts";
@@ -33,9 +33,9 @@ import { createProviderLoginManager } from "./auth/provider-login.ts";
 import { WEB_DIST_DIR, WEB_INDEX_PATH, createMissingWebUiResponse, createStaticResponse } from "./web/web-static.ts";
 import { createWebRequestHandler } from "./web/web-request-handler.ts";
 import {type SharedSessionState} from "./web/session-state.ts"
-const APREAL_AGENT_AUTH_PATH = getAprealAgentPath("auth.json");
-const APREAL_AGENT_MCP_PATH = getAprealAgentPath("mcp.json");
-const APREAL_AGENT_APPEND_SYSTEM_PROMPT_PATH = getAprealAgentPath("APPEND_SYSTEM.md");
+const APREAL_AGENT_AUTH_PATH = getAprealAgentPath(APREAL_STATE_FILENAMES.auth);
+const APREAL_AGENT_MCP_PATH = getAprealAgentPath(APREAL_STATE_FILENAMES.mcp);
+const APREAL_AGENT_APPEND_SYSTEM_PROMPT_PATH = getAprealAgentPath(APREAL_STATE_FILENAMES.appendSystemPrompt);
 const ADMIN_JOBS_PATH = "/api/admin/jobs";
 import {
     createRelay,
@@ -46,7 +46,6 @@ import {
     isLoopbackClientRequest,
     isPrivateNetworkClientRequest,
     json,
-    DEFAULT_PORT,
     type ClientConnection,
     isDirectExecution,
 } from "./util/utils.ts";
@@ -117,9 +116,10 @@ async function initializeRelayState(logger: Logger): Promise<RelayMutableState> 
 }
 
 async function runApp() {
-    const env = getServerEnv();
+    const runtime = loadAprealRuntime();
+    const config = runtime.config;
     const cwd = getAprealHomeDir();
-    const port = env.PORT ?? DEFAULT_PORT;
+    const port = config.server.port;
     const logger = createLogger("server");
     const relayState = await initializeRelayState(logger);
     const providerLogin = createProviderLoginManager({
@@ -207,7 +207,7 @@ async function runApp() {
                 availableSkills,
             };
             inventorySnapshot = nextSnapshot;
-            inventorySnapshotExpiresAt = Date.now() + 10_000;
+            inventorySnapshotExpiresAt = Date.now() + INVENTORY_CACHE_TTL_MS;
             return nextSnapshot;
         })().finally(() => {
             inventorySnapshotPromise = null;
@@ -224,7 +224,7 @@ async function runApp() {
 
     let server: HttpServer;
     let listeningPort = port;
-    const bindHost = env.APREAL_ALLOW_PRIVATE_NETWORK_ADMIN === "true" ? undefined : "127.0.0.1";
+    const bindHost = config.server.host;
     const buildStatusPayload = async (): Promise<LocalWebAdminStatus> => {
         const inventory = await readInventorySnapshot();
         return {
@@ -317,7 +317,7 @@ async function runApp() {
         relay.restartRelayTransport();
     }
 
-    const allowPrivateNetworkAdmin = env.APREAL_ALLOW_PRIVATE_NETWORK_ADMIN === "true";
+    const allowPrivateNetworkAdmin = config.server.allow_private_network_admin;
     const assertLocalBrowserLocation = (request: Request): Response | null => {
         if (isLoopbackClientRequest(request)) {
             return null;
@@ -331,7 +331,7 @@ async function runApp() {
             {
                 message: allowPrivateNetworkAdmin
                     ? "The local admin API is only available from this machine or the private network."
-                    : "The local admin API is only available from this machine. Set APREAL_ALLOW_PRIVATE_NETWORK_ADMIN=true to allow same-Wi-Fi access.",
+                    : `The local admin API is only available from this machine. Set server.allow_private_network_admin = true in ${runtime.configPath} to allow same-Wi-Fi access.`,
             },
             { status: 403, headers: createCorsHeaders(request) },
         );
@@ -425,8 +425,8 @@ async function runApp() {
     logger.info("web server ready", {
         cwd,
         port: listeningPort,
-        host: bindHost ?? "0.0.0.0",
-        logLevel: env.LOG_LEVEL ?? "info",
+        host: bindHost,
+        logLevel: config.server.log_level,
         transport: "http-sse+relay",
         agentId: relayState.auth?.agentId ?? null,
         relayUrl: PI_RELAY_URL,
@@ -434,7 +434,7 @@ async function runApp() {
         relayTransportConnected: relayState.transportConnected,
     });
     console.log(`Pi web server ready in ${cwd}`);
-    console.log(`Bind host: ${bindHost ?? "0.0.0.0"}`);
+    console.log(`Bind host: ${bindHost}`);
     if (webUiReady) {
         console.log(`Frontend UI: http://localhost:${listeningPort}`);
     } else {

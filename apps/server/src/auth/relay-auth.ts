@@ -9,8 +9,9 @@ import {
 	type RelayPrincipalType,
 } from "@apreal/shared";
 import { getAprealAgentPath } from "../agent-dir.ts";
+import { APREAL_STATE_FILENAMES } from "../constants.ts";
 
-const APREAL_AGENT_RELAY_AUTH_PATH = getAprealAgentPath("relay-auth.json");
+const APREAL_AGENT_RELAY_AUTH_PATH = getAprealAgentPath(APREAL_STATE_FILENAMES.relayAuth);
 
 type LoggerLike = {
 	info(message: string, fields?: Record<string, unknown>): void;

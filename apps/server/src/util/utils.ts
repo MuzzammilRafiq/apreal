@@ -10,14 +10,16 @@ import type {
 	SessionSummary,
 	TranscriptMessage,
 } from "../web/session-state.ts";
-import { getServerEnv } from "../env.ts";
+import { loadAprealRuntime } from "../config.ts";
+export {
+	DEFAULT_SESSION_PAGE_LIMIT,
+	MAX_SESSION_PAGE_LIMIT,
+	RELAY_STREAM_RETRY_MS,
+	SSE_HEARTBEAT_INTERVAL_MS,
+} from "../constants.ts";
+import { DEVELOPMENT_WEB_ORIGINS } from "../constants.ts";
 
-export const DEFAULT_PORT = 3000;
-export const DEFAULT_SESSION_PAGE_LIMIT = 50;
-export const MAX_SESSION_PAGE_LIMIT = 200;
 export const SERVER_SRC_DIR = dirname(fileURLToPath(import.meta.url));
-export const RELAY_STREAM_RETRY_MS = 1_000;
-export const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 export const SSE_ENCODER = new TextEncoder();
 
 export type ClientTransport = "http" | "relay";
@@ -140,19 +142,14 @@ function normalizeOrigin(value: string | null | undefined): string | null {
 }
 
 function readConfiguredCorsOrigins(): string[] {
-	const env = getServerEnv();
-	return [env.APREAL_CORS_ALLOW_ORIGINS, env.APREAL_CORS_ALLOW_ORIGIN]
-		.flatMap((value) => (value ?? "").split(","))
+	return loadAprealRuntime().config.development.cors_allow_origins
 		.map((value) => normalizeOrigin(value))
 		.filter((value): value is string => value !== null);
 }
 
 function buildAllowedCorsOrigins(request?: Request): Set<string> {
 	const origins = new Set<string>([
-		"http://localhost:5173",
-		"http://127.0.0.1:5173",
-		"http://localhost:4173",
-		"http://127.0.0.1:4173",
+		...DEVELOPMENT_WEB_ORIGINS,
 		...readConfiguredCorsOrigins(),
 	]);
 	const requestOrigin = request ? normalizeOrigin(new URL(request.url).origin) : null;
