@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server as HttpServer, type Ser
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { createCorsHeaders } from "./utils.ts";
+import { createCorsHeaders } from "../util/utils.ts";
 import { getErrorMessage } from "../session.ts";
 
 function createNodeRequest(request: IncomingMessage, response: ServerResponse): Request {

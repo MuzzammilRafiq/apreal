@@ -25,21 +25,21 @@ import { createCustomTools } from "./tools/index.ts";
 import { createJobExecutor, JobStore, Scheduler } from "./scheduled-jobs/index.ts";
 import { getAvailableSkills, getErrorMessage, prewarmAgentRuntime } from "./session.ts";
 import { listScheduledJobRuns, parseAdminJobRoute, parseAdminMcpRoute } from "./web/admin-routes.ts";
-import { createClientManager } from "./web/client-manager.ts";
+import { createClientManager, type Logger } from "./web/client-manager.ts";
 import { createHandlers } from "./web/handlers.ts";
 import { startHttpServer } from "./web/http-server.ts";
 import { hasLocalBrowserAuthSession } from "./web/local-browser-auth.ts";
-import { createProviderLoginManager } from "./web/provider-login.ts";
-import { initializeRelayState } from "./web/relay-state.ts";
+import { createProviderLoginManager } from "./auth/provider-login.ts";
 import { WEB_DIST_DIR, WEB_INDEX_PATH, createMissingWebUiResponse, createStaticResponse } from "./web/web-static.ts";
 import { createWebRequestHandler } from "./web/web-request-handler.ts";
-
+import {type SharedSessionState} from "./web/session-state.ts"
 const APREAL_AGENT_AUTH_PATH = getAprealAgentPath("auth.json");
 const APREAL_AGENT_MCP_PATH = getAprealAgentPath("mcp.json");
 const APREAL_AGENT_APPEND_SYSTEM_PROMPT_PATH = getAprealAgentPath("APPEND_SYSTEM.md");
 const ADMIN_JOBS_PATH = "/api/admin/jobs";
 import {
     createRelay,
+    type RelayMutableState,
 } from "./web/relay.ts";
 import {
     createCorsHeaders,
@@ -49,9 +49,8 @@ import {
     DEFAULT_PORT,
     type ClientConnection,
     isDirectExecution,
-} from "./web/utils.ts";
-
-
+} from "./util/utils.ts";
+import { ensureAgentAuth } from "./auth/relay-auth.ts";
 
 function readLocalClientId(request: Request): string | null {
     const headerClientId = normalizeRelayPrincipalId(request.headers.get(LOCAL_CLIENT_ID_HEADER));
@@ -94,13 +93,35 @@ async function writeAppendSystemPrompt(value: string): Promise<void> {
     await writeFile(APREAL_AGENT_APPEND_SYSTEM_PROMPT_PATH, normalizedValue, "utf8");
 }
 
-async function runApp() {
+async function initializeRelayState(logger: Logger): Promise<RelayMutableState> {
+    const relayState: RelayMutableState = {
+        auth: null,
+        startupError: null,
+        transportConnected: false,
+        transportGeneration: 0,
+        transportAbortController: null,
+        authenticating: false,
+    };
 
+    try {
+        relayState.auth = await ensureAgentAuth(logger);
+    } catch (error) {
+        relayState.startupError = getErrorMessage(error);
+        logger.warn("relay registration unavailable during startup", {
+            PI_RELAY_URL,
+            error: relayState.startupError,
+        });
+    }
+
+    return relayState;
+}
+
+async function runApp() {
     const env = getServerEnv();
     const cwd = getAprealHomeDir();
     const port = env.PORT ?? DEFAULT_PORT;
-    const logger = createLogger("web-server");
-    const relayState = await initializeRelayState(logger, PI_RELAY_URL);
+    const logger = createLogger("server");
+    const relayState = await initializeRelayState(logger);
     const providerLogin = createProviderLoginManager({
         authPath: APREAL_AGENT_AUTH_PATH,
         cwd,
@@ -108,7 +129,7 @@ async function runApp() {
     });
 
     const clients = new Map<string, ClientConnection>();
-    const sessions = new Map<string, import("./web/session-state.ts").SharedSessionState>();
+    const sessions = new Map<string, SharedSessionState>();
     const dbPath = getAprealServerDatabasePath();
     const chatStore = createChatStore(dbPath);
     const jobStore = new JobStore(dbPath);

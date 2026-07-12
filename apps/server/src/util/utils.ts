@@ -9,7 +9,7 @@ import {
 import type {
 	SessionSummary,
 	TranscriptMessage,
-} from "./session-state.ts";
+} from "../web/session-state.ts";
 import { getServerEnv } from "../env.ts";
 
 export const DEFAULT_PORT = 3000;

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createClientManager } from "../web/client-manager.ts";
-import type { ServerMessage } from "../web/utils.ts";
+import type { ServerMessage } from "../util/utils.ts";
 
 function createLogger() {
 	return {

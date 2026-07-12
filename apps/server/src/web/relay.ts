@@ -1,28 +1,29 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { WebSocket, type RawData } from "ws";
 import {
+	PI_RELAY_URL,
 	RELAY_AGENT_MESSAGE_PATH,
 	RELAY_AGENT_STREAM_PATH,
 	type RelayAgentCommand,
 } from "@apreal/shared";
 import {
-	ensureRelayAgentAuth,
+	ensureAgentAuth,
 	authenticateRelayAgentWithOwnerGrant,
 	readClientTokenFromRequest,
 	verifyRelayClientAccess,
-} from "../relay-auth.ts";
+} from "../auth/relay-auth.ts";
 import { parseClientAppMessage, type ClientAppMessage } from "@apreal/shared";
 import {
 	isObjectRecord,
 	parseRelayAgentCommand,
 	RELAY_STREAM_RETRY_MS,
 	type ServerMessage,
-} from "./utils.ts";
+} from "../util/utils.ts";
 import { getErrorMessage } from "../session.ts";
 import type { ClientActions, Logger } from "./client-manager.ts";
 
 export interface RelayMutableState {
-	auth: Awaited<ReturnType<typeof ensureRelayAgentAuth>> | null;
+	auth: Awaited<ReturnType<typeof ensureAgentAuth>> | null;
 	startupError: string | null;
 	transportConnected: boolean;
 	transportGeneration: number;
@@ -34,14 +35,14 @@ export interface RelayState {
 	logger: Logger;
 	relayUrl: string;
 	relayState: RelayMutableState;
-	clients: Map<string, import("./utils.ts").ClientConnection>;
+	clients: Map<string, import("../util/utils.ts").ClientConnection>;
 }
 
 export interface RelayActions {
 	getClientAuthErrorStatus(error: unknown): number;
 	authenticateClientRequest(request: Request): Promise<{ clientId: string }>;
 	restartRelayTransport(): void;
-	authenticateWithOwnerGrant(ownerGrant: string): Promise<Awaited<ReturnType<typeof ensureRelayAgentAuth>>>;
+	authenticateWithOwnerGrant(ownerGrant: string): Promise<Awaited<ReturnType<typeof ensureAgentAuth>>>;
 	isConfigured(): boolean;
 }
 
@@ -54,7 +55,7 @@ export function createRelay(
 ): RelayActions {
 	const { logger, relayUrl, relayState, clients } = state;
 	const { removeClientConnection, registerClientConnection, sendError, sendConnected } = clientActions;
-	let relayAuthRefreshPromise: Promise<Awaited<ReturnType<typeof ensureRelayAgentAuth>>> | null = null;
+	let relayAuthRefreshPromise: Promise<Awaited<ReturnType<typeof ensureAgentAuth>>> | null = null;
 	let relayAgentWebSocket: WebSocket | null = null;
 
 	function getClientAuthErrorStatus(error: unknown): number {
@@ -75,20 +76,20 @@ export function createRelay(
 		return verifyRelayClientAccess(relayUrl, clientToken, relayState.auth.agentId);
 	}
 
-	function relayAuthNeedsRefresh(auth: Awaited<ReturnType<typeof ensureRelayAgentAuth>> | null): boolean {
+	function relayAuthNeedsRefresh(auth: Awaited<ReturnType<typeof ensureAgentAuth>> | null): boolean {
 		return !auth?.token || !auth.expiresAt || auth.expiresAt - Date.now() <= RELAY_AGENT_AUTH_REFRESH_WINDOW_MS;
 	}
 
 	async function ensureActiveRelayAgentAuth(options?: { force?: boolean }) {
 		if (!options?.force && !relayAuthNeedsRefresh(relayState.auth)) {
-			return relayState.auth as Awaited<ReturnType<typeof ensureRelayAgentAuth>>;
+			return relayState.auth as Awaited<ReturnType<typeof ensureAgentAuth>>;
 		}
 
 		if (relayAuthRefreshPromise) {
 			return relayAuthRefreshPromise;
 		}
 
-		relayAuthRefreshPromise = ensureRelayAgentAuth(logger, relayUrl)
+		relayAuthRefreshPromise = ensureAgentAuth(logger)
 			.then((auth) => {
 				relayState.auth = auth;
 				relayState.startupError = null;
@@ -238,7 +239,7 @@ export function createRelay(
 		}
 	}
 
-	function createRelaySendPayload(clientId: string): import("./utils.ts").ClientConnection["send"] {
+	function createRelaySendPayload(clientId: string): import("../util/utils.ts").ClientConnection["send"] {
 		return (payload) => {
 			void postRelayServerMessage(clientId, payload).catch((error) => {
 				logger.warn("failed to deliver relay client payload", {
@@ -387,7 +388,7 @@ export function createRelay(
 
 	async function runRelayTransportLoop(generation: number) {
 		while (generation === relayState.transportGeneration) {
-			let currentAuth: Awaited<ReturnType<typeof ensureRelayAgentAuth>>;
+			let currentAuth: Awaited<ReturnType<typeof ensureAgentAuth>>;
 			try {
 				currentAuth = await ensureActiveRelayAgentAuth();
 			} catch (error) {
@@ -457,7 +458,7 @@ export function createRelay(
 
 		relayState.authenticating = true;
 		try {
-			relayState.auth = await authenticateRelayAgentWithOwnerGrant(logger, ownerGrant, relayUrl);
+			relayState.auth = await authenticateRelayAgentWithOwnerGrant(logger, ownerGrant);
 			relayState.startupError = null;
 			resetClientConnections("relay_owner_authenticated");
 			restartRelayTransport();

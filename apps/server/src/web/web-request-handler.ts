@@ -34,7 +34,7 @@ import {
 } from "@apreal/shared";
 import type { z } from "zod";
 import { setDefaultProviderModel, getErrorMessage } from "../session.ts";
-import { createCorsHeaders, getCorsOriginErrorMessage, json } from "./utils.ts";
+import { createCorsHeaders, getCorsOriginErrorMessage, json } from "../util/utils.ts";
 import type { ClientActions, Logger } from "./client-manager.ts";
 import type { SharedSessionState } from "./session-state.ts";
 import type { JobStore, Scheduler } from "../scheduled-jobs/index.ts";
