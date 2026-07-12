@@ -1,0 +1,97 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build macOS Apple Silicon release
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Run checks
+        run: |
+          pnpm typecheck
+          pnpm test
+
+      - name: Build release
+        env:
+          APREAL_RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: pnpm build:release
+
+      - name: Package release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.version.outputs.version }}"
+          directory="apreal-${version}-darwin-arm64"
+          archive="${directory}.tar.gz"
+
+          cd dist/release
+          tar -czf "$archive" "$directory"
+          shasum -a 256 "$archive" > "${archive}.sha256"
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.version.outputs.version }}"
+          archive="dist/release/apreal-${version}-darwin-arm64.tar.gz"
+
+          gh release create "${GITHUB_REF_NAME}" \
+            "$archive" \
+            "${archive}.sha256" \
+            "install.sh" \
+            --draft \
+            --verify-tag \
+            --generate-notes \
+            --title "Apreal ${version}"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit "${GITHUB_REF_NAME}" \
+            --draft=false \
+            --latest
