@@ -16,6 +16,7 @@
 		"preview": "pnpm preview:local",
 		"preview:local": "vite preview --mode web-local",
 		"preview:remote": "vite preview --mode remote",
+		"pretypecheck": "pnpm build:version",
 		"typecheck": "tsc --noEmit",
 		"test": "node --conditions=development --import tsx --test src/tests/*.test.ts"
 	},
