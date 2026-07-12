@@ -3,9 +3,9 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "node --watch --conditions=development --import tsx src/index.ts",
-		"start": "node --conditions=development --import tsx src/index.ts",
-		"build": "tsc --noEmit",
+		"dev": "node --watch --conditions=development --import tsx src/index.ts --home ~/.apreal-dev",
+		"start": "node --conditions=development --import tsx src/index.ts --home ~/.apreal-dev",
+		"build": "pnpm typecheck && node scripts/build-release.mjs",
 		"typecheck": "tsc --noEmit",
 		"test": "node --conditions=development --import tsx --test src/tests/*.test.ts"
 	},
@@ -14,14 +14,14 @@
 		"@earendil-works/pi-ai": "^0.79.9",
 		"@earendil-works/pi-coding-agent": "^0.79.9",
 		"@modelcontextprotocol/sdk": "^1.29.0",
-		"@t3-oss/env-core": "^0.13.11",
-		"dotenv": "^17.4.2",
 		"open-computer-use": "0.1.53",
+		"smol-toml": "^1.7.0",
 		"ws": "^8.21.0",
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
 		"@types/ws": "^8.18.1",
+		"esbuild": "0.28.0",
 		"typescript": "^5.9.3"
 	}
 }

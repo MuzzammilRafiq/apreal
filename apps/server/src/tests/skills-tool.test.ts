@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { loadAprealRuntime, resetAprealRuntimeForTests } from "../config.ts";
 import { createSkillTools } from "../tools/skills.ts";
 
 function parseToolJson(result: Awaited<ReturnType<any["execute"]>>) {
@@ -14,9 +15,9 @@ function parseToolJson(result: Awaited<ReturnType<any["execute"]>>) {
 
 test("skill tools create, list, view, and write local Apreal skills", async () => {
 	const root = mkdtempSync(join(tmpdir(), "apreal-skills-"));
-	const previousAgentDir = process.env.APREAL_AGENT_DIR;
 	try {
-		process.env.APREAL_AGENT_DIR = join(root, "agent");
+		resetAprealRuntimeForTests();
+		loadAprealRuntime(["--home", root]);
 		const cwd = join(root, "workspace");
 		const [skillsList, skillView, skillManage] = createSkillTools(cwd);
 		assert.ok(skillsList);
@@ -66,20 +67,16 @@ test("skill tools create, list, view, and write local Apreal skills", async () =
 		const viewedFile = parseToolJson(fileResult);
 		assert.equal(viewedFile.content, "- Check logs\n");
 	} finally {
-		if (previousAgentDir === undefined) {
-			delete process.env.APREAL_AGENT_DIR;
-		} else {
-			process.env.APREAL_AGENT_DIR = previousAgentDir;
-		}
+		resetAprealRuntimeForTests();
 		rmSync(root, { recursive: true, force: true });
 	}
 });
 
 test("skill tools reject supporting file path traversal", async () => {
 	const root = mkdtempSync(join(tmpdir(), "apreal-skills-"));
-	const previousAgentDir = process.env.APREAL_AGENT_DIR;
 	try {
-		process.env.APREAL_AGENT_DIR = join(root, "agent");
+		resetAprealRuntimeForTests();
+		loadAprealRuntime(["--home", root]);
 		const [, , skillManage] = createSkillTools(join(root, "workspace"));
 		assert.ok(skillManage);
 		await skillManage.execute("tool-1", {
@@ -99,11 +96,7 @@ test("skill tools reject supporting file path traversal", async () => {
 			/filePath must stay inside the skill directory/,
 		);
 	} finally {
-		if (previousAgentDir === undefined) {
-			delete process.env.APREAL_AGENT_DIR;
-		} else {
-			process.env.APREAL_AGENT_DIR = previousAgentDir;
-		}
+		resetAprealRuntimeForTests();
 		rmSync(root, { recursive: true, force: true });
 	}
 });

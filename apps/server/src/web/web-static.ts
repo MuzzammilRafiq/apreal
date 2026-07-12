@@ -1,9 +1,9 @@
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import { ADMIN_STATUS_PATH } from "@apreal/shared";
-import { SERVER_SRC_DIR } from "../util/utils.ts";
+import { RUNTIME_ASSETS } from "../runtime-assets.ts";
 
-export const WEB_DIST_DIR = resolve(SERVER_SRC_DIR, "..", "..", "..", "web", "dist");
+export const WEB_DIST_DIR = RUNTIME_ASSETS.webDistDir;
 export const WEB_INDEX_PATH = join(WEB_DIST_DIR, "index.html");
 const CONTENT_TYPES = new Map<string, string>([
 	[".css", "text/css; charset=utf-8"],

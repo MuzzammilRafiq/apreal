@@ -1,4 +1,5 @@
-import { getServerEnv } from "./env.ts";
+import { loadAprealRuntime } from "./config.ts";
+import { DEFAULT_LOG_LEVEL } from "./constants.ts";
 
 const LOG_LEVEL_ORDER = {
 	debug: 10,
@@ -11,7 +12,7 @@ export type LogLevel = keyof typeof LOG_LEVEL_ORDER;
 
 type LogFields = Record<string, string | number | boolean | null | undefined>;
 
-const DEFAULT_LEVEL: LogLevel = "info";
+const DEFAULT_LEVEL: LogLevel = DEFAULT_LOG_LEVEL;
 const ANSI_RESET = "\x1b[0m";
 const TIMESTAMP_COLOR = "\x1b[90m";
 const DATA_COLOR = "\x1b[96m";
@@ -37,12 +38,12 @@ function parseLogLevel(value: string | undefined): LogLevel {
 }
 
 function shouldLog(level: LogLevel): boolean {
-	const configuredLevel = parseLogLevel(getServerEnv().LOG_LEVEL);
+	const configuredLevel = parseLogLevel(loadAprealRuntime().config.server.log_level);
 	return LOG_LEVEL_ORDER[level] >= LOG_LEVEL_ORDER[configuredLevel];
 }
 
 function supportsColor(): boolean {
-	if (getServerEnv().NO_COLOR) {
+	if (process.env.NO_COLOR) {
 		return false;
 	}
 
