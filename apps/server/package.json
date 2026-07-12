@@ -5,7 +5,7 @@
 	"scripts": {
 		"dev": "node --watch --conditions=development --import tsx src/index.ts",
 		"start": "node --conditions=development --import tsx src/index.ts",
-		"build": "tsc --noEmit",
+		"build": "pnpm typecheck && node scripts/build-release.mjs",
 		"typecheck": "tsc --noEmit",
 		"test": "node --conditions=development --import tsx --test src/tests/*.test.ts"
 	},
@@ -21,6 +21,7 @@
 	},
 	"devDependencies": {
 		"@types/ws": "^8.18.1",
+		"esbuild": "0.28.0",
 		"typescript": "^5.9.3"
 	}
 }

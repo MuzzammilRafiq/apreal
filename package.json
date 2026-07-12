@@ -18,6 +18,7 @@
     "dev:web:local": "pnpm --dir apps/web dev:local",
     "dev:web:remote": "pnpm --dir apps/web dev:remote",
     "build:server": "pnpm --dir apps/server build",
+    "build:release": "pnpm build:web:local && pnpm build:server",
     "build:web": "pnpm --dir apps/web build",
     "build:web:local": "pnpm --dir apps/web build:local",
     "build:web:remote": "pnpm --dir apps/web build:remote",

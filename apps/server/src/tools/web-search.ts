@@ -1,10 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { Type, type Static } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const PYTHON_SCRIPTS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../scripts/python");
+import { RUNTIME_ASSETS } from "../runtime-assets.ts";
 
 interface SearchResponse {
 	id: number;
@@ -83,8 +80,8 @@ class SearchWorker {
 			return this.worker;
 		}
 
-		const worker = spawn("uv", ["run", "worker.py"], {
-			cwd: PYTHON_SCRIPTS_DIR,
+		const worker = spawn(RUNTIME_ASSETS.uvExecutable, ["run", "worker.py"], {
+			cwd: RUNTIME_ASSETS.pythonDir,
 			env: process.env,
 			detached: process.platform !== "win32",
 			stdio: ["pipe", "pipe", "pipe"],

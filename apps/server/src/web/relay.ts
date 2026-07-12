@@ -1,7 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { WebSocket, type RawData } from "ws";
 import {
-	PI_RELAY_URL,
 	RELAY_AGENT_MESSAGE_PATH,
 	RELAY_AGENT_STREAM_PATH,
 	type RelayAgentCommand,

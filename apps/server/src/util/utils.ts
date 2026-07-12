@@ -1,5 +1,4 @@
 import { isIP } from "node:net";
-import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	type RelayAgentCommand,
@@ -19,7 +18,6 @@ export {
 } from "../constants.ts";
 import { DEVELOPMENT_WEB_ORIGINS } from "../constants.ts";
 
-export const SERVER_SRC_DIR = dirname(fileURLToPath(import.meta.url));
 export const SSE_ENCODER = new TextEncoder();
 
 export type ClientTransport = "http" | "relay";
