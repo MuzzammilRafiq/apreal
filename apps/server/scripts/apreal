@@ -1,0 +1,36 @@
+#!/bin/sh
+set -eu
+
+home="${HOME}/.apreal"
+previous=""
+for argument in "$@"; do
+	if [ "$previous" = "--home" ]; then
+		home="$argument"
+		previous=""
+		continue
+	fi
+	case "$argument" in
+		--home) previous="--home" ;;
+		--home=*) home=${argument#--home=} ;;
+	esac
+done
+
+if [ "$previous" = "--home" ]; then
+	echo "apreal: --home requires a path" >&2
+	exit 2
+fi
+
+case "$home" in
+	~/*) home="$HOME/${home#~/}" ;;
+esac
+
+release="$home/current"
+node="$release/runtime/node/bin/node"
+cli="$release/server/apreal-cli.mjs"
+
+if [ ! -x "$node" ] || [ ! -f "$cli" ]; then
+	echo "apreal: no valid release is active in $home" >&2
+	exit 1
+fi
+
+exec "$node" "$cli" "$@"

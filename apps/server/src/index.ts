@@ -50,6 +50,7 @@ import {
     isDirectExecution,
 } from "./util/utils.ts";
 import { ensureAgentAuth } from "./auth/relay-auth.ts";
+import { acquireProcessLock } from "./process-lock.ts";
 
 function readLocalClientId(request: Request): string | null {
     const headerClientId = normalizeRelayPrincipalId(request.headers.get(LOCAL_CLIENT_ID_HEADER));
@@ -117,6 +118,8 @@ async function initializeRelayState(logger: Logger): Promise<RelayMutableState> 
 
 async function runApp() {
     const runtime = loadAprealRuntime();
+    const processLock = await acquireProcessLock(runtime.paths.run);
+    try {
     const config = runtime.config;
     const cwd = getAprealHomeDir();
     const port = config.server.port;
@@ -407,7 +410,8 @@ async function runApp() {
         scheduler.stop();
         relayState.transportGeneration += 1;
         relayState.transportAbortController?.abort();
-        server.close((error) => {
+        server.close(async (error) => {
+            await processLock.release();
             if (error) {
                 logger.error("failed to shut down web server cleanly", {
                     error: getErrorMessage(error),
@@ -458,8 +462,15 @@ async function runApp() {
     console.log(`Relay transport: ${relayState.transportConnected ? "connected" : "connecting"}`);
     console.log("Browser chat sessions are shared across tabs while the server is running.");
     return server;
+    } catch (error) {
+        await processLock.release();
+        throw error;
+    }
 }
 
 if (isDirectExecution(import.meta.url)) {
-    void runApp();
+	void runApp().catch((error) => {
+		console.error(error instanceof Error ? error.message : String(error));
+		process.exitCode = 1;
+	});
 }

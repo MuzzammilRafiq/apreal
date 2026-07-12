@@ -406,7 +406,7 @@ function createSkillManageTool() {
 	return defineTool({
 		name: "skill_manage",
 		label: "Skill Manage",
-		description: "Create and maintain local Apreal skills in ~/.apreal/agent/skills. Use after difficult or repeatable workflows so future sessions can reuse the procedure. Mutates only local Apreal skills; use skill_view before patching.",
+		description: "Create and maintain local skills under the selected Apreal home. Use after difficult or repeatable workflows so future sessions can reuse the procedure. Mutates only local Apreal skills; use skill_view before patching.",
 		promptSnippet: "Creates or updates local Apreal skills for durable workflow knowledge.",
 		promptGuidelines: [
 			"Use memory for stable facts and preferences; use skill_manage for reusable procedures, troubleshooting playbooks, commands, and workflows.",

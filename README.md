@@ -34,6 +34,8 @@ pnpm dev
 
 `pnpm dev` uses Turbo's TUI so the server and web tasks show up as separate selectable streams in the terminal.
 
+Development server state is stored under `~/.apreal-dev`. The production default remains `~/.apreal`.
+
 This is the only development mode with frontend hot reload. Edit files under `apps/web/src`, keep the browser open at `http://localhost:5173`, and Vite will reload without rebuilding `apps/web/dist` or restarting the server.
 
 If you want to run just one side, use:
@@ -89,8 +91,8 @@ pnpm build:web:remote
 
 ## Runtime Notes
 
-- Agent provider login is handled by the Apreal settings UI on the laptop. Credentials and defaults are stored under `~/.apreal/agent` by default.
-- The server exposes a persistent Markdown-backed `memory` tool. Curated memory lives in `~/.apreal/agent/memory/USER.md` for user preferences/expectations and `~/.apreal/agent/memory/MEMORY.md` for agent/project/environment facts; use `memory(action="add"|"replace"|"remove", memoryType="user"|"agent", ...)` to keep entries compact. These files are loaded as a frozen prompt snapshot when a session starts, while tool writes become durable immediately. `search` memory lives in up to 10 Markdown files under `~/.apreal/agent/memory/search`; only the search index is loaded by default.
+- Agent provider login is handled by the Apreal settings UI on the laptop. Credentials and defaults are stored under the selected Apreal home's `agent` directory (`~/.apreal-dev` during development and `~/.apreal` in production).
+- The server exposes a persistent Markdown-backed `memory` tool. Curated memory lives below the selected home in `agent/memory/USER.md` for user preferences/expectations and `agent/memory/MEMORY.md` for agent/project/environment facts; use `memory(action="add"|"replace"|"remove", memoryType="user"|"agent", ...)` to keep entries compact. These files are loaded as a frozen prompt snapshot when a session starts, while tool writes become durable immediately. `search` memory lives in up to 10 Markdown files under `agent/memory/search`; only the search index is loaded by default.
 - `LOG_LEVEL` supports `debug`, `info`, `warn`, and `error`.
 - The browser talks only to the relay host for auth plus chat transport.
 - The browser talks only to the relay host. The Pi server keeps an outbound authenticated stream open to the relay, and browser messages are forwarded over that live channel.

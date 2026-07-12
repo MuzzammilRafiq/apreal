@@ -127,7 +127,7 @@ async function createResourceLoader(cwd: string, settingsManager: SettingsManage
 				"## Skills",
 				"- Before complex work, inspect available skills in the system prompt or with skills_list; if a skill is relevant, load it with skill_view and follow it.",
 				"- When a skill references relative files, resolve them against the skillDir returned by skill_view.",
-				"- After a difficult, iterative, or likely-repeatable task, use skill_manage to create or patch a local Apreal skill in ~/.apreal/agent/skills.",
+				"- After a difficult, iterative, or likely-repeatable task, use skill_manage to create or patch a local skill under the selected Apreal home.",
 				"- Prefer patching an existing skill over creating a near-duplicate. Use skill_view before patching and provide complete updated instructions.",
 				"- Do not save one-off task progress, PR numbers, commit SHAs, or temporary TODO state as skills.",
 			].join("\n"),
