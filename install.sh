@@ -117,8 +117,8 @@ if [ "$assume_yes" != true ]; then
 fi
 
 umask 077
-mkdir -p "$home" "$home/versions" "$home/bin" "$home/logs" "$home/run" "$home/backups"
-chmod 700 "$home" "$home/versions" "$home/bin" "$home/logs" "$home/run" "$home/backups"
+mkdir -p "$home" "$home/versions" "$home/bin" "$home/logs" "$home/run" "$home/backups" "$home/runtime" "$home/cache/uv"
+chmod 700 "$home" "$home/versions" "$home/bin" "$home/logs" "$home/run" "$home/backups" "$home/runtime" "$home/cache" "$home/cache/uv"
 
 install_lock="$home/run/install.lock"
 if ! mkdir "$install_lock" 2>/dev/null; then
@@ -152,60 +152,86 @@ source_release="$extract_dir/apreal-${version}-darwin-arm64"
 [ -f "$source_release/python/uv.lock" ] || fail "release archive does not contain the Python lockfile"
 [ -f "$source_release/launcher/apreal" ] || fail "release archive does not contain the launcher"
 
-runtime_dir="$source_release/runtime"
-mkdir -p "$runtime_dir/node" "$runtime_dir/uv"
+shared_runtime_dir="$home/runtime"
+node_runtime_dir="$shared_runtime_dir/node/$NODE_VERSION"
+uv_runtime_dir="$shared_runtime_dir/uv/$UV_VERSION"
+python_runtime_dir="$shared_runtime_dir/python"
+playwright_runtime_dir="$shared_runtime_dir/playwright"
+mkdir -p "$shared_runtime_dir/node" "$shared_runtime_dir/uv" "$python_runtime_dir" "$playwright_runtime_dir"
 
 node_archive_name="node-v${NODE_VERSION}-darwin-arm64.tar.gz"
 node_base_url="https://nodejs.org/dist/v${NODE_VERSION}"
 node_archive="$work_dir/$node_archive_name"
 node_checksums="$work_dir/node-SHASUMS256.txt"
 
-echo "Installing private Node.js ${NODE_VERSION}..."
-curl -fL --retry 3 --output "$node_archive" "$node_base_url/$node_archive_name"
-curl -fL --retry 3 --output "$node_checksums" "$node_base_url/SHASUMS256.txt"
-node_expected=$(awk -v name="$node_archive_name" '$2 == name { print $1; exit }' "$node_checksums")
-node_actual=$(shasum -a 256 "$node_archive" | awk '{ print $1 }')
-[ -n "$node_expected" ] || fail "Node.js did not publish a checksum for $node_archive_name"
-[ "$node_actual" = "$node_expected" ] || fail "Node.js checksum verification failed"
-tar -xzf "$node_archive" -C "$runtime_dir/node" --strip-components=1
+if [ -x "$node_runtime_dir/bin/node" ] && [ "$("$node_runtime_dir/bin/node" --version)" = "v$NODE_VERSION" ]; then
+	echo "Reusing private Node.js ${NODE_VERSION}."
+else
+	echo "Installing private Node.js ${NODE_VERSION}..."
+	curl -fL --retry 3 --output "$node_archive" "$node_base_url/$node_archive_name"
+	curl -fL --retry 3 --output "$node_checksums" "$node_base_url/SHASUMS256.txt"
+	node_expected=$(awk -v name="$node_archive_name" '$2 == name { print $1; exit }' "$node_checksums")
+	node_actual=$(shasum -a 256 "$node_archive" | awk '{ print $1 }')
+	[ -n "$node_expected" ] || fail "Node.js did not publish a checksum for $node_archive_name"
+	[ "$node_actual" = "$node_expected" ] || fail "Node.js checksum verification failed"
+	node_staging="$work_dir/node-runtime"
+	mkdir "$node_staging"
+	tar -xzf "$node_archive" -C "$node_staging" --strip-components=1
+	rm -rf "$node_runtime_dir"
+	mv "$node_staging" "$node_runtime_dir"
+fi
 
 uv_archive_name="uv-aarch64-apple-darwin.tar.gz"
 uv_base_url="https://github.com/astral-sh/uv/releases/download/${UV_VERSION}"
 uv_archive="$work_dir/$uv_archive_name"
 uv_checksum_file="$work_dir/$uv_archive_name.sha256"
 
-echo "Installing private uv ${UV_VERSION}..."
-curl -fL --retry 3 --output "$uv_archive" "$uv_base_url/$uv_archive_name"
-curl -fL --retry 3 --output "$uv_checksum_file" "$uv_base_url/$uv_archive_name.sha256"
-uv_expected=$(awk 'NR == 1 { print $1 }' "$uv_checksum_file")
-uv_actual=$(shasum -a 256 "$uv_archive" | awk '{ print $1 }')
-[ -n "$uv_expected" ] || fail "uv checksum file is empty"
-[ "$uv_actual" = "$uv_expected" ] || fail "uv checksum verification failed"
+if [ -x "$uv_runtime_dir/uv" ] && [ "$("$uv_runtime_dir/uv" --version | awk '{ print $2 }')" = "$UV_VERSION" ]; then
+	echo "Reusing private uv ${UV_VERSION}."
+else
+	echo "Installing private uv ${UV_VERSION}..."
+	curl -fL --retry 3 --output "$uv_archive" "$uv_base_url/$uv_archive_name"
+	curl -fL --retry 3 --output "$uv_checksum_file" "$uv_base_url/$uv_archive_name.sha256"
+	uv_expected=$(awk 'NR == 1 { print $1 }' "$uv_checksum_file")
+	uv_actual=$(shasum -a 256 "$uv_archive" | awk '{ print $1 }')
+	[ -n "$uv_expected" ] || fail "uv checksum file is empty"
+	[ "$uv_actual" = "$uv_expected" ] || fail "uv checksum verification failed"
 
-uv_extract_dir="$work_dir/uv"
-mkdir "$uv_extract_dir"
-tar -xzf "$uv_archive" -C "$uv_extract_dir"
-uv_source=$(find "$uv_extract_dir" -type f -name uv -perm -u+x | head -n 1)
-[ -n "$uv_source" ] || fail "uv archive does not contain the uv executable"
-cp "$uv_source" "$runtime_dir/uv/uv"
-chmod 755 "$runtime_dir/uv/uv"
+	uv_extract_dir="$work_dir/uv"
+	mkdir "$uv_extract_dir"
+	tar -xzf "$uv_archive" -C "$uv_extract_dir"
+	uv_source=$(find "$uv_extract_dir" -type f -name uv -perm -u+x | head -n 1)
+	[ -n "$uv_source" ] || fail "uv archive does not contain the uv executable"
+	rm -rf "$uv_runtime_dir"
+	mkdir "$uv_runtime_dir"
+	cp "$uv_source" "$uv_runtime_dir/uv"
+	chmod 755 "$uv_runtime_dir/uv"
+fi
 
-export UV_PYTHON_INSTALL_DIR="$runtime_dir/python"
-export UV_CACHE_DIR="$work_dir/uv-cache"
+release_runtime_dir="$source_release/runtime"
+mkdir "$release_runtime_dir"
+ln -s "$node_runtime_dir" "$release_runtime_dir/node"
+ln -s "$uv_runtime_dir" "$release_runtime_dir/uv"
+ln -s "$python_runtime_dir" "$release_runtime_dir/python"
+ln -s "$playwright_runtime_dir" "$release_runtime_dir/playwright"
+
+export UV_PYTHON_INSTALL_DIR="$python_runtime_dir"
+export UV_CACHE_DIR="$home/cache/uv"
 export UV_PROJECT_ENVIRONMENT="$source_release/python/.venv"
-export PLAYWRIGHT_BROWSERS_PATH="$runtime_dir/playwright"
+export PLAYWRIGHT_BROWSERS_PATH="$playwright_runtime_dir"
+export PLAYWRIGHT_SKIP_BROWSER_GC=1
 
 echo "Installing private Python ${PYTHON_VERSION} and locked dependencies..."
-"$runtime_dir/uv/uv" python install "$PYTHON_VERSION"
-"$runtime_dir/uv/uv" sync \
+"$uv_runtime_dir/uv" python install "$PYTHON_VERSION"
+"$uv_runtime_dir/uv" sync \
 	--project "$source_release/python" \
 	--frozen \
 	--python "$PYTHON_VERSION"
 
-echo "Installing Playwright Chromium (this is a large download)..."
-"$runtime_dir/uv/uv" run \
+echo "Ensuring the shared Playwright Chromium headless shell is installed..."
+"$uv_runtime_dir/uv" run \
 	--project "$source_release/python" \
-	python -m playwright install chromium
+	python -m playwright install --only-shell chromium
 
 destination="$home/versions/$version"
 if [ -e "$destination" ]; then
