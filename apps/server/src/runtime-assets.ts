@@ -6,6 +6,7 @@ export type RuntimeAssets = Readonly<{
 	webDistDir: string;
 	pythonDir: string;
 	uvExecutable: string;
+	playwrightBrowsersDir: string | null;
 	computerUseLauncher: string | null;
 }>;
 
@@ -34,6 +35,9 @@ export function resolveRuntimeAssets(moduleUrl = import.meta.url): RuntimeAssets
 		uvExecutable: isBundledRelease
 			? join(releaseRoot, "runtime", "uv", "uv")
 			: "uv",
+		playwrightBrowsersDir: isBundledRelease
+			? join(releaseRoot, "runtime", "playwright")
+			: null,
 		computerUseLauncher: isBundledRelease
 			? join(moduleDir, "vendor", "open-computer-use", "bin", "open-computer-use")
 			: null,

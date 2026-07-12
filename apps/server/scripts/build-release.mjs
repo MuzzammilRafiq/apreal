@@ -86,10 +86,15 @@ async function installPrivateRuntimes() {
 			UV_PYTHON_INSTALL_DIR: join(runtimeDir, "python"),
 			UV_CACHE_DIR: join(workDir, "uv-cache"),
 			UV_PROJECT_ENVIRONMENT: join(outputRoot, "python", ".venv"),
+			PLAYWRIGHT_BROWSERS_PATH: join(runtimeDir, "playwright"),
 		};
 		console.log(`Installing private Python ${pythonVersion}`);
 		await run(uvExecutable, ["python", "install", pythonVersion], { env: uvEnvironment });
 		await run(uvExecutable, ["sync", "--project", join(outputRoot, "python"), "--frozen", "--python", pythonVersion], {
+			env: uvEnvironment,
+		});
+		console.log("Installing Playwright Chromium");
+		await run(uvExecutable, ["run", "--project", join(outputRoot, "python"), "python", "-m", "playwright", "install", "chromium"], {
 			env: uvEnvironment,
 		});
 	} finally {

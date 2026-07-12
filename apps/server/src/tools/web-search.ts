@@ -82,7 +82,12 @@ class SearchWorker {
 
 		const worker = spawn(RUNTIME_ASSETS.uvExecutable, ["run", "worker.py"], {
 			cwd: RUNTIME_ASSETS.pythonDir,
-			env: process.env,
+			env: {
+				...process.env,
+				...(RUNTIME_ASSETS.playwrightBrowsersDir
+					? { PLAYWRIGHT_BROWSERS_PATH: RUNTIME_ASSETS.playwrightBrowsersDir }
+					: {}),
+			},
 			detached: process.platform !== "win32",
 			stdio: ["pipe", "pipe", "pipe"],
 			windowsHide: true,
