@@ -48,6 +48,7 @@ await cp(join(repositoryRoot, "apps", "web", "dist"), join(outputRoot, "web", "d
 await cp(join(repositoryRoot, "scripts", "python"), join(outputRoot, "python"), {
 	recursive: true,
 });
+await cp(join(repositoryRoot, "LICENSE"), join(outputRoot, "LICENSE"));
 const computerUsePackageDir = dirname(require.resolve("open-computer-use/package.json"));
 await cp(computerUsePackageDir, join(outputRoot, "server", "vendor", "open-computer-use"), {
 	recursive: true,
