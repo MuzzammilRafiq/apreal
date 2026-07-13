@@ -22,7 +22,7 @@ This repo is now structured as a small monorepo so the desktop surface can grow 
 pnpm install
 ```
 
-Use Node.js 20.6 or newer.
+Use Node.js 24 or newer.
 
 ## Development
 

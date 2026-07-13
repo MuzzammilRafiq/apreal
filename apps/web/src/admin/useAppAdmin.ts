@@ -87,6 +87,19 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 	const [providerLoginRedirect, setProviderLoginRedirect] = useState<string | null>(null);
 	const connectedRef = useRef(connected);
 	const pendingRemoteSnapshotsRef = useRef(new Set<PendingRemoteSnapshot>());
+	const providerLoginWindowRef = useRef<Window | null>(null);
+
+	const openProviderAuthUrl = useCallback((authUrl: string) => {
+		const authWindow = providerLoginWindowRef.current;
+		providerLoginWindowRef.current = null;
+		if (!authWindow || authWindow.closed) {
+			window.location.assign(authUrl);
+			return;
+		}
+
+		authWindow.location.assign(authUrl);
+		authWindow.focus();
+	}, []);
 
 	useEffect(() => {
 		connectedRef.current = connected;
@@ -488,11 +501,13 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 
 			queryClient.setQueryData(adminQueryKeys.providers(runtime.target), response);
 			if (response.loginState.authUrl) {
-				window.location.assign(response.loginState.authUrl);
+				openProviderAuthUrl(response.loginState.authUrl);
 			}
 		},
 		onError: () => {
 			setProviderLoginRedirect(null);
+			providerLoginWindowRef.current?.close();
+			providerLoginWindowRef.current = null;
 		},
 	});
 	const saveProviderApiKeyMutation = useMutation({
@@ -560,6 +575,9 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 		await setDefaultModelMutation.mutateAsync({ provider, modelId });
 	}, [setDefaultModelMutation]);
 	const handleStartProviderLogin = useCallback(async (provider: string) => {
+		providerLoginWindowRef.current?.close();
+		providerLoginWindowRef.current = window.open("about:blank", "_blank");
+		providerLoginWindowRef.current?.focus();
 		await startProviderLoginMutation.mutateAsync(provider);
 	}, [startProviderLoginMutation]);
 	const handleSaveProviderApiKey = useCallback(async (provider: string, apiKey: string) => {
@@ -601,7 +619,7 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 					const activeProvider = message.providers.find((provider) => provider.id === providerLoginRedirect);
 					if (activeProvider?.loginState.authUrl) {
 						setProviderLoginRedirect(null);
-						window.location.assign(activeProvider.loginState.authUrl);
+						openProviderAuthUrl(activeProvider.loginState.authUrl);
 					}
 				}
 				return true;
@@ -649,7 +667,7 @@ export function useAppAdmin({ route, runtime, enabled, connected, restartEventSt
 			default:
 				return false;
 		}
-	}, [providerLoginRedirect, queryClient, resolveRemoteSnapshots, runtime.target]);
+	}, [openProviderAuthUrl, providerLoginRedirect, queryClient, resolveRemoteSnapshots, runtime.target]);
 
 	return {
 		adminStatus, adminStatusError, transportStatusMessage, serverReady, transportReady, authorizedSettingsSections,

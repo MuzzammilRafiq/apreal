@@ -2,6 +2,9 @@
 	"name": "@apreal/web",
 	"private": true,
 	"type": "module",
+	"engines": {
+		"node": ">=24.0.0"
+	},
 	"scripts": {
 		"dev": "pnpm dev:local",
 		"dev:local": "vite --host --mode web-local",
@@ -39,7 +42,6 @@
 		"rehype-sanitize": "^6.0.0",
 		"remark-breaks": "^4.0.0",
 		"remark-gfm": "^4.0.1",
-		"shadcn": "^4.11.0",
 		"shiki": "^4.2.0",
 		"sonner": "^2.0.7",
 		"tailwind-merge": "^3.6.0",
@@ -50,6 +52,7 @@
 		"@types/react": "^19.0.0",
 		"@types/react-dom": "^19.0.0",
 		"@vitejs/plugin-react": "^6.0.0",
+		"shadcn": "^4.11.0",
 		"tailwindcss": "^4.3.1",
 		"typescript": "^5.9.3",
 		"vite": "^8.0.0",

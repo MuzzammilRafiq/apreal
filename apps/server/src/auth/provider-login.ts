@@ -1,4 +1,5 @@
 import { AuthStorage } from "@earendil-works/pi-coding-agent";
+import type { OAuthSelectPrompt } from "@earendil-works/pi-ai";
 import type {
 	ProviderApiKeyResponse,
 	ProviderLoginResponse,
@@ -15,6 +16,17 @@ function createIdleProviderLoginState(): ProviderLoginState {
 		error: null,
 		updatedAt: null,
 	};
+}
+
+export function selectBrowserOAuthMethod(providerId: string, prompt: OAuthSelectPrompt): string {
+	const browserOption = prompt.options.find((option) => option.id === "browser");
+	if (browserOption) {
+		return browserOption.id;
+	}
+
+	throw new Error(
+		`Provider ${providerId} requires an interactive selection (${prompt.message}). Web login currently supports browser-based Pi OAuth only.`,
+	);
 }
 
 type ProviderLoginAttempt = {
@@ -105,11 +117,7 @@ export function createProviderLoginManager({
 					`Provider ${normalizedProviderId} requested extra input (${prompt.message}). Web login currently supports browser-based Pi OAuth only.`,
 				);
 			},
-			onSelect: async (prompt) => {
-				throw new Error(
-					`Provider ${normalizedProviderId} requires an interactive selection (${prompt.message}). Web login currently supports browser-based Pi OAuth only.`,
-				);
-			},
+			onSelect: async (prompt) => selectBrowserOAuthMethod(normalizedProviderId, prompt),
 			onProgress: (message) => {
 				logger.info("provider login progress", {
 					provider: normalizedProviderId,

@@ -7,7 +7,8 @@ import {
 	SettingsManager,
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { getProviders, type Message, type Model } from "@earendil-works/pi-ai";
+import type { Message, Model } from "@earendil-works/pi-ai";
+import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { agentToolsConfig, getConfiguredToolNames } from "./agent-tools.ts";
 import { getAprealAgentDir, getAprealAgentPath } from "./agent-dir.ts";
 import { APREAL_STATE_DIRECTORY_NAMES, APREAL_STATE_FILENAMES } from "./constants.ts";
@@ -567,7 +568,7 @@ function buildProvidersPayloadFromRuntime(runtime: PiRuntime): ProvidersResponse
 		...configuredProviderIds,
 		...modelsByProvider.keys(),
 		...oauthProviderIds,
-		...getProviders(),
+		...getBuiltinProviders(),
 	]);
 	const providers = [...knownProviderIds].map((id) => {
 		const credential = runtime.authStorage.get(id);
