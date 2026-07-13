@@ -1,106 +1,41 @@
-# desktop
+# Apreal
 
-This repo is now structured as a small monorepo so the desktop surface can grow into multiple apps without another reorganization.
+Apreal is a local-first AI agent that runs on your Mac and opens in your web browser.
 
-## Layout
+## Download and install
 
-- `apps/web`: React + Vite browser client.
-- `apps/server`: Node.js server that owns the Pi SDK session runtime and the browser HTTP/SSE transport.
-- `apps/relay-server`: Node.js relay server for authenticated browser-to-agent traffic.
-- `apps/shared`: shared TypeScript package consumed by the server and web apps.
-- `docs`: markdown documentation and notes.
+The current release supports Apple Silicon Macs (M1 or newer).
 
-## Architecture Docs
-
-- [`docs/README.md`](./docs/README.md)
-- [`docs/app-architecture/README.md`](./docs/app-architecture/README.md)
-- [`docs/relay-server-architecture/README.md`](./docs/relay-server-architecture/README.md)
-
-## Install
+Download and run the installer from the [latest Apreal release](https://github.com/MuzzammilRafiq/apreal/releases/latest):
 
 ```bash
-pnpm install
+curl -fL https://github.com/MuzzammilRafiq/apreal/releases/latest/download/install.sh -o /tmp/apreal-install.sh
+sh /tmp/apreal-install.sh
 ```
 
-Use Node.js 24 or newer.
+The installer downloads Apreal, verifies the release checksum, installs its private runtimes under `~/.apreal`, and adds the `apreal` command to your shell path. Open a new terminal after installation.
 
-## Development
+## Use Apreal
 
-Run both the Node server and the React web app together:
+Start Apreal:
 
 ```bash
-pnpm dev
+apreal start
 ```
 
-`pnpm dev` uses Turbo's TUI so the server and web tasks show up as separate selectable streams in the terminal.
+Your browser opens the Apreal interface automatically. On first use, open **Settings**, connect an AI provider with a subscription login or API key, and choose a model. You can then return to the chat and start a conversation.
 
-Development server state is stored under `~/.apreal-dev`. The production default remains `~/.apreal`.
+Keep the terminal open while using Apreal. To stop it, press `Control-C` in that terminal.
 
-This is the only development mode with frontend hot reload. Edit files under `apps/web/src`, keep the browser open at `http://localhost:5173`, and Vite will reload without rebuilding `apps/web/dist` or restarting the server.
+If the browser does not open automatically, visit [http://localhost:3000](http://localhost:3000).
 
-If you want to run just one side, use:
+## Useful commands
 
 ```bash
-pnpm dev:server
-pnpm dev:web
-pnpm dev:web:remote
+apreal status   # Check whether Apreal is running
+apreal logs     # Show server logs
+apreal version  # Show the installed version
+apreal stop     # Stop Apreal from another terminal
 ```
 
-If you want plain prefixed terminal output instead of the TUI, use:
-
-```bash
-pnpm dev:plain
-```
-
-If you want separate log files on disk, use:
-
-
-```bash
-pnpm dev:logs
-```
-
-That runner writes to:
-
-- `dev/logs/server.log`
-- `dev/logs/web.log`
-
-The server listens on `http://localhost:3000` by default and exposes:
-
-- `GET /health`
-- `GET /api/client/stream`
-- `POST /api/client/message`
-- `POST /api/relay/connection`
-
-In development, the browser UI should be opened from the Vite app at `http://localhost:5173` so HMR works. The Node server still serves built frontend assets from `apps/web/dist` when that bundle exists, but that path does not hot reload.
-
-The web app has two build targets. The local server UI remains the default and builds to `apps/web/dist`; the hosted remote web UI builds separately to `apps/web/dist-remote`.
-
-## Build And Checks
-
-```bash
-pnpm build
-pnpm typecheck
-```
-
-For targeted web builds:
-
-```bash
-pnpm build:web:local
-pnpm build:web:remote
-```
-
-## Runtime Notes
-
-- Agent provider login is handled by the Apreal settings UI on the laptop. Credentials and defaults are stored under the selected Apreal home's `agent` directory (`~/.apreal-dev` during development and `~/.apreal` in production).
-- The server exposes a persistent Markdown-backed `memory` tool. Curated memory lives below the selected home in `agent/memory/USER.md` for user preferences/expectations and `agent/memory/MEMORY.md` for agent/project/environment facts; use `memory(action="add"|"replace"|"remove", memoryType="user"|"agent", ...)` to keep entries compact. These files are loaded as a frozen prompt snapshot when a session starts, while tool writes become durable immediately. `search` memory lives in up to 10 Markdown files under `agent/memory/search`; only the search index is loaded by default.
-- `LOG_LEVEL` supports `debug`, `info`, `warn`, and `error`.
-- The browser talks only to the relay host for auth plus chat transport.
-- The browser talks only to the relay host. The Pi server keeps an outbound authenticated stream open to the relay, and browser messages are forwarded over that live channel.
-- `apps/relay-server` owns hosted Google OAuth through Better Auth at `/api/auth/*`.
-- Relay auth env: `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `BETTER_AUTH_GOOGLE_CLIENT_ID`, and `BETTER_AUTH_GOOGLE_CLIENT_SECRET`.
-- Optional relay auth env: `BETTER_AUTH_SQLITE_PATH` and comma-separated `BETTER_AUTH_TRUSTED_ORIGINS`.
-- `JWT_SECRET` signs one-hour relay client and agent tokens. `BETTER_AUTH_SECRET` separately signs Better Auth sessions and is always required when hosted authentication is enabled; use independent high-entropy values for both.
-- Pairing owner grants expire after five minutes. Relay browser and agent credentials are tracked in a permission-restricted credential store, can be revoked individually through the owner-authenticated relay credential API, and are rotated during explicit browser or agent reauthentication. `JWT_SECRET` rotation remains available for emergency global invalidation.
-- When Better Auth is configured, relay client auth and heartbeat require a signed-in user session. Pairing a laptop server through that client code binds both client and agent relay tokens to the same Better Auth user id.
-- Browser chats stay shared in memory across tabs while the server is running.
-- CLI mode was removed; configuration now flows through the web client only.
+To install a newer release, run the installer again when an update is available.
