@@ -50,7 +50,12 @@ export interface HandlerState {
 	cwd: string;
 	clients: Map<string, ClientConnection>;
 	sessions: Map<string, SharedSessionState>;
-	chatStore: { saveSession(session: SharedSessionState): void; deleteSession?(sessionId: string): void; deleteSessions?(sessionIds: string[]): void };
+	chatStore: {
+		loadSession?(session: SharedSessionState): boolean;
+		saveSession(session: SharedSessionState): void;
+		deleteSession?(sessionId: string): void;
+		deleteSessions?(sessionIds: string[]): void;
+	};
 	getCustomTools?: () => ToolDefinition[];
 	jobStore?: JobStore;
 	scheduler?: Scheduler;
@@ -103,6 +108,23 @@ export function createHandlers(
 
 	function isScheduledSession(session: SharedSessionState): boolean {
 		return session.title.startsWith("[Scheduled:");
+	}
+
+	function ensureTranscriptLoaded(clientId: string, session: SharedSessionState): boolean {
+		if (session.transcriptLoaded) {
+			return true;
+		}
+
+		if (chatStore.loadSession?.(session)) {
+			return true;
+		}
+
+		logger.error("session transcript could not be loaded", {
+			clientId,
+			sessionId: session.id,
+		});
+		clientActions.sendError(clientId, "The selected session transcript could not be loaded.", session.id);
+		return false;
 	}
 
 	function sendJobsSnapshot(clientId: string) {
@@ -610,6 +632,9 @@ export function createHandlers(
 			);
 			return;
 		}
+		if (!ensureTranscriptLoaded(clientId, session)) {
+			return;
+		}
 
 		const controllerHistory: AgentHistoryMessage[] = session.transcript.flatMap((message) =>
 			(message.role === "user" || message.role === "assistant") && !message.pending
@@ -693,6 +718,9 @@ export function createHandlers(
 		}
 
 		if (!session.busy) {
+			if (!ensureTranscriptLoaded(clientId, session)) {
+				return;
+			}
 			clientActions.sendSessionSnapshot(clientId, session);
 			return;
 		}
@@ -861,6 +889,9 @@ export function createHandlers(
 
 			clientActions.markSessionLoaded(clientId, session.id);
 			if (message.knownRevision !== undefined && message.knownRevision >= session.revision) {
+				return;
+			}
+			if (!ensureTranscriptLoaded(clientId, session)) {
 				return;
 			}
 

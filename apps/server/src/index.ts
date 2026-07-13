@@ -140,7 +140,7 @@ async function runApp() {
     await mcpStore.upsertBuiltIn(createComputerUseMcpDefinition());
     const mcpToolRegistry = new McpToolRegistry(cwd, createLogger("mcp"));
     const webUiReady = await fileExists(WEB_INDEX_PATH);
-    for (const [sessionId, session] of chatStore.loadSessions()) {
+    for (const [sessionId, session] of chatStore.loadSessionSummaries()) {
         sessions.set(sessionId, session);
     }
 

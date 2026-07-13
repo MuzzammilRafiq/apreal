@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
-import { createLogger } from "./logger.ts";
+import { createLogger, summarizePrompt } from "./logger.ts";
 import type {
 	SharedSessionState,
 	TranscriptMessage,
@@ -49,6 +49,8 @@ type SessionRow = {
 	revision: number;
 	busy: number;
 	model: string | null;
+	preview_body: string | null;
+	message_count: number;
 };
 
 type MessageRow = {
@@ -67,7 +69,8 @@ type MessageRow = {
 };
 
 type ChatStore = {
-	loadSessions(): Map<string, SharedSessionState>;
+	loadSessionSummaries(): Map<string, SharedSessionState>;
+	loadSession(session: SharedSessionState): boolean;
 	saveSession(session: SharedSessionState): void;
 	deleteSession?(sessionId: string): void;
 	deleteSessions?(sessionIds: string[]): void;
@@ -93,8 +96,11 @@ function formatError(error: unknown): string {
 function createNoopStore(dbPath: string, error: unknown): ChatStore {
 	const errorMessage = formatError(error);
 	return {
-		loadSessions() {
+		loadSessionSummaries() {
 			return new Map();
+		},
+		loadSession() {
+			return false;
 		},
 		saveSession() {},
 		getStatus() {
@@ -319,9 +325,32 @@ export function createChatStore(dbPath: string): ChatStore {
 	}
 
 	const loadSessionsStatement = database.prepare(`
-		SELECT id, title, created_at, updated_at, revision, busy, model
-		FROM sessions
-		ORDER BY updated_at DESC, created_at DESC
+		SELECT
+			s.id,
+			s.title,
+			s.created_at,
+			s.updated_at,
+			s.revision,
+			s.busy,
+			s.model,
+			(
+				SELECT substr(m.body, 1, 1024)
+				FROM messages AS m
+				WHERE m.session_id = s.id AND trim(m.body) <> ''
+				ORDER BY
+					m.message_order DESC,
+					m.created_at DESC,
+					CASE m.role WHEN 'user' THEN 0 WHEN 'assistant' THEN 1 WHEN 'system' THEN 2 ELSE 3 END DESC,
+					m.id DESC
+				LIMIT 1
+			) AS preview_body,
+			(
+				SELECT count(*)
+				FROM messages AS m
+				WHERE m.session_id = s.id AND m.role IN ('user', 'assistant')
+			) AS message_count
+		FROM sessions AS s
+		ORDER BY s.updated_at DESC, s.created_at DESC
 	`);
 	const loadMessagesStatement = database.prepare(`
 		SELECT id, session_id, role, body, thinking, model_label, model_source, pending, created_at, message_order, segments_json, tool_calls_json
@@ -348,47 +377,12 @@ export function createChatStore(dbPath: string): ChatStore {
 	const deleteSessionStatement = database.prepare("DELETE FROM sessions WHERE id = ?");
 
 	return {
-		loadSessions() {
+		loadSessionSummaries() {
 			try {
 				const sessions = new Map<string, SharedSessionState>();
 				const sessionRows = loadSessionsStatement.all() as SessionRow[];
 
 				for (const sessionRow of sessionRows) {
-					const transcript: TranscriptMessage[] = [];
-					const toolCallMessageIds = new Map<string, string>();
-					const messageRows = loadMessagesStatement.all(sessionRow.id) as MessageRow[];
-
-					for (const messageRow of messageRows) {
-						if (!isRole(messageRow.role)) {
-							logger.warn("skipping persisted message with invalid role", {
-								sessionId: sessionRow.id,
-								messageId: messageRow.id,
-							});
-							continue;
-						}
-
-						const toolCalls = decodeToolCalls(messageRow.tool_calls_json, messageRow.id);
-						const segments = decodeSegments(messageRow.segments_json, messageRow.id);
-						const message: TranscriptMessage = {
-							id: messageRow.id,
-							role: messageRow.role,
-							body: messageRow.body ?? "",
-							thinking: messageRow.thinking ?? "",
-							modelLabel: messageRow.model_label ?? null,
-							modelSource: messageRow.model_source ?? null,
-							toolCalls,
-							segments,
-							pending: false,
-							createdAt: normalizeTimestamp(messageRow.created_at),
-						};
-
-						for (const toolCall of toolCalls) {
-							toolCallMessageIds.set(toolCall.id, message.id);
-						}
-
-						transcript.push(message);
-					}
-
 					sessions.set(sessionRow.id, {
 						id: sessionRow.id,
 						title: sessionRow.title,
@@ -403,9 +397,12 @@ export function createChatStore(dbPath: string): ChatStore {
 						controller: null,
 						controllerPromise: null,
 						unsubscribe: null,
-						transcript,
+						transcript: [],
+						transcriptLoaded: false,
+						persistedPreview: summarizePrompt(sessionRow.preview_body ?? "", 72) || "No messages yet",
+						persistedMessageCount: sessionRow.message_count,
 						pendingAssistantMessageId: null,
-						toolCallMessageIds,
+						toolCallMessageIds: new Map(),
 					});
 				}
 
@@ -418,7 +415,68 @@ export function createChatStore(dbPath: string): ChatStore {
 				return new Map();
 			}
 		},
+		loadSession(session) {
+			if (session.transcriptLoaded) {
+				return true;
+			}
+
+			try {
+				const transcript: TranscriptMessage[] = [];
+				const toolCallMessageIds = new Map<string, string>();
+				const messageRows = loadMessagesStatement.all(session.id) as MessageRow[];
+
+				for (const messageRow of messageRows) {
+					if (!isRole(messageRow.role)) {
+						logger.warn("skipping persisted message with invalid role", {
+							sessionId: session.id,
+							messageId: messageRow.id,
+						});
+						continue;
+					}
+
+					const toolCalls = decodeToolCalls(messageRow.tool_calls_json, messageRow.id);
+					const segments = decodeSegments(messageRow.segments_json, messageRow.id);
+					const message: TranscriptMessage = {
+						id: messageRow.id,
+						role: messageRow.role,
+						body: messageRow.body ?? "",
+						thinking: messageRow.thinking ?? "",
+						modelLabel: messageRow.model_label ?? null,
+						modelSource: messageRow.model_source ?? null,
+						toolCalls,
+						segments,
+						pending: false,
+						createdAt: normalizeTimestamp(messageRow.created_at),
+					};
+
+					for (const toolCall of toolCalls) {
+						toolCallMessageIds.set(toolCall.id, message.id);
+					}
+
+					transcript.push(message);
+				}
+
+				session.transcript = transcript;
+				session.toolCallMessageIds = toolCallMessageIds;
+				session.transcriptLoaded = true;
+				return true;
+			} catch (error) {
+				logger.error("failed to load persisted chat session transcript", {
+					dbPath,
+					sessionId: session.id,
+					error: formatError(error),
+				});
+				return false;
+			}
+		},
 		saveSession(session) {
+			if (!session.transcriptLoaded) {
+				logger.error("refusing to save a session whose transcript has not been loaded", {
+					dbPath,
+					sessionId: session.id,
+				});
+				return;
+			}
 			try {
 				runInTransaction(database, () => {
 					upsertSessionStatement.run(

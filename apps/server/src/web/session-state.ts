@@ -66,6 +66,9 @@ export type SharedSessionState = {
 	controllerPromise: Promise<AgentController> | null;
 	unsubscribe: (() => void) | null;
 	transcript: TranscriptMessage[];
+	transcriptLoaded: boolean;
+	persistedPreview: string;
+	persistedMessageCount: number;
 	pendingAssistantMessageId: string | null;
 	toolCallMessageIds: Map<string, string>;
 };
@@ -117,17 +120,23 @@ function cloneTranscript(transcript: TranscriptMessage[]): TranscriptMessage[] {
 
 export function buildSessionSummary(session: SharedSessionState): SessionSummary {
 	const contextUsage = session.controller?.getContextUsage() ?? null;
+	const preview = session.transcriptLoaded
+		? createSessionPreview(session.transcript)
+		: session.persistedPreview;
+	const messageCount = session.transcriptLoaded
+		? session.transcript.filter((entry) => entry.role === "user" || entry.role === "assistant").length
+		: session.persistedMessageCount;
 
 	return {
 		id: session.id,
 		title: session.title,
-		preview: createSessionPreview(session.transcript),
+		preview,
 		createdAt: session.createdAt,
 		updatedAt: session.updatedAt,
 		revision: session.revision,
 		busy: session.busy,
 		model: session.model,
-		messageCount: session.transcript.filter((entry) => entry.role === "user" || entry.role === "assistant").length,
+		messageCount,
 		contextUsage,
 	};
 }
@@ -272,6 +281,9 @@ export function createSharedSession(initialPrompt: string): SharedSessionState {
 		controllerPromise: null,
 		unsubscribe: null,
 		transcript: [],
+		transcriptLoaded: true,
+		persistedPreview: "No messages yet",
+		persistedMessageCount: 0,
 		pendingAssistantMessageId: null,
 		toolCallMessageIds: new Map(),
 	};
