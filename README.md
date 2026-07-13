@@ -1,18 +1,15 @@
 # Apreal
 
-Apreal is a local-first AI agent that runs on your Mac and opens in your web browser.
+Apreal is a local-first AI agent that runs on your Mac and opens in your web browser and your phones browser.No need to setup telegram,WhatsApp etc.
 
 ## Download and install
 
-The current release supports Apple Silicon Macs (M1 or newer).
-
-Download and run the installer from the [latest Apreal release](https://github.com/MuzzammilRafiq/apreal/releases/latest):
+The current release supports Apple Silicon.
 
 ```bash
 curl -fL https://github.com/MuzzammilRafiq/apreal/releases/latest/download/install.sh -o /tmp/apreal-install.sh
 sh /tmp/apreal-install.sh
 ```
-
 The installer downloads Apreal, verifies the release checksum, installs its private runtimes under `~/.apreal`, and adds the `apreal` command to your shell path. Open a new terminal after installation.
 
 ## Use Apreal
@@ -28,6 +25,8 @@ Your browser opens the Apreal interface automatically. On first use, open **Sett
 Keep the terminal open while using Apreal. To stop it, press `Control-C` in that terminal.
 
 If the browser does not open automatically, visit [http://localhost:3000](http://localhost:3000).
+
+To control this agent via phone open [link](apreal-web.vercel.app) and login with same google account.
 
 ## Useful commands
 

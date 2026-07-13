@@ -63,6 +63,22 @@ export interface ClientActions {
 
 const SYNC_EVENT_BUFFER_LIMIT = 1_000;
 const DISCONNECTED_CLIENT_SYNC_RETENTION_MS = 5 * 60_000;
+// The remote path adds two WebSocket hops. Sending every tiny model delta as a
+// separate frame can fill those socket buffers faster than a distant browser
+// can drain them, causing the remote UI to fall progressively behind the local
+// UI. The browser already renders streamed text at 50 ms intervals, so combine
+// adjacent remote deltas over the same interval before assigning sync sequence
+// numbers and putting them on the wire.
+const RELAY_DELTA_FLUSH_INTERVAL_MS = 50;
+
+type AssistantDeltaPayload = Extract<ServerPayload, {
+	type: "assistant_delta" | "assistant_thinking_delta";
+}>;
+
+type RelayDeltaBuffer = {
+	payloads: AssistantDeltaPayload[];
+	timer: ReturnType<typeof setTimeout>;
+};
 
 function createSseChunk(payload: ServerMessage): Uint8Array {
 	const id = payload.type === "sync_event" ? `id: ${payload.seq}\n` : "";
@@ -78,6 +94,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 	const clientSyncBuffers = new Map<string, Array<ServerSyncEnvelope<ServerPayload>>>();
 	const clientNextSyncSeqs = new Map<string, number>();
 	const clientSyncCleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
+	const relayDeltaBuffers = new Map<string, RelayDeltaBuffer>();
 
 	function isScheduledSession(session: SharedSessionState): boolean {
 		return session.title.startsWith("[Scheduled:");
@@ -97,6 +114,21 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 			return false;
 		}
 
+		if (client.transport === "relay" && isAssistantDeltaPayload(payload)) {
+			bufferRelayDelta(clientId, payload);
+			return true;
+		}
+
+		flushRelayDeltas(clientId);
+		return sendClientPayloadImmediately(clientId, payload);
+	}
+
+	function sendClientPayloadImmediately(clientId: string, payload: ServerPayload): boolean {
+		const client = clients.get(clientId);
+		if (!client || client.closed) {
+			return false;
+		}
+
 		const wirePayload = shouldWrapPayload(payload) ? createSyncEvent(clientId, payload) : payload;
 		try {
 			return client.send(wirePayload) !== false;
@@ -107,6 +139,52 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 				error: getErrorMessage(error),
 			});
 			return false;
+		}
+	}
+
+	function isAssistantDeltaPayload(payload: ServerPayload): payload is AssistantDeltaPayload {
+		return payload.type === "assistant_delta" || payload.type === "assistant_thinking_delta";
+	}
+
+	function canMergeAssistantDeltas(left: AssistantDeltaPayload, right: AssistantDeltaPayload): boolean {
+		return left.type === right.type &&
+			left.sessionId === right.sessionId &&
+			left.messageId === right.messageId &&
+			left.contentIndex === right.contentIndex;
+	}
+
+	function bufferRelayDelta(clientId: string, payload: AssistantDeltaPayload) {
+		const existing = relayDeltaBuffers.get(clientId);
+		if (existing) {
+			const lastPayload = existing.payloads.at(-1);
+			if (lastPayload && canMergeAssistantDeltas(lastPayload, payload)) {
+				lastPayload.delta += payload.delta;
+			} else {
+				existing.payloads.push({ ...payload });
+			}
+			return;
+		}
+
+		const timer = setTimeout(() => {
+			flushRelayDeltas(clientId);
+		}, RELAY_DELTA_FLUSH_INTERVAL_MS);
+		timer.unref();
+		relayDeltaBuffers.set(clientId, {
+			payloads: [{ ...payload }],
+			timer,
+		});
+	}
+
+	function flushRelayDeltas(clientId: string) {
+		const buffered = relayDeltaBuffers.get(clientId);
+		if (!buffered) {
+			return;
+		}
+
+		clearTimeout(buffered.timer);
+		relayDeltaBuffers.delete(clientId);
+		for (const payload of buffered.payloads) {
+			sendClientPayloadImmediately(clientId, payload);
 		}
 	}
 
@@ -165,6 +243,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 		sendPayload: ClientConnection["send"],
 		close?: ClientConnection["close"],
 	) {
+		flushRelayDeltas(clientId);
 		const cleanupTimer = clientSyncCleanupTimers.get(clientId);
 		if (cleanupTimer) {
 			clearTimeout(cleanupTimer);
@@ -205,6 +284,7 @@ export function createClientManager(state: ClientManagerState): ClientActions {
 			return;
 		}
 
+		flushRelayDeltas(clientId);
 		client.closed = true;
 		clients.delete(clientId);
 		const existingCleanupTimer = clientSyncCleanupTimers.get(clientId);

@@ -434,6 +434,7 @@ export function App({ runtime }: AppProps) {
 
 		let eventSource: WebEventStream | null = null;
 		let cancelled = false;
+		let reconnectTimer: number | null = null;
 
 		const connect = async () => {
 			try {
@@ -730,11 +731,16 @@ export function App({ runtime }: AppProps) {
 			};
 
 			eventSource.onerror = () => {
+				if (cancelled || reconnectTimer !== null) {
+					return;
+				}
+
 				connectedRef.current = false;
 				setConnected(false);
 				setConnectionError((current) => current ?? STREAM_DISCONNECTED_MESSAGE);
-				if (runtime.target === "remote" && !cancelled) {
-					window.setTimeout(() => {
+				if (runtime.target === "remote") {
+					reconnectTimer = window.setTimeout(() => {
+						reconnectTimer = null;
 						if (!cancelled) {
 							setStreamGeneration((current) => current + 1);
 						}
@@ -747,6 +753,10 @@ export function App({ runtime }: AppProps) {
 
 		return () => {
 			cancelled = true;
+			if (reconnectTimer !== null) {
+				window.clearTimeout(reconnectTimer);
+				reconnectTimer = null;
+			}
 			eventSource?.close();
 			connectedRef.current = false;
 			setConnected(false);

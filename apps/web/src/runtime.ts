@@ -122,12 +122,15 @@ function isRemoteChatMessage(message: ClientMessage): boolean {
 }
 
 class RemoteWebSocketEventStream implements WebEventStream {
-	onopen: ((event: Event) => void) | null = null;
-	onmessage: ((event: MessageEvent<string>) => void) | null = null;
-	onerror: ((event: Event) => void) | null = null;
-
 	private readonly socket: WebSocket;
 	private closedByClient = false;
+	private openHandler: ((event: Event) => void) | null = null;
+	private messageHandler: ((event: MessageEvent<string>) => void) | null = null;
+	private errorHandler: ((event: Event) => void) | null = null;
+	private pendingOpenEvent: Event | null = null;
+	private pendingMessages: MessageEvent<string>[] = [];
+	private pendingErrorEvent: Event | null = null;
+	private failureReported = false;
 
 	constructor(
 		url: string,
@@ -135,21 +138,82 @@ class RemoteWebSocketEventStream implements WebEventStream {
 	) {
 		this.socket = new WebSocket(url);
 		this.socket.addEventListener("open", (event) => {
-			this.onopen?.(event);
+			if (this.openHandler) {
+				this.openHandler(event);
+			} else {
+				this.pendingOpenEvent = event;
+			}
 		});
 		this.socket.addEventListener("message", (event) => {
 			const data = typeof event.data === "string" ? event.data : "";
-			this.onmessage?.(new MessageEvent("message", { data }));
+			const messageEvent = new MessageEvent<string>("message", { data });
+			if (this.messageHandler) {
+				this.messageHandler(messageEvent);
+			} else {
+				this.pendingMessages.push(messageEvent);
+			}
 		});
 		this.socket.addEventListener("error", (event) => {
-			this.onerror?.(event);
+			this.reportFailure(event);
 		});
 		this.socket.addEventListener("close", (event) => {
 			this.onClose(this);
-			if (!this.closedByClient) {
-				this.onerror?.(event);
-			}
+			this.reportFailure(event);
 		});
+	}
+
+	get onopen(): ((event: Event) => void) | null {
+		return this.openHandler;
+	}
+
+	set onopen(handler: ((event: Event) => void) | null) {
+		this.openHandler = handler;
+		if (handler && this.pendingOpenEvent) {
+			const event = this.pendingOpenEvent;
+			this.pendingOpenEvent = null;
+			handler(event);
+		}
+	}
+
+	get onmessage(): ((event: MessageEvent<string>) => void) | null {
+		return this.messageHandler;
+	}
+
+	set onmessage(handler: ((event: MessageEvent<string>) => void) | null) {
+		this.messageHandler = handler;
+		if (handler && this.pendingMessages.length > 0) {
+			const messages = this.pendingMessages;
+			this.pendingMessages = [];
+			for (const message of messages) {
+				handler(message);
+			}
+		}
+	}
+
+	get onerror(): ((event: Event) => void) | null {
+		return this.errorHandler;
+	}
+
+	set onerror(handler: ((event: Event) => void) | null) {
+		this.errorHandler = handler;
+		if (handler && this.pendingErrorEvent) {
+			const event = this.pendingErrorEvent;
+			this.pendingErrorEvent = null;
+			handler(event);
+		}
+	}
+
+	private reportFailure(event: Event) {
+		if (this.closedByClient || this.failureReported) {
+			return;
+		}
+
+		this.failureReported = true;
+		if (this.errorHandler) {
+			this.errorHandler(event);
+		} else {
+			this.pendingErrorEvent = event;
+		}
 	}
 
 	get isOpen(): boolean {
@@ -167,6 +231,8 @@ class RemoteWebSocketEventStream implements WebEventStream {
 
 	close() {
 		this.closedByClient = true;
+		this.pendingMessages = [];
+		this.pendingErrorEvent = null;
 		this.onClose(this);
 		if (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING) {
 			this.socket.close(1000, "client_closed");
