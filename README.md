@@ -37,5 +37,4 @@ apreal version  # Show the installed version
 apreal stop     # Stop Apreal from another terminal
 ```
 
-To install a newer release, run the installer again when an update is available.
-https://claude.ai/magic-link?client=desktop_app#aa0cb7b1dc5d81bac00b74065f45b703:bXptbHJhZmlxY3NlQGdtYWlsLmNvbQ==
+To install a newer release, run the installer again when an 
